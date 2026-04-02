@@ -1,0 +1,131 @@
+name: Claude Code Agent
+
+on:
+  # Trigger on issue comments (e.g. "@claude do X")
+  issue_comment:
+    types: [created]
+
+  # Trigger when a PR is opened, updated, or marked ready
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+  # Trigger on PR review comments
+  pull_request_review_comment:
+    types: [created]
+
+  # Trigger on PR reviews submitted
+  pull_request_review:
+    types: [submitted]
+
+  # Trigger when issues are opened or edited
+  issues:
+    types: [opened, edited, labeled]
+
+  # Trigger on pushes to main (post-merge actions)
+  push:
+    branches:
+      - main
+      - dev
+
+  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt for Claude Code"
+        required: true
+        type: string
+      branch:
+        description: "Branch to run on (defaults to main)"
+        required: false
+        default: main
+        type: string
+
+jobs:
+  claude-agent:
+    runs-on: ubuntu-latest
+
+    # Only run on PRs/issues from repo members, or on direct pushes
+    # Prevents running on forks without explicit approval
+    if: |
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'issue_comment' && github.event.issue.author_association != 'NONE') ||
+      (github.event_name == 'issues' && github.event.issue.author_association != 'NONE')
+
+    permissions:
+      contents: write          # Read/write repo files
+      pull-requests: write     # Open, comment on, merge PRs
+      issues: write            # Comment on and label issues
+      checks: write            # Create check runs
+      statuses: write          # Update commit statuses
+      actions: read            # Read workflow info
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # Full history for context
+          ref: ${{ github.event.inputs.branch || github.head_ref || github.ref }}
+
+      - name: Run Claude Code Agent
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Pass all available context so Claude understands the full situation
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Configures what Claude is allowed to do autonomously
+          allowed_tools: >
+            Bash,
+            Read,
+            Write,
+            Edit,
+            MultiEdit,
+            Glob,
+            Grep,
+            TodoRead,
+            TodoWrite,
+            WebFetch,
+            WebSearch,
+            mcp__github__create_pull_request,
+            mcp__github__create_issue,
+            mcp__github__list_issues,
+            mcp__github__get_pull_request,
+            mcp__github__merge_pull_request,
+            mcp__github__push_files
+
+          # Override prompt for manual dispatch runs
+          prompt: ${{ github.event.inputs.prompt || '' }}
+
+          # Max turns before Claude stops (prevents runaway loops)
+          max_turns: 20
+
+          # Let Claude push commits directly to the branch
+          # (disable if you want PR-only behavior)
+          direct_push: true
+
+      - name: Post summary to PR/Issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = process.env.CLAUDE_SUMMARY || 'Claude Code agent run completed.';
+            const eventName = context.eventName;
+
+            if (eventName === 'pull_request' || eventName === 'pull_request_review_comment') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `🤖 **Claude Code Agent** finished.\n\n${summary}`
+              });
+            } else if (eventName === 'issue_comment' || eventName === 'issues') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: `🤖 **Claude Code Agent** finished.\n\n${summary}`
+              });
+            }

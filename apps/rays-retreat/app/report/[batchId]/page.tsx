@@ -41,8 +41,9 @@ const WTP_LABELS: Record<OracleSignal['willingnessToPay'], string> = {
   high: 'High — $100+ or enterprise',
 };
 
-export default async function ReportPage({ params }: { params: { batchId: string } }) {
-  const signal = await getResults(params.batchId);
+export default async function ReportPage({ params }: { params: Promise<{ batchId: string }> }) {
+  const { batchId } = await params;
+  const signal = await getResults(batchId);
   const nextSteps = NEXT_STEPS[signal.recommendation];
 
   return (

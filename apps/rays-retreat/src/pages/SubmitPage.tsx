@@ -1,10 +1,8 @@
-'use client';
-
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useState, Suspense } from 'react';
+import { useState } from 'react';
 import { postIdea } from '@/lib/api/postIdea';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -30,9 +28,9 @@ const stages: { value: IdeaSubmission['stage']; label: string }[] = [
   { value: 'mvp', label: 'MVP' },
 ];
 
-function SubmitForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function SubmitPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const tier = (searchParams.get('tier') ?? 'starter') as 'starter' | 'standard';
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -64,7 +62,7 @@ function SubmitForm() {
         },
         tier,
       );
-      router.push(`/checkout?batchId=${batchId}&tier=${tier}&title=${encodeURIComponent(data.title)}`);
+      navigate(`/checkout?batchId=${batchId}&tier=${tier}&title=${encodeURIComponent(data.title)}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     }
@@ -199,13 +197,5 @@ function SubmitForm() {
         </Button>
       </form>
     </div>
-  );
-}
-
-export default function SubmitPage() {
-  return (
-    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" /></div>}>
-      <SubmitForm />
-    </Suspense>
   );
 }

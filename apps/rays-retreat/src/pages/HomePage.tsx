@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 
 const steps = [
@@ -72,7 +72,7 @@ export default function HomePage() {
           yes/no/pivot signal before you waste months building the wrong thing.
         </p>
         <Link
-          href="/submit"
+          to="/submit"
           className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-8 py-4 font-sans text-lg font-semibold text-white shadow-sm hover:bg-brand-700 transition-colors"
         >
           Validate my idea →
@@ -122,7 +122,7 @@ export default function HomePage() {
                 ))}
               </ul>
               <Link
-                href={plan.href}
+                to={plan.href}
                 className="mt-6 block w-full rounded bg-brand-600 px-4 py-2.5 text-center font-sans font-medium text-white hover:bg-brand-700 transition-colors"
               >
                 Get started →
@@ -159,7 +159,7 @@ export default function HomePage() {
           48 hours from now you could have real feedback instead of assumptions.
         </p>
         <Link
-          href="/submit"
+          to="/submit"
           className="inline-flex items-center gap-2 rounded-lg bg-white px-8 py-4 font-sans font-semibold text-brand-700 hover:bg-brand-50 transition-colors"
         >
           Validate my idea →

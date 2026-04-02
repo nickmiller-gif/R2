@@ -1,4 +1,4 @@
-// R2 integration: replace with POST ${process.env.NEXT_PUBLIC_API_URL}/idea_submissions
+// R2 integration: replace with POST ${import.meta.env.VITE_API_URL}/idea_submissions
 // Oracle signal shape matches OracleSignal type in R2/src/types (to be published as npm package)
 // Eigen: transcript docs stored with index_status/embedding_status lifecycle fields on backend
 
@@ -11,7 +11,7 @@ export async function postIdea(
   input: PostIdeaInput,
   packageTier: 'starter' | 'standard' = 'starter',
 ): Promise<PostIdeaResult> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   if (apiUrl) {
     const res = await fetch(`${apiUrl}/idea_submissions`, {

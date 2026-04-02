@@ -1,4 +1,4 @@
-// R2 integration: replace with POST ${process.env.NEXT_PUBLIC_API_URL}/validation_batches/{id}/messages
+// R2 integration: replace with POST ${import.meta.env.VITE_API_URL}/validation_batches/{id}/messages
 // Oracle signal shape matches OracleSignal type in R2/src/types (to be published as npm package)
 // Eigen: transcript docs stored with index_status/embedding_status lifecycle fields on backend
 
@@ -6,7 +6,7 @@ export type PostMessageInput = { batchId: string; text: string };
 export type PostMessageResult = { messageId: string };
 
 export async function postMessage(input: PostMessageInput): Promise<PostMessageResult> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   if (apiUrl) {
     const res = await fetch(

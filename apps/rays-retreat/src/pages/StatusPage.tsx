@@ -1,8 +1,5 @@
-'use client';
-
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, Link } from 'react-router-dom';
 import { getValidationStatus } from '@/lib/api/getValidationStatus';
 import { postMessage } from '@/lib/api/postMessage';
 import type { ValidationBatch } from '@/types/validation';
@@ -32,7 +29,7 @@ export default function StatusPage() {
 
   async function fetchStatus() {
     try {
-      const data = await getValidationStatus(batchId);
+      const data = await getValidationStatus(batchId!);
       setBatch(data);
       setCountdown(formatCountdown(data.slaDeadline));
     } catch (e) {
@@ -58,7 +55,7 @@ export default function StatusPage() {
     if (!msgText.trim()) return;
     setSending(true);
     try {
-      const { messageId } = await postMessage({ batchId, text: msgText.trim() });
+      const { messageId } = await postMessage({ batchId: batchId!, text: msgText.trim() });
       setMessages((prev) => [
         ...prev,
         { id: messageId, text: msgText.trim(), from: 'founder', timestamp: new Date().toISOString() },
@@ -138,7 +135,7 @@ export default function StatusPage() {
             <p className="font-serif text-lg font-bold text-brand-700">All interviews complete!</p>
             <p className="mt-1 font-sans text-sm text-brand-600">Your report is ready.</p>
             <Link
-              href={`/report/${batchId}`}
+              to={`/report/${batchId}`}
               className="mt-4 inline-block rounded bg-brand-600 px-6 py-2.5 font-sans font-medium text-white hover:bg-brand-700 transition-colors"
             >
               View report →

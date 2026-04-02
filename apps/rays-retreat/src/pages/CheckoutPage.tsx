@@ -1,7 +1,5 @@
-'use client';
-
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -12,9 +10,9 @@ const PRICES: Record<string, { label: string; cents: number; interviews: number 
   standard: { label: 'Standard', cents: 14900, interviews: 10 },
 };
 
-function CheckoutForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function CheckoutPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const batchId = searchParams.get('batchId') ?? 'batch_001';
   const tier = searchParams.get('tier') ?? 'starter';
   const title = searchParams.get('title') ?? 'Your idea';
@@ -37,7 +35,7 @@ function CheckoutForm() {
     // R2 integration: replace with Stripe PaymentIntent confirmation
     await new Promise((r) => setTimeout(r, 1200));
     setPaying(false);
-    router.push(`/status/${batchId}`);
+    navigate(`/status/${batchId}`);
   }
 
   return (
@@ -121,7 +119,7 @@ function CheckoutForm() {
           size="lg"
           className="mt-6 w-full"
           loading={paying}
-          onClick={handlePay}
+          onClick={() => void handlePay()}
         >
           Pay ${(plan.cents / 100).toFixed(2)} &amp; start the clock →
         </Button>
@@ -131,13 +129,5 @@ function CheckoutForm() {
         </p>
       </Card>
     </div>
-  );
-}
-
-export default function CheckoutPage() {
-  return (
-    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" /></div>}>
-      <CheckoutForm />
-    </Suspense>
   );
 }

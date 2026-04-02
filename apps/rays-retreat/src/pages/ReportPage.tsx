@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { getResults } from '@/lib/api/getResults';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -41,9 +43,34 @@ const WTP_LABELS: Record<OracleSignal['willingnessToPay'], string> = {
   high: 'High — $100+ or enterprise',
 };
 
-export default async function ReportPage({ params }: { params: Promise<{ batchId: string }> }) {
-  const { batchId } = await params;
-  const signal = await getResults(batchId);
+export default function ReportPage() {
+  const { batchId } = useParams<{ batchId: string }>();
+  const [signal, setSignal] = useState<OracleSignal | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!batchId) return;
+    getResults(batchId)
+      .then(setSignal)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load report'));
+  }, [batchId]);
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+        <p className="font-sans text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  if (!signal) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" aria-label="Loading report" />
+      </div>
+    );
+  }
+
   const nextSteps = NEXT_STEPS[signal.recommendation];
 
   return (

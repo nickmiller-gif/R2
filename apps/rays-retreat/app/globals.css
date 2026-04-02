@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color: #1a1a1a;
+    background-color: #fafaf8;
+  }
+
+  h1, h2, h3 {
+    font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+  }
+
+  code, .mono {
+    font-family: "Courier New", Courier, monospace;
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "batch_001",
+  "ideaId": "idea_001",
+  "packageTier": "starter",
+  "priceUsdCents": 9900,
+  "interviewsTotal": 5,
+  "interviewsComplete": 3,
+  "slaDeadline": "2026-04-04T12:00:00Z",
+  "researcherName": "Jordan K.",
+  "createdAt": "2026-04-02T12:00:00Z"
+}

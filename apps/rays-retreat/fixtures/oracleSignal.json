@@ -1,0 +1,12 @@
+{
+  "id": "signal_001",
+  "batchId": "batch_001",
+  "score": 72,
+  "confidence": "medium",
+  "recommendation": "pursue",
+  "topReasons": ["Clear pain point", "Users expressed willingness to pay", "No strong current solution"],
+  "topObjections": ["Price feels high for unknowns", "Skeptical about researcher quality"],
+  "topDesires": ["Fast turnaround", "Anonymized but detailed transcripts", "Actionable next step"],
+  "willingnessToPay": "medium",
+  "createdAt": "2026-04-04T10:00:00Z"
+}

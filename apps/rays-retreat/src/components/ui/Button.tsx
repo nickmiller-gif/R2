@@ -1,10 +1,11 @@
-import { type ButtonHTMLAttributes, forwardRef } from 'react';
+import { type ButtonHTMLAttributes, type Ref } from 'react';
 import { clsx } from 'clsx';
 
 type Variant = 'primary' | 'secondary' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  ref?: Ref<HTMLButtonElement>;
   variant?: Variant;
   size?: Size;
   loading?: boolean;
@@ -25,8 +26,17 @@ const sizeClasses: Record<Size, string> = {
   lg: 'px-7 py-3.5 text-lg',
 };
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, className, children, disabled, ...rest }, ref) => (
+export function Button({
+  ref,
+  variant = 'primary',
+  size = 'md',
+  loading,
+  className,
+  children,
+  disabled,
+  ...rest
+}: ButtonProps) {
+  return (
     <button
       ref={ref}
       disabled={disabled || loading}
@@ -47,6 +57,5 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       )}
       {children}
     </button>
-  ),
-);
-Button.displayName = 'Button';
+  );
+}

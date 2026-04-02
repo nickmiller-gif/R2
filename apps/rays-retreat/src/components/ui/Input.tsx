@@ -1,12 +1,13 @@
-import { type InputHTMLAttributes, forwardRef } from 'react';
+import { type InputHTMLAttributes, type Ref } from 'react';
 import { clsx } from 'clsx';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  ref?: Ref<HTMLInputElement>;
   error?: string;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, ...rest }, ref) => (
+export function Input({ ref, className, error, ...rest }: InputProps) {
+  return (
     <input
       ref={ref}
       className={clsx(
@@ -20,6 +21,5 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       aria-invalid={error ? 'true' : undefined}
       {...rest}
     />
-  ),
-);
-Input.displayName = 'Input';
+  );
+}

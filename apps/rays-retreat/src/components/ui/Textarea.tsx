@@ -1,12 +1,13 @@
-import { type TextareaHTMLAttributes, forwardRef } from 'react';
+import { type TextareaHTMLAttributes, type Ref } from 'react';
 import { clsx } from 'clsx';
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  ref?: Ref<HTMLTextAreaElement>;
   error?: string;
 }
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, error, ...rest }, ref) => (
+export function Textarea({ ref, className, error, ...rest }: TextareaProps) {
+  return (
     <textarea
       ref={ref}
       className={clsx(
@@ -20,6 +21,5 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
       aria-invalid={error ? 'true' : undefined}
       {...rest}
     />
-  ),
-);
-Textarea.displayName = 'Textarea';
+  );
+}

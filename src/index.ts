@@ -1,0 +1,35 @@
+/**
+ * R2 Ecosystem — Headless backend for Oracle, Charter, and Eigen/EigenX.
+ *
+ * This is the top-level barrel export for the R2 service layer.
+ * Each domain exposes its service factories and type-safe interfaces.
+ */
+
+// ── Foundation / Shared ──────────────────────────────────────────────
+export * from './types/shared/index.js';
+export * from './services/documents/index.js';
+export * from './services/foundation/index.js';
+
+// Domain-agnostic provenance (prefixed to avoid collision with Charter's provenance)
+export {
+  createProvenanceService as createSharedProvenanceService,
+  type ProvenanceService as SharedProvenanceService,
+  type ProvenanceDb as SharedProvenanceDb,
+  type DbProvenanceEventRow,
+} from './services/provenance/index.js';
+
+// ── Charter (Governance) ─────────────────────────────────────────────
+export * from './types/charter/index.js';
+export * from './services/charter/index.js';
+
+// ── Oracle (Intelligence) ────────────────────────────────────────────
+export * from './types/oracle/index.js';
+export * from './services/oracle/index.js';
+
+// ── Eigen / EigenX (Knowledge Operating System) ──────────────────────
+export * from './types/eigen/index.js';
+export * from './services/eigen/index.js';
+
+// ── Library Primitives ───────────────────────────────────────────────
+export { hashPayload, genesisChainHash, nextChainHash } from './lib/provenance/hash.js';
+export { nowUtc } from './lib/provenance/clock.js';

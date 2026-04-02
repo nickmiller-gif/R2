@@ -1,33 +1,13 @@
-export type ActorKind = 'user' | 'service' | 'system';
-
-export interface ProvenanceActor {
-  id: string;
-  kind: ActorKind;
-}
-
-export interface ProvenanceEvent {
-  id: string;
-  entityId: string;
-  eventType: string;
-  actor: ProvenanceActor;
-  payloadHash: string;
-  chainHash: string;
-  metadata: Record<string, unknown>;
-  recordedAt: Date;
-}
-
-export interface AppendProvenanceInput {
-  entityId: string;
-  eventType: string;
-  actor: ProvenanceActor;
-  payload: unknown;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ProvenanceLookupFilter {
-  entityId?: string;
-  actorId?: string;
-  eventType?: string;
-  fromDate?: Date;
-  toDate?: Date;
-}
+/**
+ * Charter provenance types — re-exported from shared for backward compatibility.
+ *
+ * New code should import from '../../types/shared/provenance.js' directly.
+ * This file ensures Charter Slice 01 code continues to work unchanged.
+ */
+export {
+  type ActorKind,
+  type ProvenanceActor,
+  type ProvenanceEvent,
+  type AppendProvenanceInput,
+  type ProvenanceLookupFilter,
+} from '../shared/provenance.js';

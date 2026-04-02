@@ -51,6 +51,7 @@ export function makeGovernanceTransition(overrides?: Partial<GovernanceTransitio
 
 export function makeAppendProvenanceInput(entityId: string, overrides?: Partial<AppendProvenanceInput>): AppendProvenanceInput {
   return {
+    domain: 'charter',
     entityId,
     eventType: 'entity.created',
     actor: { id: 'user-actor-1', kind: 'user' },
@@ -64,6 +65,7 @@ export function makeProvenanceEvent(overrides?: Partial<ProvenanceEvent>): Prove
   const id = nextId();
   return {
     id,
+    domain: 'charter',
     entityId: nextId(),
     eventType: 'entity.created',
     actor: { id: 'user-actor-1', kind: 'user' },

@@ -1,0 +1,32 @@
+{
+  "name": "r2",
+  "version": "1.0.0",
+  "description": "R2 is the clean backend/core repository for the revised ecosystem.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickmiller-gif/R2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/nickmiller-gif/R2/issues"
+  },
+  "homepage": "https://github.com/nickmiller-gif/R2#readme",
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}

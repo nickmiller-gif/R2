@@ -1,6 +1,6 @@
 # Charter Slice 01: Governance Kernel + Provenance + Audit Read Path
 
-Status: planned (no code ported)
+Status: complete (code ported, migrations defined, tests passing)
 
 ## Scope lock
 

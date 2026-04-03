@@ -6,3 +6,4 @@ export * from './evidence-freshness.js';
 export * from './opportunity.js';
 export * from './cross-run-diff.js';
 export * from './retrieval-contract.js';
+export * from './portfolio-build.js';

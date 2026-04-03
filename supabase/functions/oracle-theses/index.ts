@@ -1,7 +1,53 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { clusterSignals } from '../_shared/oracle/clusterSignals.ts';
+import { buildWhitespaceFrame } from '../_shared/oracle/buildWhitespaceFrame.ts';
+import { scoreWhitespace } from '../_shared/oracle/scoreWhitespace.ts';
+import { buildOpportunityPortfolio } from '../_shared/oracle/buildOpportunityPortfolio.ts';
+import { persistOpportunities } from '../_shared/oracle/persistOpportunities.ts';
+import { stageErr, type StageResult, type ThesisSnapshot } from '../_shared/oracle/types.ts';
+
+async function runPortfolioBuild(client: ReturnType<typeof getServiceClient>): Promise<StageResult<unknown>> {
+  const { data: theses, error } = await client
+    .from('oracle_theses')
+    .select(
+      'id, profile_id, title, thesis_statement, confidence, evidence_strength, validation_evidence_item_ids, contradiction_evidence_item_ids, metadata',
+    )
+    .neq('status', 'retired')
+    .order('updated_at', { ascending: false })
+    .limit(100);
+
+  if (error || !theses) {
+    return stageErr('portfolio_build', 'THESIS_LOAD_FAILED', error?.message ?? 'Failed to load theses.', true);
+  }
+
+  const clustered = clusterSignals(theses as ThesisSnapshot[]);
+  if (!clustered.ok) return clustered;
+
+  const framed = buildWhitespaceFrame(clustered.data);
+  if (!framed.ok) return framed;
+
+  const scored = scoreWhitespace(framed.data);
+  if (!scored.ok) return scored;
+
+  const byId = new Map((theses as ThesisSnapshot[]).map((thesis) => [thesis.id, thesis]));
+  const portfolio = buildOpportunityPortfolio(scored.data, byId);
+  if (!portfolio.ok) return portfolio;
+
+  const persisted = await persistOpportunities(client, portfolio.data);
+  if (!persisted.ok) return persisted;
+
+  return {
+    ok: true,
+    data: {
+      processed_thesis_count: theses.length,
+      upserted_opportunity_count: persisted.data.length,
+      opportunities: persisted.data,
+    },
+  };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -20,7 +66,6 @@ serve(async (req) => {
 
     if (req.method === 'GET') {
       if (thesisId) {
-        // GET single thesis
         const { data, error } = await client
           .from('oracle_theses')
           .select('*')
@@ -33,7 +78,6 @@ serve(async (req) => {
 
         return jsonResponse(data);
       } else {
-        // GET list with optional filters
         const profileId = url.searchParams.get('profile_id');
         const status = url.searchParams.get('status');
         const publicationState = url.searchParams.get('publication_state');
@@ -57,8 +101,15 @@ serve(async (req) => {
     } else if (req.method === 'POST') {
       const body = await req.json();
 
+      if (action === 'portfolio_build') {
+        const result = await runPortfolioBuild(getServiceClient());
+        if (!result.ok) {
+          return jsonResponse({ ok: false, error: result.error }, 500);
+        }
+        return jsonResponse({ ok: true, ...result.data });
+      }
+
       if (action === 'publish') {
-        // PUBLISH thesis
         if (!body.published_by) {
           return errorResponse('published_by required', 400);
         }
@@ -85,7 +136,6 @@ serve(async (req) => {
 
         return jsonResponse(data);
       } else if (action === 'challenge') {
-        // CHALLENGE thesis
         const thesisId = body.id;
         if (!thesisId) {
           return errorResponse('id required in body', 400);
@@ -104,7 +154,6 @@ serve(async (req) => {
 
         return jsonResponse(data);
       } else if (action === 'supersede') {
-        // SUPERSEDE thesis
         if (!body.superseded_by_thesis_id) {
           return errorResponse('superseded_by_thesis_id required', 400);
         }
@@ -130,7 +179,6 @@ serve(async (req) => {
 
         return jsonResponse(data);
       } else {
-        // CREATE thesis
         const { data, error } = await client
           .from('oracle_theses')
           .insert([body])
@@ -144,7 +192,6 @@ serve(async (req) => {
         return jsonResponse(data, 201);
       }
     } else if (req.method === 'PATCH') {
-      // UPDATE thesis
       const body = await req.json();
       const thesisId = body.id;
 

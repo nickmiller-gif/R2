@@ -53,3 +53,11 @@ export {
   type OracleOutcomeDb,
   type DbOracleOutcomeRow,
 } from './oracle-outcome.service.js';
+
+export {
+  ORACLE_RUNTIME_SYNTHESIS_ENABLED,
+  callOracleThesisEdge,
+  type OracleRuntimeRequest,
+  type OracleFunctionInvoker,
+  type OracleThesisAction,
+} from './runtime.js';

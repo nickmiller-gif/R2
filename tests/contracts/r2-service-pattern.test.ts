@@ -32,6 +32,14 @@ import {
 
 // ── Charter ──────────────────────────────────────────────────────────
 import {
+  createCharterEntityContextService,
+  type CharterEntityContextService,
+  type EntityContextDb,
+  type AssetRegistryPort,
+  type DbCharterEntityRow,
+} from '../../src/services/charter/entity-context.service.js';
+
+import {
   createCharterRightService,
   type CharterRightService,
   type CharterRightDb,
@@ -136,6 +144,7 @@ describe('R2 Service Pattern Contract', () => {
     const factories = [
       createDocumentsService,
       createAssetRegistryService,
+      createCharterEntityContextService,
       createCharterRightService,
       createCharterObligationService,
       createCharterEvidenceService,
@@ -160,7 +169,7 @@ describe('R2 Service Pattern Contract', () => {
     // - Each factory takes a Db interface
     // - Each factory returns a Service interface
     // - Each Db exposes DbXxxRow-shaped operations
-    expect(factories).toHaveLength(16);
+    expect(factories).toHaveLength(17);
   });
 });
 
@@ -246,6 +255,7 @@ describe('Barrel export surface', () => {
 
     // Charter
     expect(typeof r2.createGovernanceKernelService).toBe('function');
+    expect(typeof r2.createCharterEntityContextService).toBe('function');
     expect(typeof r2.createCharterRightService).toBe('function');
     expect(typeof r2.createCharterObligationService).toBe('function');
     expect(typeof r2.createCharterEvidenceService).toBe('function');

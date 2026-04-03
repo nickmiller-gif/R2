@@ -16,7 +16,7 @@ serve(async (req) => {
     if (req.method === 'GET') {
       if (chunkId) {
         const { data, error } = await client
-          .from('eigen_knowledge_chunks')
+          .from('knowledge_chunks')
           .select('*')
           .eq('id', chunkId)
           .single();
@@ -31,7 +31,7 @@ serve(async (req) => {
         const chunkLevel = url.searchParams.get('chunk_level');
         const parentChunkId = url.searchParams.get('parent_chunk_id');
 
-        let query = client.from('eigen_knowledge_chunks').select('*');
+        let query = client.from('knowledge_chunks').select('*');
 
         if (documentId) query = query.eq('document_id', documentId);
         if (chunkLevel) query = query.eq('chunk_level', chunkLevel);
@@ -49,7 +49,7 @@ serve(async (req) => {
       const body = await req.json();
 
       const { data, error } = await client
-        .from('eigen_knowledge_chunks')
+        .from('knowledge_chunks')
         .insert([body])
         .select()
         .single();
@@ -68,7 +68,7 @@ serve(async (req) => {
       }
 
       const { data, error } = await client
-        .from('eigen_knowledge_chunks')
+        .from('knowledge_chunks')
         .update(body)
         .eq('id', id)
         .select()

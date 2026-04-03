@@ -16,7 +16,7 @@ serve(async (req) => {
     if (req.method === 'GET') {
       if (capId) {
         const { data, error } = await client
-          .from('eigen_tool_capabilities')
+          .from('tool_capabilities')
           .select('*')
           .eq('id', capId)
           .single();
@@ -31,7 +31,7 @@ serve(async (req) => {
         const mode = url.searchParams.get('mode');
         const approvalPolicy = url.searchParams.get('approval_policy');
 
-        let query = client.from('eigen_tool_capabilities').select('*');
+        let query = client.from('tool_capabilities').select('*');
 
         if (toolId) query = query.eq('tool_id', toolId);
         if (mode) query = query.eq('mode', mode);
@@ -49,7 +49,7 @@ serve(async (req) => {
       const body = await req.json();
 
       const { data, error } = await client
-        .from('eigen_tool_capabilities')
+        .from('tool_capabilities')
         .insert([body])
         .select()
         .single();
@@ -68,7 +68,7 @@ serve(async (req) => {
       }
 
       const { data, error } = await client
-        .from('eigen_tool_capabilities')
+        .from('tool_capabilities')
         .update(body)
         .eq('id', id)
         .select()

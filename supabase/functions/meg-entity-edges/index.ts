@@ -56,14 +56,20 @@ serve(async (req) => {
       if (error) return errorResponse(error.message, 400);
       return jsonResponse(data, 201);
     } else if (req.method === 'PATCH') {
-      // UPDATE edge
+      // UPDATE edge — only allowlisted fields may be changed
       const body = await req.json();
       const edgeId = body.id;
       if (!edgeId) return errorResponse('id required in body', 400);
 
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (body.confidence !== undefined) patch.confidence = body.confidence;
+      if (body.valid_from !== undefined) patch.valid_from = body.valid_from;
+      if (body.valid_to !== undefined) patch.valid_to = body.valid_to;
+      if (body.metadata !== undefined) patch.metadata = body.metadata;
+
       const { data, error } = await client
         .from('meg_entity_edges')
-        .update({ ...body, updated_at: new Date().toISOString() })
+        .update(patch)
         .eq('id', edgeId)
         .select()
         .single();

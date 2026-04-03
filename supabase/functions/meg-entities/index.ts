@@ -85,14 +85,22 @@ serve(async (req) => {
         return jsonResponse(data, 201);
       }
     } else if (req.method === 'PATCH') {
-      // UPDATE entity
+      // UPDATE entity — only allowlisted fields may be changed
       const body = await req.json();
       const entityId = body.id;
       if (!entityId) return errorResponse('id required in body', 400);
 
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (body.canonical_name !== undefined) patch.canonical_name = body.canonical_name;
+      if (body.entity_type !== undefined) patch.entity_type = body.entity_type;
+      if (body.status !== undefined) patch.status = body.status;
+      if (body.external_ids !== undefined) patch.external_ids = body.external_ids;
+      if (body.attributes !== undefined) patch.attributes = body.attributes;
+      if (body.metadata !== undefined) patch.metadata = body.metadata;
+
       const { data, error } = await client
         .from('meg_entities')
-        .update({ ...body, updated_at: new Date().toISOString() })
+        .update(patch)
         .eq('id', entityId)
         .select()
         .single();

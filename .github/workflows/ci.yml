@@ -2,20 +2,23 @@ name: CI
 
 on:
   push:
-    branches: ["main", "claude/**", "copilot/**"]
+    branches: [main, "claude/**", "copilot/**"]
   pull_request:
-    branches: ["main"]
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
-    name: Typecheck + Tests
+    name: Typecheck · Test · Lint · Migrations
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
@@ -26,20 +29,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm run test
+      - name: Run tests
+        run: npm test
 
-  no-alias-imports:
-    name: No @/ imports in src/tests
-    runs-on: ubuntu-latest
+      - name: Check banned imports
+        run: bash scripts/check-banned-imports.sh
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for @/ alias imports
-        run: |
-          if grep -r '@/' src/ tests/ --include='*.ts' -l; then
-            echo "ERROR: Found @/ alias imports — use relative or package imports only"
-            exit 1
-          fi
-          echo "OK: No @/ alias imports found"
+      - name: Check migration sanity
+        run: bash scripts/check-migrations.sh

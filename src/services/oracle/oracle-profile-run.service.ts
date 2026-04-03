@@ -115,10 +115,11 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
       if (existing.status !== 'queued') {
         throw new Error(`Cannot start run in status '${existing.status}': expected 'queued'`);
       }
+      const now = nowUtc().toISOString();
       const row = await db.updateRun(id, {
         status: 'running',
-        started_at: nowUtc().toISOString(),
-        updated_at: nowUtc().toISOString(),
+        started_at: now,
+        updated_at: now,
       });
       return rowToRun(row);
     },
@@ -129,13 +130,14 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
       if (existing.status !== 'running') {
         throw new Error(`Cannot complete run in status '${existing.status}': expected 'running'`);
       }
+      const now = nowUtc().toISOString();
       const row = await db.updateRun(id, {
         status: 'completed',
-        completed_at: nowUtc().toISOString(),
+        completed_at: now,
         signal_count: input.signalCount,
         top_score: input.topScore,
         summary: input.summary ?? null,
-        updated_at: nowUtc().toISOString(),
+        updated_at: now,
       });
       return rowToRun(row);
     },
@@ -146,10 +148,11 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
       if (existing.status !== 'running') {
         throw new Error(`Cannot fail run in status '${existing.status}': expected 'running'`);
       }
+      const now = nowUtc().toISOString();
       const row = await db.updateRun(id, {
         status: 'failed',
-        completed_at: nowUtc().toISOString(),
-        updated_at: nowUtc().toISOString(),
+        completed_at: now,
+        updated_at: now,
       });
       return rowToRun(row);
     },
@@ -162,10 +165,11 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
           `Cannot cancel run in status '${existing.status}': expected 'queued' or 'running'`,
         );
       }
+      const now = nowUtc().toISOString();
       const row = await db.updateRun(id, {
         status: 'canceled',
-        completed_at: nowUtc().toISOString(),
-        updated_at: nowUtc().toISOString(),
+        completed_at: now,
+        updated_at: now,
       });
       return rowToRun(row);
     },

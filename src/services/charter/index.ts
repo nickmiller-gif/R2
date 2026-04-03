@@ -23,6 +23,7 @@ export {
   type EntityContextDb,
   type EntityGraphLookup,
   type AssetRegistryPort,
+  type DbCharterEntityRow,
 } from './entity-context.service.js';
 
 export {

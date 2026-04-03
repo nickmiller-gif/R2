@@ -43,3 +43,6 @@ export {
   intersectTimeWindows,
 } from './lib/temporal/index.js';
 export { makeEntityRef, entityRefKey, entityRefsEqual, makeAlias, findAlias, aliasIndex, normalizeActor, type MegIdentity } from './lib/identity/index.js';
+
+// ── Edge Utilities ───────────────────────────────────────────────────
+export * from './lib/edge/index.js';

@@ -2,18 +2,22 @@ export {
   createGovernanceKernelService,
   type GovernanceKernelService,
   type GovernanceKernelDb,
+  type DbGovernanceEntityRow,
+  type DbGovernanceTransitionRow,
 } from './governance-kernel.service.js';
 
 export {
   createProvenanceService,
   type ProvenanceService,
   type ProvenanceDb,
+  type DbProvenanceEventRow,
 } from './provenance.service.js';
 
 export {
   createAuditReadService,
   type AuditReadService,
   type AuditReadDb,
+  type DbAuditLogRow,
 } from './audit-read.service.js';
 
 export {

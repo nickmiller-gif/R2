@@ -32,6 +32,27 @@ import {
 
 // ── Charter ──────────────────────────────────────────────────────────
 import {
+  createGovernanceKernelService,
+  type GovernanceKernelService,
+  type GovernanceKernelDb,
+  type DbGovernanceEntityRow,
+} from '../../src/services/charter/governance-kernel.service.js';
+
+import {
+  createProvenanceService,
+  type ProvenanceService,
+  type ProvenanceDb,
+  type DbProvenanceEventRow,
+} from '../../src/services/charter/provenance.service.js';
+
+import {
+  createAuditReadService,
+  type AuditReadService,
+  type AuditReadDb,
+  type DbAuditLogRow,
+} from '../../src/services/charter/audit-read.service.js';
+
+import {
   createCharterEntityContextService,
   type CharterEntityContextService,
   type EntityContextDb,
@@ -144,6 +165,9 @@ describe('R2 Service Pattern Contract', () => {
     const factories = [
       createDocumentsService,
       createAssetRegistryService,
+      createGovernanceKernelService,
+      createProvenanceService,
+      createAuditReadService,
       createCharterEntityContextService,
       createCharterRightService,
       createCharterObligationService,
@@ -169,7 +193,7 @@ describe('R2 Service Pattern Contract', () => {
     // - Each factory takes a Db interface
     // - Each factory returns a Service interface
     // - Each Db exposes DbXxxRow-shaped operations
-    expect(factories).toHaveLength(17);
+    expect(factories).toHaveLength(20);
   });
 });
 
@@ -255,6 +279,8 @@ describe('Barrel export surface', () => {
 
     // Charter
     expect(typeof r2.createGovernanceKernelService).toBe('function');
+    expect(typeof r2.createProvenanceService).toBe('function');
+    expect(typeof r2.createAuditReadService).toBe('function');
     expect(typeof r2.createCharterEntityContextService).toBe('function');
     expect(typeof r2.createCharterRightService).toBe('function');
     expect(typeof r2.createCharterObligationService).toBe('function');

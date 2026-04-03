@@ -112,4 +112,41 @@ describe('CharterPayoutService', () => {
     expect(updated.currency).toBe('EUR');
     expect(updated.confidence).toBe(90);
   });
+
+  it('rejects non-positive amount on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterPayoutService(db);
+
+    await expect(
+      service.create(makeCreatePayoutInput({ amount: 0 }))
+    ).rejects.toThrow('amount');
+  });
+
+  it('rejects negative amount on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterPayoutService(db);
+
+    await expect(
+      service.create(makeCreatePayoutInput({ amount: -100 }))
+    ).rejects.toThrow('amount');
+  });
+
+  it('rejects confidence out of range on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterPayoutService(db);
+
+    await expect(
+      service.create(makeCreatePayoutInput({ confidence: 101 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects non-positive amount on update', async () => {
+    const db = makeMockDb();
+    const service = createCharterPayoutService(db);
+    const payout = await service.create(makeCreatePayoutInput());
+
+    await expect(
+      service.update(payout.id, { amount: -1 })
+    ).rejects.toThrow('amount');
+  });
 });

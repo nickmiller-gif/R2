@@ -5,6 +5,9 @@ import type {
   CharterPayoutFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertConfidence, assertPositiveAmount } from '../../lib/charter/validate.js';
+
+// ─── Service interfaces ────────────────────────────────────────────────────
 
 export interface CharterPayoutService {
   create(input: CreateCharterPayoutInput): Promise<CharterPayout>;
@@ -60,6 +63,8 @@ function rowToPayout(row: DbCharterPayoutRow): CharterPayout {
 export function createCharterPayoutService(db: CharterPayoutDb): CharterPayoutService {
   return {
     async create(input) {
+      assertPositiveAmount(input.amount);
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertPayout({
         id: crypto.randomUUID(),
@@ -91,6 +96,8 @@ export function createCharterPayoutService(db: CharterPayoutDb): CharterPayoutSe
     },
 
     async update(id, input) {
+      if (input.amount !== undefined) assertPositiveAmount(input.amount);
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const patch: Partial<DbCharterPayoutRow> = {
         updated_at: nowUtc().toISOString(),
       };

@@ -6,6 +6,8 @@ import type {
   TransitionGovernanceEntityInput,
   GovernanceEntityFilter,
 } from '../../types/charter/governance.js';
+import type { CharterEventEmitter } from './charter-event-emitter.js';
+import { assertNonEmpty } from '../../lib/charter/validate.js';
 
 export interface GovernanceKernelService {
   create(input: CreateGovernanceEntityInput): Promise<GovernanceEntity>;
@@ -77,9 +79,16 @@ function rowToTransition(row: DbGovernanceTransitionRow): GovernanceTransition {
   };
 }
 
-export function createGovernanceKernelService(db: GovernanceKernelDb): GovernanceKernelService {
+export function createGovernanceKernelService(
+  db: GovernanceKernelDb,
+  emitter?: CharterEventEmitter,
+): GovernanceKernelService {
   return {
     async create(input) {
+      assertNonEmpty(input.refCode, 'refCode');
+      assertNonEmpty(input.title, 'title');
+      assertNonEmpty(input.createdBy, 'createdBy');
+
       const now = new Date().toISOString();
       const row = await db.insertEntity({
         id: crypto.randomUUID(),
@@ -94,7 +103,18 @@ export function createGovernanceKernelService(db: GovernanceKernelDb): Governanc
         created_at: now,
         updated_at: now,
       });
-      return rowToEntity(row);
+      const entity = rowToEntity(row);
+
+      if (emitter) {
+        await emitter.emit({
+          eventType: 'charter.entity.created',
+          payload: { entityId: entity.id, kind: entity.kind, refCode: entity.refCode },
+          idempotencyKey: `charter.entity.created:${entity.id}`,
+          correlationId: input.correlationId ?? entity.id,
+        });
+      }
+
+      return entity;
     },
 
     async getById(id) {
@@ -123,6 +143,9 @@ export function createGovernanceKernelService(db: GovernanceKernelDb): Governanc
     },
 
     async transition(input) {
+      assertNonEmpty(input.entityId, 'entityId');
+      assertNonEmpty(input.actorId, 'actorId');
+
       const entity = await db.findEntityById(input.entityId);
       if (!entity) throw new Error(`Governance entity not found: ${input.entityId}`);
 
@@ -141,7 +164,23 @@ export function createGovernanceKernelService(db: GovernanceKernelDb): Governanc
         updated_at: new Date().toISOString(),
       });
 
-      return rowToTransition(transitionRow);
+      const transition = rowToTransition(transitionRow);
+
+      if (emitter) {
+        await emitter.emit({
+          eventType: 'charter.governance.transitioned',
+          payload: {
+            entityId: transition.entityId,
+            fromStatus: transition.fromStatus,
+            toStatus: transition.toStatus,
+            actorId: transition.actorId,
+          },
+          idempotencyKey: `charter.governance.transitioned:${transition.id}`,
+          correlationId: input.correlationId ?? input.entityId,
+        });
+      }
+
+      return transition;
     },
   };
 }

@@ -5,6 +5,9 @@ import type {
   CharterEvidenceFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertConfidence } from '../../lib/charter/validate.js';
+
+// ─── Service interfaces ────────────────────────────────────────────────────
 
 export interface CharterEvidenceService {
   create(input: CreateCharterEvidenceInput): Promise<CharterEvidence>;
@@ -61,6 +64,7 @@ function rowToEvidence(row: DbCharterEvidenceRow): CharterEvidence {
 export function createCharterEvidenceService(db: CharterEvidenceDb): CharterEvidenceService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertEvidence({
         id: crypto.randomUUID(),
@@ -93,6 +97,7 @@ export function createCharterEvidenceService(db: CharterEvidenceDb): CharterEvid
     },
 
     async update(id, input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const patch: Partial<DbCharterEvidenceRow> = {
         updated_at: nowUtc().toISOString(),
       };

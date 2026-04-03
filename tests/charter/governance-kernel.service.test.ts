@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createGovernanceKernelService } from '../../src/services/charter/governance-kernel.service.js';
 import type { GovernanceKernelDb, DbGovernanceEntityRow, DbGovernanceTransitionRow } from '../../src/services/charter/governance-kernel.service.js';
+import {
+  createCharterEventEmitter,
+  type CharterEventSink,
+} from '../../src/services/charter/charter-event-emitter.js';
+import type { EventEnvelope } from '../../src/types/shared/event-envelope.js';
 import { makeGovernanceEntity, makeCreateEntityInput } from './fixtures/governance-fixtures.js';
 
 function makeDbRow(entity: ReturnType<typeof makeGovernanceEntity>): DbGovernanceEntityRow {
@@ -123,5 +128,103 @@ describe('GovernanceKernelService', () => {
     await expect(
       svc.transition({ entityId: 'missing', toStatus: 'active', actorId: 'user-1' })
     ).rejects.toThrow('missing');
+  });
+});
+
+describe('GovernanceKernelService — input validation', () => {
+  it('throws when refCode is empty on create', async () => {
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db);
+
+    await expect(
+      svc.create(makeCreateEntityInput({ refCode: '' }))
+    ).rejects.toThrow('refCode');
+  });
+
+  it('throws when title is empty on create', async () => {
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db);
+
+    await expect(
+      svc.create(makeCreateEntityInput({ title: '' }))
+    ).rejects.toThrow('title');
+  });
+
+  it('throws when createdBy is empty on create', async () => {
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db);
+
+    await expect(
+      svc.create(makeCreateEntityInput({ createdBy: '' }))
+    ).rejects.toThrow('createdBy');
+  });
+
+  it('throws when actorId is empty on transition', async () => {
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db);
+
+    await expect(
+      svc.transition({ entityId: 'ent-1', toStatus: 'active', actorId: '' })
+    ).rejects.toThrow('actorId');
+  });
+});
+
+describe('GovernanceKernelService — event emission', () => {
+  function makeSink(): { sink: CharterEventSink; emitted: EventEnvelope<unknown>[] } {
+    const emitted: EventEnvelope<unknown>[] = [];
+    return {
+      sink: { async emit(envelope) { emitted.push(envelope); } },
+      emitted,
+    };
+  }
+
+  it('emits charter.entity.created on create', async () => {
+    const { sink, emitted } = makeSink();
+    const emitter = createCharterEventEmitter(sink);
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db, emitter);
+
+    await svc.create(makeCreateEntityInput({ correlationId: 'corr-1' }));
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].eventType).toBe('charter.entity.created');
+    expect(emitted[0].producer).toBe('charter');
+    expect(emitted[0].correlationId).toBe('corr-1');
+  });
+
+  it('emits charter.entity.created with entity id as correlationId when not supplied', async () => {
+    const { sink, emitted } = makeSink();
+    const emitter = createCharterEventEmitter(sink);
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db, emitter);
+
+    const entity = await svc.create(makeCreateEntityInput());
+
+    expect(emitted[0].correlationId).toBe(entity.id);
+  });
+
+  it('emits charter.governance.transitioned on transition', async () => {
+    const { sink, emitted } = makeSink();
+    const emitter = createCharterEventEmitter(sink);
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db, emitter);
+
+    await svc.transition({ entityId: 'ent-1', toStatus: 'active', actorId: 'user-1', correlationId: 'corr-2' });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].eventType).toBe('charter.governance.transitioned');
+    expect(emitted[0].producer).toBe('charter');
+    expect(emitted[0].correlationId).toBe('corr-2');
+    const payload = emitted[0].payload as Record<string, unknown>;
+    expect(payload.toStatus).toBe('active');
+    expect(payload.actorId).toBe('user-1');
+  });
+
+  it('does not emit events when no emitter is supplied', async () => {
+    const db = makeDb();
+    const svc = createGovernanceKernelService(db);
+
+    await svc.create(makeCreateEntityInput());
+    await svc.transition({ entityId: 'ent-1', toStatus: 'active', actorId: 'user-1' });
   });
 });

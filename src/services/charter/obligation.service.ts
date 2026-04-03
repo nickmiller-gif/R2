@@ -5,6 +5,9 @@ import type {
   CharterObligationFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertConfidence } from '../../lib/charter/validate.js';
+
+// ─── Service interfaces ────────────────────────────────────────────────────
 
 export interface CharterObligationService {
   create(input: CreateCharterObligationInput): Promise<CharterObligation>;
@@ -57,6 +60,7 @@ function rowToObligation(row: DbCharterObligationRow): CharterObligation {
 export function createCharterObligationService(db: CharterObligationDb): CharterObligationService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertObligation({
         id: crypto.randomUUID(),
@@ -87,6 +91,7 @@ export function createCharterObligationService(db: CharterObligationDb): Charter
     },
 
     async update(id, input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const patch: Partial<DbCharterObligationRow> = {
         updated_at: nowUtc().toISOString(),
       };

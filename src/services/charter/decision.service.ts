@@ -8,6 +8,9 @@ import type {
   CharterDecisionFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertConfidence } from '../../lib/charter/validate.js';
+
+// ─── Service interfaces ────────────────────────────────────────────────────
 
 export interface CharterDecisionService {
   create(input: CreateCharterDecisionInput): Promise<CharterDecision>;
@@ -64,6 +67,7 @@ function rowToDecision(row: DbCharterDecisionRow): CharterDecision {
 export function createCharterDecisionService(db: CharterDecisionDb): CharterDecisionService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertDecision({
         id: crypto.randomUUID(),
@@ -96,6 +100,7 @@ export function createCharterDecisionService(db: CharterDecisionDb): CharterDeci
     },
 
     async update(id, input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const patch: Partial<DbCharterDecisionRow> = {
         updated_at: nowUtc().toISOString(),
       };

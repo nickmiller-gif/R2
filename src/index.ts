@@ -33,3 +33,4 @@ export * from './services/eigen/index.js';
 // ── Library Primitives ───────────────────────────────────────────────
 export { hashPayload, genesisChainHash, nextChainHash } from './lib/provenance/hash.js';
 export { nowUtc } from './lib/provenance/clock.js';
+export { makeEntityRef, entityRefKey, entityRefsEqual, makeAlias, findAlias, aliasIndex, normalizeActor, type MegIdentity } from './lib/identity/index.js';

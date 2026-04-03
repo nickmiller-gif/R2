@@ -26,6 +26,10 @@ export * from './services/charter/index.js';
 export * from './types/oracle/index.js';
 export * from './services/oracle/index.js';
 
+// ── MEG (Master Entity Graph) ───────────────────────────────────────
+export * from './types/meg/index.js';
+export * from './services/meg/index.js';
+
 // ── Eigen / EigenX (Knowledge Operating System) ──────────────────────
 export * from './types/eigen/index.js';
 export * from './services/eigen/index.js';

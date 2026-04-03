@@ -4,3 +4,5 @@ export * from './thesis.js';
 export * from './evidence-item.js';
 export * from './source-pack.js';
 export * from './thesis-evidence-link.js';
+export * from './thesis-knowledge-link.js';
+export * from './outcome.js';

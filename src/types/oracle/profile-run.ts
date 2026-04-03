@@ -20,6 +20,7 @@ export interface OracleProfileRun {
   summary: string | null;
   metadata: Record<string, unknown>;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface CreateOracleProfileRunInput {

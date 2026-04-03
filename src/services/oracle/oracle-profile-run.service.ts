@@ -45,6 +45,7 @@ export interface DbOracleProfileRunRow {
   summary: string | null;
   metadata: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface OracleProfileRunDb {
@@ -68,6 +69,7 @@ function rowToRun(row: DbOracleProfileRunRow): OracleProfileRun {
     summary: row.summary,
     metadata: JSON.parse(row.metadata),
     createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
   };
 }
 
@@ -87,6 +89,7 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
         summary: null,
         metadata: JSON.stringify(input.metadata ?? {}),
         created_at: now,
+        updated_at: now,
       });
       return rowToRun(row);
     },
@@ -107,36 +110,62 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
     },
 
     async start(id) {
+      const existing = await db.findRunById(id);
+      if (!existing) throw new Error(`OracleProfileRun not found: ${id}`);
+      if (existing.status !== 'queued') {
+        throw new Error(`Cannot start run in status '${existing.status}': expected 'queued'`);
+      }
       const row = await db.updateRun(id, {
         status: 'running',
         started_at: nowUtc().toISOString(),
+        updated_at: nowUtc().toISOString(),
       });
       return rowToRun(row);
     },
 
     async complete(id, input) {
+      const existing = await db.findRunById(id);
+      if (!existing) throw new Error(`OracleProfileRun not found: ${id}`);
+      if (existing.status !== 'running') {
+        throw new Error(`Cannot complete run in status '${existing.status}': expected 'running'`);
+      }
       const row = await db.updateRun(id, {
         status: 'completed',
         completed_at: nowUtc().toISOString(),
         signal_count: input.signalCount,
         top_score: input.topScore,
         summary: input.summary ?? null,
+        updated_at: nowUtc().toISOString(),
       });
       return rowToRun(row);
     },
 
     async fail(id) {
+      const existing = await db.findRunById(id);
+      if (!existing) throw new Error(`OracleProfileRun not found: ${id}`);
+      if (existing.status !== 'running') {
+        throw new Error(`Cannot fail run in status '${existing.status}': expected 'running'`);
+      }
       const row = await db.updateRun(id, {
         status: 'failed',
         completed_at: nowUtc().toISOString(),
+        updated_at: nowUtc().toISOString(),
       });
       return rowToRun(row);
     },
 
     async cancel(id) {
+      const existing = await db.findRunById(id);
+      if (!existing) throw new Error(`OracleProfileRun not found: ${id}`);
+      if (existing.status !== 'queued' && existing.status !== 'running') {
+        throw new Error(
+          `Cannot cancel run in status '${existing.status}': expected 'queued' or 'running'`,
+        );
+      }
       const row = await db.updateRun(id, {
         status: 'canceled',
         completed_at: nowUtc().toISOString(),
+        updated_at: nowUtc().toISOString(),
       });
       return rowToRun(row);
     },

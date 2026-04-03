@@ -10,8 +10,8 @@ import {
 import type { OracleProfileRunFilter } from '../../src/types/oracle/profile-run.js';
 import {
   makeCreateOracleProfileRunInput,
-  resetFixtureCounter,
-} from '../foundation/fixtures/foundation-fixtures.js';
+  resetOracleFixtureCounter,
+} from './fixtures/oracle-fixtures.js';
 
 function makeMockDb(): OracleProfileRunDb & { rows: DbOracleProfileRunRow[] } {
   const rows: DbOracleProfileRunRow[] = [];
@@ -53,7 +53,7 @@ function makeMockDb(): OracleProfileRunDb & { rows: DbOracleProfileRunRow[] } {
 }
 
 describe('OracleProfileRunService', () => {
-  beforeEach(() => resetFixtureCounter());
+  beforeEach(() => resetOracleFixtureCounter());
 
   it('creates a run with queued status and zero counts', async () => {
     const db = makeMockDb();
@@ -68,6 +68,7 @@ describe('OracleProfileRunService', () => {
     expect(run.startedAt).toBeNull();
     expect(run.completedAt).toBeNull();
     expect(run.triggeredBy).toBe('oracle-scheduler-v1');
+    expect(run.updatedAt).toBeInstanceOf(Date);
   });
 
   it('returns null for a nonexistent run', async () => {
@@ -112,6 +113,7 @@ describe('OracleProfileRunService', () => {
     expect(started.status).toBe('running');
     expect(started.startedAt).toBeInstanceOf(Date);
     expect(started.completedAt).toBeNull();
+    expect(started.updatedAt).toBeInstanceOf(Date);
   });
 
   it('transitions running → completed on complete() with stats', async () => {
@@ -131,6 +133,7 @@ describe('OracleProfileRunService', () => {
     expect(completed.topScore).toBe(88);
     expect(completed.summary).toBe('Strong opportunity detected across 12 signals.');
     expect(completed.completedAt).toBeInstanceOf(Date);
+    expect(completed.updatedAt).toBeInstanceOf(Date);
   });
 
   it('transitions running → failed on fail()', async () => {
@@ -150,6 +153,18 @@ describe('OracleProfileRunService', () => {
     const service = createOracleProfileRunService(db);
 
     const run = await service.create(makeCreateOracleProfileRunInput());
+    const canceled = await service.cancel(run.id);
+
+    expect(canceled.status).toBe('canceled');
+    expect(canceled.completedAt).toBeInstanceOf(Date);
+  });
+
+  it('transitions running → canceled on cancel()', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    const run = await service.create(makeCreateOracleProfileRunInput());
+    await service.start(run.id);
     const canceled = await service.cancel(run.id);
 
     expect(canceled.status).toBe('canceled');
@@ -203,5 +218,66 @@ describe('OracleProfileRunService', () => {
     );
 
     expect(run.metadata).toEqual({ source: 'cron', priority: 2 });
+  });
+
+  // ── State-transition guard tests ────────────────────────────────────
+
+  it('throws when start() is called on a non-queued run', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    const run = await service.create(makeCreateOracleProfileRunInput());
+    await service.start(run.id);
+
+    await expect(service.start(run.id)).rejects.toThrow("Cannot start run in status 'running'");
+  });
+
+  it('throws when complete() is called on a queued run', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    const run = await service.create(makeCreateOracleProfileRunInput());
+
+    await expect(service.complete(run.id, { signalCount: 0, topScore: null })).rejects.toThrow(
+      "Cannot complete run in status 'queued'",
+    );
+  });
+
+  it('throws when fail() is called on a queued run', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    const run = await service.create(makeCreateOracleProfileRunInput());
+
+    await expect(service.fail(run.id)).rejects.toThrow(
+      "Cannot fail run in status 'queued'",
+    );
+  });
+
+  it('throws when cancel() is called on a completed run', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    const run = await service.create(makeCreateOracleProfileRunInput());
+    await service.start(run.id);
+    await service.complete(run.id, { signalCount: 3, topScore: 55 });
+
+    await expect(service.cancel(run.id)).rejects.toThrow(
+      "Cannot cancel run in status 'completed'",
+    );
+  });
+
+  it('throws start/complete/fail/cancel on a nonexistent run', async () => {
+    const db = makeMockDb();
+    const service = createOracleProfileRunService(db);
+
+    await expect(service.start('ghost-id')).rejects.toThrow('OracleProfileRun not found: ghost-id');
+    await expect(service.complete('ghost-id', { signalCount: 0, topScore: null })).rejects.toThrow(
+      'OracleProfileRun not found: ghost-id',
+    );
+    await expect(service.fail('ghost-id')).rejects.toThrow('OracleProfileRun not found: ghost-id');
+    await expect(service.cancel('ghost-id')).rejects.toThrow(
+      'OracleProfileRun not found: ghost-id',
+    );
   });
 });

@@ -104,6 +104,13 @@ import {
 
 // ── Oracle ───────────────────────────────────────────────────────────
 import {
+  createOracleSignalService,
+  type OracleSignalService,
+  type OracleSignalDb,
+  type DbOracleSignalRow,
+} from '../../src/services/oracle/oracle-signal.service.js';
+
+import {
   createOracleThesisService,
   type OracleThesisService,
   type OracleThesisDb,
@@ -130,6 +137,13 @@ import {
   type OracleThesisEvidenceLinkDb,
   type DbOracleThesisEvidenceLinkRow,
 } from '../../src/services/oracle/oracle-thesis-evidence-link.service.js';
+
+import {
+  createOracleProfileRunService,
+  type OracleProfileRunService,
+  type OracleProfileRunDb,
+  type DbOracleProfileRunRow,
+} from '../../src/services/oracle/oracle-profile-run.service.js';
 
 // ── Eigen ────────────────────────────────────────────────────────────
 import {
@@ -179,6 +193,8 @@ describe('R2 Service Pattern Contract', () => {
       createOracleEvidenceItemService,
       createOracleSourcePackService,
       createOracleThesisEvidenceLinkService,
+      createOracleSignalService,
+      createOracleProfileRunService,
       createKnowledgeChunkService,
       createRetrievalRunService,
       createToolCapabilityService,
@@ -193,7 +209,7 @@ describe('R2 Service Pattern Contract', () => {
     // - Each factory takes a Db interface
     // - Each factory returns a Service interface
     // - Each Db exposes DbXxxRow-shaped operations
-    expect(factories).toHaveLength(20);
+    expect(factories).toHaveLength(22);
   });
 });
 
@@ -295,6 +311,7 @@ describe('Barrel export surface', () => {
     expect(typeof r2.createOracleEvidenceItemService).toBe('function');
     expect(typeof r2.createOracleSourcePackService).toBe('function');
     expect(typeof r2.createOracleThesisEvidenceLinkService).toBe('function');
+    expect(typeof r2.createOracleProfileRunService).toBe('function');
 
     // Oracle — intelligence primitives (lib/oracle)
     expect(typeof r2.reweightScore).toBe('function');

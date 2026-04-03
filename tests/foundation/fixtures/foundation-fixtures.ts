@@ -4,7 +4,6 @@
 import type { ProvenanceActor } from '../../../src/types/shared/provenance.js';
 import type { CreateDocumentInput } from '../../../src/types/shared/documents.js';
 import type { CreateOracleSignalInput } from '../../../src/types/oracle/signal.js';
-import type { CreateOracleProfileRunInput } from '../../../src/types/oracle/profile-run.js';
 import type { CreateAssetRegistryInput, CreateEvidenceLinkInput } from '../../../src/types/shared/asset-registry.js';
 
 let counter = 0;
@@ -60,16 +59,6 @@ export function makeCreateEvidenceLinkInput(overrides?: Partial<CreateEvidenceLi
     toAssetId: nextId(),
     linkKind: 'supports',
     confidence: 0.85,
-    ...overrides,
-  };
-}
-
-export function makeCreateOracleProfileRunInput(
-  overrides?: Partial<CreateOracleProfileRunInput>,
-): CreateOracleProfileRunInput {
-  return {
-    entityAssetId: nextId(),
-    triggeredBy: 'oracle-scheduler-v1',
     ...overrides,
   };
 }

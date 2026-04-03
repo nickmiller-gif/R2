@@ -1,6 +1,6 @@
 # ADR-001: R2 as Headless Backend with Pluggable Frontend Domains
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-04-02
 **Deciders:** Nick Miller
 

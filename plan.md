@@ -10,19 +10,33 @@ This plan defines the incremental import path from the old source repository int
 - Each slice must be small, reviewable, and reversible (minimum blast radius).
 - No direct broad copy; only targeted, verified slices.
 
-## Import Order
+## Import Order + Status
 
-1. Charter Slice 01: governance kernel + provenance + audit read path.
-2. Charter Slice 02: next verified governance primitive.
-3. Oracle slices (incremental, boundary-checked).
-4. Eigen/shared runtime slices with proven backend utility.
+| Slice | Status | Notes |
+|-------|--------|-------|
+| Charter Slice 01: governance kernel + provenance + audit read | ✅ complete | types, services, migrations, tests all passing |
+| Charter Slice 02: governance primitives (entities, evidence, obligations, payouts, decisions, rights, roles) | ✅ complete | full CRUD services + edge functions |
+| MEG identity spine (entities, aliases, edges) | ✅ complete | services, migrations, edge functions, tests |
+| Oracle domain services (profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes) | ✅ complete | services, migrations, edge functions, tests |
+| Eigen services (knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries) | ✅ complete | services, migrations, edge functions, tests |
+| Foundation (asset-registry, documents) | ✅ complete | services, edge functions, tests |
+| Security hardening: JWT auth on all 24 edge functions | ✅ complete | all endpoints require Authorization header |
+| CI workflow (typecheck + tests + no-alias-imports check) | ✅ complete | `.github/workflows/ci.yml` |
+
+## Next Slices (not yet started)
+
+- Oracle publication + governance boundary (internal vs operator-facing objects, publication state)
+- MEG identity handshake contracts with Charter/Oracle/Eigen
+- Supabase client injection pattern (DI-friendly client factory)
+- Oracle briefing + theme map + feed history read models
+- Eigen policy engine + capability registry (EigenX/KOS upgrade)
+- Supabase migration drift CI check
+- Type generation check in CI
 
 ## Active Slice Specification
 
-- Current active slice doc:
+- Completed slice doc:
   - `docs/imports/charter-slice-01-governance-kernel.md`
-
-All import work for the active slice must map to that file list exactly.
 
 ## Operational Process Per Slice
 

@@ -225,6 +225,13 @@ describe('Barrel export surface', () => {
     expect(typeof r2.createAssetRegistryService).toBe('function');
     expect(typeof r2.hashPayload).toBe('function');
     expect(typeof r2.nowUtc).toBe('function');
+    expect(typeof r2.makeEntityRef).toBe('function');
+    expect(typeof r2.entityRefKey).toBe('function');
+    expect(typeof r2.entityRefsEqual).toBe('function');
+    expect(typeof r2.makeAlias).toBe('function');
+    expect(typeof r2.findAlias).toBe('function');
+    expect(typeof r2.aliasIndex).toBe('function');
+    expect(typeof r2.normalizeActor).toBe('function');
 
     // Charter
     expect(typeof r2.createGovernanceKernelService).toBe('function');

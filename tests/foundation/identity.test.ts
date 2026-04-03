@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { makeEntityRef, entityRefKey, entityRefsEqual } from '../../src/lib/identity/entity-ref.js';
 import { makeAlias, findAlias, aliasIndex } from '../../src/lib/identity/alias.js';
 import { normalizeActor } from '../../src/lib/identity/index.js';
+import type { Alias } from '../../src/types/shared/identity.js';
 
 // ─── EntityRef ────────────────────────────────────────────────────────────────
 

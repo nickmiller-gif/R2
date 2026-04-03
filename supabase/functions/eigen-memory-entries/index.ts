@@ -1,11 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
+import { guardAuth } from '../_shared/auth.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }
+
+  const auth = guardAuth(req);
+  if (!auth.ok) return auth.response;
 
   try {
     const url = new URL(req.url);
@@ -17,7 +21,7 @@ serve(async (req) => {
     if (req.method === 'GET') {
       if (entryId) {
         const { data, error } = await client
-          .from('eigen_memory_entries')
+          .from('memory_entries')
           .select('*')
           .eq('id', entryId)
           .single();
@@ -33,7 +37,7 @@ serve(async (req) => {
         const key = url.searchParams.get('key');
         const retentionClass = url.searchParams.get('retention_class');
 
-        let query = client.from('eigen_memory_entries').select('*');
+        let query = client.from('memory_entries').select('*');
 
         if (scope) query = query.eq('scope', scope);
         if (ownerId) query = query.eq('owner_id', ownerId);
@@ -60,7 +64,7 @@ serve(async (req) => {
         }
 
         const { data, error } = await client
-          .from('eigen_memory_entries')
+          .from('memory_entries')
           .update({ superseded_by: newId })
           .eq('id', id)
           .select()
@@ -74,7 +78,7 @@ serve(async (req) => {
       } else {
         // CREATE entry
         const { data, error } = await client
-          .from('eigen_memory_entries')
+          .from('memory_entries')
           .insert([body])
           .select()
           .single();
@@ -94,7 +98,7 @@ serve(async (req) => {
       }
 
       const { data, error } = await client
-        .from('eigen_memory_entries')
+        .from('memory_entries')
         .update(body)
         .eq('id', id)
         .select()

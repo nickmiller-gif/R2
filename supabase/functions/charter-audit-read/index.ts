@@ -1,9 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient } from '../_shared/supabase.ts';
+import { guardAuth } from '../_shared/auth.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
+
+  const auth = guardAuth(req);
+  if (!auth.ok) return auth.response;
 
   try {
     if (req.method !== 'GET') {

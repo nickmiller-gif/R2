@@ -47,13 +47,25 @@ docs/
 plan.md
 ```
 
-## Current Import Target
+## Current State
 
-The first extraction target is:
-- **Charter governance kernel + provenance + audit read path**
+All initial domain slices have been ported and verified:
 
-See:
-- [`plan.md`](./plan.md)
-- [`docs/imports/charter-slice-01-governance-kernel.md`](./docs/imports/charter-slice-01-governance-kernel.md)
+| Domain | Services | Edge Functions | Tests |
+|--------|----------|---------------|-------|
+| **Charter** | governance-kernel, provenance, audit-read, entities, evidence, obligations, payouts, decisions, rights, roles | 10 functions | ✅ |
+| **MEG** | entities, aliases, edges | 3 functions | ✅ |
+| **Oracle** | profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes | 7 functions | ✅ |
+| **Eigen** | knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries | 4 functions | ✅ |
+| **Foundation** | asset-registry, documents | 2 functions (+ 2 shared) | ✅ |
 
-No additional slices should be imported until this first slice is fully verified.
+All 24 edge functions require JWT authentication. All 473 tests pass. No `@/` alias imports.
+
+## Next priorities
+
+1. Oracle publication + governance boundary (internal vs operator-facing objects)
+2. MEG identity handshake contracts across domains
+3. Supabase client DI factory pattern
+4. Supabase migration drift CI check
+
+See [`plan.md`](./plan.md) for the full slice roadmap.

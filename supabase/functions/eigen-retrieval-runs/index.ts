@@ -1,11 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
+import { guardAuth } from '../_shared/auth.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }
+
+  const auth = guardAuth(req);
+  if (!auth.ok) return auth.response;
 
   try {
     const url = new URL(req.url);
@@ -17,7 +21,7 @@ serve(async (req) => {
     if (req.method === 'GET') {
       if (runId) {
         const { data, error } = await client
-          .from('eigen_retrieval_runs')
+          .from('retrieval_runs')
           .select('*')
           .eq('id', runId)
           .single();
@@ -30,7 +34,7 @@ serve(async (req) => {
       } else {
         const status = url.searchParams.get('status');
 
-        let query = client.from('eigen_retrieval_runs').select('*');
+        let query = client.from('retrieval_runs').select('*');
 
         if (status) query = query.eq('status', status);
 
@@ -52,7 +56,7 @@ serve(async (req) => {
         }
 
         const { data, error } = await client
-          .from('eigen_retrieval_runs')
+          .from('retrieval_runs')
           .update({
             status: 'completed',
             candidate_count: body.candidate_count,
@@ -76,7 +80,7 @@ serve(async (req) => {
         }
 
         const { data, error } = await client
-          .from('eigen_retrieval_runs')
+          .from('retrieval_runs')
           .update({
             status: 'failed',
             metadata: JSON.stringify({ failureReason: body.reason }),
@@ -93,7 +97,7 @@ serve(async (req) => {
       } else {
         // CREATE run
         const { data, error } = await client
-          .from('eigen_retrieval_runs')
+          .from('retrieval_runs')
           .insert([body])
           .select()
           .single();

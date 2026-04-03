@@ -34,6 +34,13 @@ export {
 } from './oracle-thesis-evidence-link.service.js';
 
 export {
+  createOracleProfileRunService,
+  type OracleProfileRunService,
+  type OracleProfileRunDb,
+  type DbOracleProfileRunRow,
+} from './oracle-profile-run.service.js';
+
+export {
   createOracleThesisKnowledgeLinkService,
   type OracleThesisKnowledgeLinkService,
   type OracleThesisKnowledgeLinkDb,

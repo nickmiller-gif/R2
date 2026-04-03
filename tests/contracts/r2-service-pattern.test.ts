@@ -289,12 +289,32 @@ describe('Barrel export surface', () => {
     expect(typeof r2.createCharterDecisionService).toBe('function');
     expect(typeof r2.createCharterRoleService).toBe('function');
 
-    // Oracle
+    // Oracle — services
     expect(typeof r2.createOracleSignalService).toBe('function');
     expect(typeof r2.createOracleThesisService).toBe('function');
     expect(typeof r2.createOracleEvidenceItemService).toBe('function');
     expect(typeof r2.createOracleSourcePackService).toBe('function');
     expect(typeof r2.createOracleThesisEvidenceLinkService).toBe('function');
+
+    // Oracle — intelligence primitives (lib/oracle)
+    expect(typeof r2.reweightScore).toBe('function');
+    expect(typeof r2.scoreToConfidenceBand).toBe('function');
+    expect(typeof r2.aggregateScores).toBe('function');
+    expect(typeof r2.blendEvidenceScore).toBe('function');
+    expect(typeof r2.assessEvidenceConsistency).toBe('function');
+    expect(typeof r2.classifyContradiction).toBe('function');
+    expect(typeof r2.identifyGaps).toBe('function');
+    expect(typeof r2.predictiveGapScore).toBe('function');
+    expect(typeof r2.temporalDiff).toBe('function');
+    expect(typeof r2.temporalDrift).toBe('function');
+    expect(typeof r2.computeFreshness).toBe('function');
+    expect(typeof r2.feedRescore).toBe('function');
+    expect(typeof r2.scoreOpportunity).toBe('function');
+    expect(typeof r2.classifyHorizon).toBe('function');
+    expect(typeof r2.multiHorizonTiming).toBe('function');
+    expect(typeof r2.crossRunDiff).toBe('function');
+    expect(typeof r2.makeRetrievalQuery).toBe('function');
+    expect(typeof r2.filterByRelevance).toBe('function');
 
     // Eigen
     expect(typeof r2.createKnowledgeChunkService).toBe('function');

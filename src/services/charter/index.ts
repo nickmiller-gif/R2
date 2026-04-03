@@ -19,8 +19,10 @@ export {
 export {
   createCharterEntityContextService,
   type CharterEntityContextService,
+  type CharterContextSnapshot,
   type EntityContextDb,
   type EntityGraphLookup,
+  type AssetRegistryPort,
 } from './entity-context.service.js';
 
 export {

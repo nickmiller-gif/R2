@@ -31,6 +31,8 @@ serve(async (req) => {
         let query = client.from('meg_entity_edges').select('*');
 
         if (eitherEntityId) {
+          const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!UUID_RE.test(eitherEntityId)) return errorResponse('invalid either_entity_id', 400);
           // Match edges where entity appears as source OR target
           query = query.or(
             `source_entity_id.eq.${eitherEntityId},target_entity_id.eq.${eitherEntityId}`

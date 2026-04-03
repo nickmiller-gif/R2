@@ -225,6 +225,17 @@ describe('Barrel export surface', () => {
     expect(typeof r2.createAssetRegistryService).toBe('function');
     expect(typeof r2.hashPayload).toBe('function');
     expect(typeof r2.nowUtc).toBe('function');
+    expect(typeof r2.toUtc).toBe('function');
+    expect(typeof r2.requireUtc).toBe('function');
+    expect(typeof r2.isValidUtcDate).toBe('function');
+    expect(typeof r2.toIsoUtc).toBe('function');
+    expect(r2.UTC_TIMEZONE).toBe('UTC');
+    expect(typeof r2.makeTimeWindow).toBe('function');
+    expect(typeof r2.makeValidityWindow).toBe('function');
+    expect(typeof r2.validityWindowToTimeWindow).toBe('function');
+    expect(typeof r2.timeWindowContains).toBe('function');
+    expect(typeof r2.timeWindowsOverlap).toBe('function');
+    expect(typeof r2.intersectTimeWindows).toBe('function');
     expect(typeof r2.makeEntityRef).toBe('function');
     expect(typeof r2.entityRefKey).toBe('function');
     expect(typeof r2.entityRefsEqual).toBe('function');

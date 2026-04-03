@@ -94,4 +94,32 @@ describe('CharterObligationService', () => {
     expect(updated.confidence).toBe(85);
     expect(updated.title).toBe('Updated Obligation');
   });
+
+  it('rejects confidence below 0 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterObligationService(db);
+
+    await expect(
+      service.create(makeCreateObligationInput({ confidence: -1 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence above 100 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterObligationService(db);
+
+    await expect(
+      service.create(makeCreateObligationInput({ confidence: 101 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence out of range on update', async () => {
+    const db = makeMockDb();
+    const service = createCharterObligationService(db);
+    const obligation = await service.create(makeCreateObligationInput());
+
+    await expect(
+      service.update(obligation.id, { confidence: 150 })
+    ).rejects.toThrow('confidence');
+  });
 });

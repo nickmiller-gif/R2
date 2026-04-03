@@ -13,6 +13,18 @@ function normalizeBoundary(value: UtcDateInput | null | undefined): Date | null 
   return value == null ? null : requireUtc(value);
 }
 
+function maxBoundary(left: Date | null, right: Date | null): Date | null {
+  if (left == null) return right;
+  if (right == null) return left;
+  return left.getTime() >= right.getTime() ? left : right;
+}
+
+function minBoundary(left: Date | null, right: Date | null): Date | null {
+  if (left == null) return right;
+  if (right == null) return left;
+  return left.getTime() <= right.getTime() ? left : right;
+}
+
 export function makeTimeWindow(start?: UtcDateInput | null, end?: UtcDateInput | null): TimeWindow {
   const normalizedStart = normalizeBoundary(start);
   const normalizedEnd = normalizeBoundary(end);
@@ -57,23 +69,5 @@ export function intersectTimeWindows(left: TimeWindow, right: TimeWindow): TimeW
     return null;
   }
 
-  const start =
-    left.start == null
-      ? right.start
-      : right.start == null
-        ? left.start
-        : left.start.getTime() >= right.start.getTime()
-          ? left.start
-          : right.start;
-
-  const end =
-    left.end == null
-      ? right.end
-      : right.end == null
-        ? left.end
-        : left.end.getTime() <= right.end.getTime()
-          ? left.end
-          : right.end;
-
-  return makeTimeWindow(start, end);
+  return makeTimeWindow(maxBoundary(left.start, right.start), minBoundary(left.end, right.end));
 }

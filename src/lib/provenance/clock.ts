@@ -1,10 +1,10 @@
+import type { UtcDateInput } from '../../types/shared/temporal.js';
+
 /**
  * Centralized timestamp helper for provenance records.
  * All provenance timestamps must go through this module to ensure
  * consistent UTC-normalized Date values.
  */
-
-export type UtcDateInput = Date | string | number;
 
 /** Returns the current UTC timestamp as a Date. */
 export function nowUtc(): Date {

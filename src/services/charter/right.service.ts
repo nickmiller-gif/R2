@@ -5,6 +5,9 @@ import type {
   CharterRightFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertConfidence } from '../../lib/charter/validate.js';
+
+// ─── Service interfaces ────────────────────────────────────────────────────
 
 export interface CharterRightService {
   create(input: CreateCharterRightInput): Promise<CharterRight>;
@@ -57,6 +60,7 @@ function rowToRight(row: DbCharterRightRow): CharterRight {
 export function createCharterRightService(db: CharterRightDb): CharterRightService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertRight({
         id: crypto.randomUUID(),
@@ -87,6 +91,7 @@ export function createCharterRightService(db: CharterRightDb): CharterRightServi
     },
 
     async update(id, input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const patch: Partial<DbCharterRightRow> = {
         updated_at: nowUtc().toISOString(),
       };

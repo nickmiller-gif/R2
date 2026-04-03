@@ -107,4 +107,32 @@ describe('CharterEvidenceService', () => {
     expect(updated.confidence).toBe(95);
     expect(updated.metadata).toEqual({ verified: true });
   });
+
+  it('rejects confidence below 0 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterEvidenceService(db);
+
+    await expect(
+      service.create(makeCreateEvidenceInput({ confidence: -1 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence above 100 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterEvidenceService(db);
+
+    await expect(
+      service.create(makeCreateEvidenceInput({ confidence: 101 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence out of range on update', async () => {
+    const db = makeMockDb();
+    const service = createCharterEvidenceService(db);
+    const evidence = await service.create(makeCreateEvidenceInput());
+
+    await expect(
+      service.update(evidence.id, { confidence: 200 })
+    ).rejects.toThrow('confidence');
+  });
 });

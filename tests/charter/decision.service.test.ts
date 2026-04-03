@@ -113,4 +113,32 @@ describe('CharterDecisionService', () => {
     expect(updated.rationale).toBe('Evidence supports approval');
     expect(updated.outcome).toEqual({ approved: true });
   });
+
+  it('rejects confidence below 0 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterDecisionService(db);
+
+    await expect(
+      service.create(makeCreateDecisionInput({ confidence: -1 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence above 100 on create', async () => {
+    const db = makeMockDb();
+    const service = createCharterDecisionService(db);
+
+    await expect(
+      service.create(makeCreateDecisionInput({ confidence: 101 }))
+    ).rejects.toThrow('confidence');
+  });
+
+  it('rejects confidence out of range on update', async () => {
+    const db = makeMockDb();
+    const service = createCharterDecisionService(db);
+    const decision = await service.create(makeCreateDecisionInput());
+
+    await expect(
+      service.update(decision.id, { confidence: -50 })
+    ).rejects.toThrow('confidence');
+  });
 });

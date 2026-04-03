@@ -33,6 +33,8 @@ export interface CreateGovernanceEntityInput {
   body: string;
   parentId?: string;
   createdBy: string;
+  /** Optional correlation ID forwarded to event emission. */
+  correlationId?: string;
 }
 
 export interface UpdateGovernanceEntityInput {
@@ -45,6 +47,8 @@ export interface TransitionGovernanceEntityInput {
   toStatus: GovernanceStatus;
   reason?: string;
   actorId: string;
+  /** Optional correlation ID forwarded to event emission. */
+  correlationId?: string;
 }
 
 export interface GovernanceEntityFilter {

@@ -49,7 +49,7 @@ function createEntityService(db: EntityDb): EntityService { /* impl */ }
 2. **One bounded slice per PR** — do not cross domain boundaries
 3. **Additive migrations only** — never DROP or ALTER destructively
 4. **snake_case in DB rows, camelCase in domain entities**
-5. **Run `npm run check` before claiming completion** (typecheck + test)
+5. **Run `npm run check` before claiming completion** (lint, typecheck, test, build)
 6. **Update barrel exports** when adding new public types/services
 7. **Update tests** when changing public behavior
 8. **Minimum blast radius** — small, reviewable, reversible changes
@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 ## Validation
 
 ```bash
-npm run check    # runs typecheck + test
+npm run check    # lint + typecheck + test + build
 npm run typecheck
 npm run test
 ```

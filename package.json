@@ -10,10 +10,12 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "npm run lint:imports && npm run lint:migrations",
     "lint:imports": "bash scripts/check-banned-imports.sh",
     "lint:migrations": "bash scripts/check-migrations.sh",
-    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations"
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "repository": {
     "type": "git",
@@ -23,6 +25,9 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "bugs": {
     "url": "https://github.com/nickmiller-gif/R2/issues"
   },

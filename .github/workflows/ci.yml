@@ -1,39 +1,43 @@
-name: CI
+name: ci
 
 on:
+  pull_request:
   push:
     branches: [main, "claude/**", "copilot/**"]
-  pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Typecheck · Test · Lint · Migrations
+  ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
-      - name: Install dependencies
+      - name: Install
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Run tests
-        run: npm test
+      - name: Test
+        run: npm run test
 
-      - name: Check banned imports
-        run: bash scripts/check-banned-imports.sh
-
-      - name: Check migration sanity
-        run: bash scripts/check-migrations.sh
+      - name: Build
+        run: npm run build

@@ -88,7 +88,7 @@ When a slice adds a new public type or service, the relevant `index.ts` barrel e
 
 ### 8. Run `npm run check` Before Claiming Completion
 
-`npm run check` runs `tsc --noEmit && vitest run`. A slice is not done until this passes clean. The agent must not open a PR if `npm run check` fails.
+`npm run check` runs lint (banned imports + migrations), `tsc --noEmit`, tests, and `tsc` emit (`build`). A slice is not done until this passes clean. The agent must not open a PR if `npm run check` fails.
 
 ---
 

@@ -1,0 +1,49 @@
+name: deploy-supabase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/deploy-supabase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Apply DB migrations
+        run: supabase db push
+
+      - name: Deploy Edge Functions
+        run: |
+          set -euo pipefail
+          for fn in supabase/functions/*/; do
+            name="$(basename "$fn")"
+            if [ "$name" = "_shared" ]; then
+              continue
+            fi
+            echo "Deploying ${name}..."
+            supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_ID"
+          done

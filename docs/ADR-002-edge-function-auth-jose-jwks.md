@@ -67,7 +67,7 @@ Legacy approach. Makes a network call to validate the token and returns the full
 
 4. **Frontend-agnostic.** All Lovable frontends authenticate against the same Supabase project and produce JWTs signed by the same keys. One JWKS endpoint, one verifier, every frontend covered.
 
-5. **Clean upgrade path.** The current `guardAuth()` returns `{ ok: true, token }`. The upgrade changes this to `{ ok: true, userId, claims }` — same discriminated union pattern, richer payload. All 24 edge functions update with minimal diff.
+5. **Clean upgrade path.** The current `guardAuth()` returns `{ ok: true, token }`. The upgrade changes this to `{ ok: true, claims: { userId, ... } }` — same discriminated union pattern, richer payload. All 24 edge functions update with minimal diff.
 
 6. **Enables RBAC.** The verified `sub` claim (user ID) feeds directly into `charter_user_roles` lookups, enabling per-endpoint role checks without caring which frontend originated the request.
 
@@ -77,13 +77,13 @@ Legacy approach. Makes a network call to validate the token and returns the full
 - Replace `_shared/auth.ts` with jose-based JWT verification
 - Extract `userId` and `claims` from verified token
 - Add `requireRole()` helper that checks `charter_user_roles` for the verified user
-- Add Zod-based request body validation helper
+- Add dependency-free request body validation helper in `_shared/validate.ts`
 - Write tests for the shared auth module
 
 ### Phase B-2: Roll Out to Edge Functions
 - Update all 24 edge functions to use the new `guardAuth()` signature
 - Add role checks to write endpoints (POST/PATCH/DELETE)
-- Enforce `Idempotency-Key` header on mutations
+- Enforce `x-idempotency-key` header on mutations
 - Standardize error responses across all functions
 
 ### Phase B-3: RLS Policy Audit

@@ -42,7 +42,7 @@ Every service follows: `interface XxxService` + `interface XxxDb` + `createXxxSe
 - **JWKS endpoint:** `SUPABASE_URL/auth/v1/.well-known/jwks.json`
 - **Library:** `jsr:@panva/jose@6`
 - **RBAC:** Verified `sub` claim → `charter_user_roles` lookup → role-gated writes
-- **Current state:** `guardAuth()` is presence-only; upgrade in progress
+- **Current state:** `guardAuth(req)` performs offline JWT verification and should be awaited at Edge Function call sites
 
 ## Preferences
 - Minimum blast radius — small, reviewable, reversible slices

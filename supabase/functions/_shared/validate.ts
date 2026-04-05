@@ -114,7 +114,7 @@ export async function validateBody<T>(
 // ---------------------------------------------------------------------------
 
 /**
- * Requires an `X-Idempotency-Key` header on mutation requests (POST/PATCH).
+ * Requires an `x-idempotency-key` header on mutation requests (POST/PATCH).
  *
  * Returns `null` when the header is present (caller proceeds), or a
  * ready-to-return 400 response when missing.

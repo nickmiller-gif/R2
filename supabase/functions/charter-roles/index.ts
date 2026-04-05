@@ -4,12 +4,10 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody, type FieldSpec } from '../_shared/validate.ts';
-import { extractRequestMeta, metaResponseHeaders } from '../_shared/correlation.ts';
 
 const CREATE_FIELDS: FieldSpec[] = [
   { name: 'user_id', type: 'string' },
   { name: 'role', type: 'string' },
-  { name: 'assigned_by', type: 'string' },
 ];
 
 serve(async (req) => {
@@ -20,8 +18,6 @@ serve(async (req) => {
   // 1. Authenticate — verify JWT signature + extract identity
   const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
-
-  const { correlationId } = extractRequestMeta(req);
 
   try {
     const url = new URL(req.url);
@@ -79,13 +75,12 @@ serve(async (req) => {
       const body = await validateBody<{
         user_id: string;
         role: string;
-        assigned_by: string;
       }>(req, CREATE_FIELDS);
       if (!body.ok) return body.response;
 
       const { data, error } = await client
         .from('charter_user_roles')
-        .insert([body.data])
+        .insert([{ ...body.data, assigned_by: auth.claims.userId }])
         .select()
         .single();
 
@@ -95,15 +90,18 @@ serve(async (req) => {
 
       return jsonResponse(data, 201);
     } else if (req.method === 'PATCH') {
-      const body = await validateBody<{ id: string }>(req, [
+      const body = await validateBody<{ id: string; role: string }>(req, [
         { name: 'id', type: 'string' },
+        { name: 'role', type: 'string' },
       ]);
       if (!body.ok) return body.response;
 
+      const { id, ...updates } = body.data;
+
       const { data, error } = await client
         .from('charter_user_roles')
-        .update(body.data)
-        .eq('id', body.data.id)
+        .update(updates)
+        .eq('id', id)
         .select()
         .single();
 

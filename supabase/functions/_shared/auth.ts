@@ -16,7 +16,14 @@ import { corsHeaders } from './cors.ts';
 // JWKS setup (cached at module level — shared across invocations)
 // ---------------------------------------------------------------------------
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const _rawSupabaseUrl = Deno.env.get('SUPABASE_URL');
+if (!_rawSupabaseUrl) {
+  throw new Error(
+    'SUPABASE_URL environment variable is not set. ' +
+      'Edge functions cannot verify JWTs without a valid SUPABASE_URL.',
+  );
+}
+const SUPABASE_URL = _rawSupabaseUrl.replace(/\/+$/, '');
 
 const SUPABASE_JWT_ISSUER =
   Deno.env.get('SB_JWT_ISSUER') ?? `${SUPABASE_URL}/auth/v1`;

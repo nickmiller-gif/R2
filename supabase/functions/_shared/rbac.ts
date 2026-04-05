@@ -56,13 +56,29 @@ function forbiddenResponse(message: string): Response {
   );
 }
 
+function serverErrorResponse(message: string): Response {
+  return new Response(
+    JSON.stringify({ error: message }),
+    {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Role lookup
 // ---------------------------------------------------------------------------
 
 /**
  * Fetches all roles assigned to a user from `charter_user_roles`.
- * Uses the service-role client because RLS on the roles table requires it.
+ * Authenticated users can read this table under RLS; this helper uses the
+ * service-role client so shared RBAC checks can perform the lookup
+ * consistently from backend code without relying on a caller-scoped auth client.
+ *
+ * Throws when the Supabase query itself fails so callers can distinguish a
+ * database/network error (500) from a successful lookup that returned zero
+ * rows (403 — no roles assigned).
  */
 export async function getUserRoles(userId: string): Promise<CharterRole[]> {
   const client = getServiceClient();
@@ -71,7 +87,11 @@ export async function getUserRoles(userId: string): Promise<CharterRole[]> {
     .select('role')
     .eq('user_id', userId);
 
-  if (error || !data) return [];
+  if (error) {
+    throw new Error(`Role lookup failed: ${error.message}`);
+  }
+
+  if (!data) return [];
   return data.map((row: { role: string }) => row.role as CharterRole);
 }
 
@@ -89,7 +109,13 @@ export async function requireRole(
   userId: string,
   minimumRole: CharterRole,
 ): Promise<RoleCheckResult> {
-  const roles = await getUserRoles(userId);
+  let roles: CharterRole[];
+  try {
+    roles = await getUserRoles(userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Role lookup failed';
+    return { ok: false, response: serverErrorResponse(message) };
+  }
 
   if (roles.length === 0) {
     return { ok: false, response: forbiddenResponse('No roles assigned') };
@@ -118,7 +144,13 @@ export async function requireExactRole(
   userId: string,
   role: CharterRole,
 ): Promise<RoleCheckResult> {
-  const roles = await getUserRoles(userId);
+  let roles: CharterRole[];
+  try {
+    roles = await getUserRoles(userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Role lookup failed';
+    return { ok: false, response: serverErrorResponse(message) };
+  }
 
   if (!roles.includes(role)) {
     return {

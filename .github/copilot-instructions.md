@@ -2,7 +2,7 @@
 
 ## Architecture
 
-R2 is a **headless Supabase backend** — no frontend code lives here. Frontend domains (SmartPLRx, CentralR2, R2 Chart/Charter, R2 Control) are separate Lovable repos that consume R2's API surface.
+R2 is a **headless Supabase backend** â no frontend code lives here. Frontend domains (SmartPLRx, CentralR2, R2 Chart/Charter, R2 Control) are separate Lovable repos that consume R2's API surface.
 
 ### Layers
 | Layer | What |
@@ -47,14 +47,14 @@ function createEntityService(db: EntityDb): EntityService { /* impl */ }
 
 ## Hard Rules
 
-1. **No frontend code** — ever, in any PR
-2. **One bounded slice per PR** — do not cross domain boundaries
-3. **Additive migrations only** — never DROP or ALTER destructively
+1. **No frontend code** â ever, in any PR
+2. **One bounded slice per PR** â do not cross domain boundaries
+3. **Additive migrations only** â never DROP or ALTER destructively
 4. **snake_case in DB rows, camelCase in domain entities**
 5. **Run `npm run check` before claiming completion** (typecheck + test)
 6. **Update barrel exports** when adding new public types/services
 7. **Update tests** when changing public behavior
-8. **Minimum blast radius** — small, reviewable, reversible changes
+8. **Minimum blast radius** â small, reviewable, reversible changes
 
 ## File Locations
 
@@ -72,11 +72,11 @@ function createEntityService(db: EntityDb): EntityService { /* impl */ }
 ## Supabase Security Rules (critical)
 
 1. **Never expose service role keys** to clients or frontend code
-2. **Edge Functions must authenticate** — call `guardAuth(req)` from `_shared/auth.ts` which requires a valid Bearer token (does not verify JWT claims; pair with RLS for full auth enforcement)
-3. **Edge Functions must authorize** — check user roles/permissions before any service-role write
+2. **Edge Functions must authenticate** â call `guardAuth(req)` from `_shared/auth.ts` which checks for a Bearer token (note: currently validates token *presence* only; JWT identity verification is Phase B)
+3. **Edge Functions must authorize** â check user roles/permissions before any service-role write
 4. **No service-role client for user-triggered writes** unless the endpoint enforces RBAC explicitly and is reviewed
-5. **Defense in depth** — enforce permissions with Postgres RLS policies where possible; don't rely solely on Edge Function checks
-6. **Validate request bodies at the boundary** using Zod or equivalent — never trust client input
+5. **Defense in depth** â enforce permissions with Postgres RLS policies where possible; don't rely solely on Edge Function checks
+6. **Validate request bodies at the boundary** using Zod or equivalent â never trust client input
 7. **Require `Idempotency-Key` header** for POST/PATCH mutations that change state
 8. **Never log secrets or raw tokens**
 
@@ -86,7 +86,7 @@ function createEntityService(db: EntityDb): EntityService { /* impl */ }
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { guardAuth } from "../_shared/auth.ts";
 import { createClient } from "../_shared/supabase.ts";
-import { extractRequestMeta, metaResponseHeaders } from "../_shared/correlation.ts";
+import { extractRequestMeta } from "../_shared/correlation.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return handleCors();
@@ -99,8 +99,8 @@ Deno.serve(async (req) => {
   // 3. Validate request body
   // 4. Create client + call service
   const supabase = createClient(req);
-  const { correlationId } = extractRequestMeta(req);
-  // ... service call → JSON response with metaResponseHeaders(correlationId)
+  const { correlationId, idempotencyKey } = extractRequestMeta(req);
+  // ... service call â JSON response
 });
 ```
 
@@ -121,7 +121,7 @@ npm run lint:imports    # scripts/check-banned-imports.sh
 npm run lint:migrations # scripts/check-migrations.sh
 ```
 
-CI also runs `dependency-review` on PRs — new dependencies with moderate+ vulnerabilities will block merge.
+CI runs typecheck, tests, and guard scripts on every PR. Dependency auditing is handled by Dependabot (see `.github/dependabot.yml`).
 
 ## PR Conventions
 

@@ -1,6 +1,7 @@
 name: "Copilot Setup Steps"
 
 on:
+  copilot_setup:
   workflow_dispatch:
   push:
     paths:

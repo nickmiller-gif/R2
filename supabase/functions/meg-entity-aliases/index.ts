@@ -2,11 +2,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = guardAuth(req);
+  const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
 
   try {
@@ -54,6 +56,8 @@ serve(async (req) => {
       }
     } else if (req.method === 'POST') {
       // CREATE alias
+      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();
       const { data, error } = await client
         .from('meg_entity_aliases')
@@ -64,6 +68,8 @@ serve(async (req) => {
       return jsonResponse(data, 201);
     } else if (req.method === 'DELETE') {
       // DELETE alias by id (query param or body)
+      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const deleteId = id ?? url.searchParams.get('id');
       if (!deleteId) return errorResponse('id required', 400);
 

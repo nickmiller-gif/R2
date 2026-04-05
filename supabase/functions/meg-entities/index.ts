@@ -2,11 +2,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = guardAuth(req);
+  const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
 
   try {
@@ -44,6 +46,8 @@ serve(async (req) => {
         return jsonResponse(data);
       }
     } else if (req.method === 'POST') {
+      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();
 
       if (action === 'merge') {
@@ -90,6 +94,8 @@ serve(async (req) => {
       }
     } else if (req.method === 'PATCH') {
       // UPDATE entity — only allowlisted fields may be changed
+      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();
       const entityId = body.id;
       if (!entityId) return errorResponse('id required in body', 400);

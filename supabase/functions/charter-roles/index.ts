@@ -1,26 +1,38 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey, validateBody, type FieldSpec } from '../_shared/validate.ts';
+import { extractRequestMeta, metaResponseHeaders } from '../_shared/correlation.ts';
+
+const CREATE_FIELDS: FieldSpec[] = [
+  { name: 'user_id', type: 'string' },
+  { name: 'role', type: 'string' },
+  { name: 'assigned_by', type: 'string' },
+];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }
 
-  const auth = guardAuth(req);
+  // 1. Authenticate — verify JWT signature + extract identity
+  const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
+
+  const { correlationId } = extractRequestMeta(req);
 
   try {
     const url = new URL(req.url);
     const pathname = url.pathname;
     const id = pathname.split('/').pop() === 'charter-roles' ? null : pathname.split('/').pop();
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
-
     if (req.method === 'GET') {
+      // Reads use the caller's token context (RLS applies)
+      const client = getSupabaseClient(req);
+
       if (id) {
-        // GET single role
         const { data, error } = await client
           .from('charter_user_roles')
           .select('*')
@@ -33,12 +45,10 @@ serve(async (req) => {
 
         return jsonResponse(data);
       } else {
-        // GET list with optional filters
         const userId = url.searchParams.get('user_id');
         const role = url.searchParams.get('role');
 
         let query = client.from('charter_user_roles').select('*');
-
         if (userId) query = query.eq('user_id', userId);
         if (role) query = query.eq('role', role);
 
@@ -50,12 +60,32 @@ serve(async (req) => {
 
         return jsonResponse(data);
       }
-    } else if (req.method === 'POST') {
-      // CREATE role assignment
-      const body = await req.json();
+    }
+
+    // --- Mutations below: require admin role + idempotency key ---
+
+    // 2. Authorize — role assignments require admin
+    const roleCheck = await requireRole(auth.claims.userId, 'admin');
+    if (!roleCheck.ok) return roleCheck.response;
+
+    // 3. Require idempotency key
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
+
+    const client = getServiceClient();
+
+    if (req.method === 'POST') {
+      // 4. Validate request body
+      const body = await validateBody<{
+        user_id: string;
+        role: string;
+        assigned_by: string;
+      }>(req, CREATE_FIELDS);
+      if (!body.ok) return body.response;
+
       const { data, error } = await client
         .from('charter_user_roles')
-        .insert([body])
+        .insert([body.data])
         .select()
         .single();
 
@@ -65,18 +95,15 @@ serve(async (req) => {
 
       return jsonResponse(data, 201);
     } else if (req.method === 'PATCH') {
-      // UPDATE role assignment
-      const body = await req.json();
-      const roleId = body.id;
-
-      if (!roleId) {
-        return errorResponse('id required in body', 400);
-      }
+      const body = await validateBody<{ id: string }>(req, [
+        { name: 'id', type: 'string' },
+      ]);
+      if (!body.ok) return body.response;
 
       const { data, error } = await client
         .from('charter_user_roles')
-        .update(body)
-        .eq('id', roleId)
+        .update(body.data)
+        .eq('id', body.data.id)
         .select()
         .single();
 

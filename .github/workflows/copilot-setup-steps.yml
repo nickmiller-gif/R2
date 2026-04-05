@@ -1,15 +1,34 @@
 name: "Copilot Setup Steps"
-on: copilot_setup
+
+on:
+  copilot_setup:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - package.json
+      - package-lock.json
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - package.json
+      - package-lock.json
 
 jobs:
-  setup:
+  copilot-setup-steps:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
 
       - run: npm ci
+
+      - name: Typecheck + unit tests
+        run: npm run check

@@ -2,13 +2,15 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }
 
-  const auth = guardAuth(req);
+  const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
 
   try {
@@ -36,6 +38,11 @@ serve(async (req) => {
       return jsonResponse(data);
     } else if (req.method === 'POST') {
       // CREATE link
+      const roleCheck = await requireRole(auth.claims.userId, 'operator');
+      if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req);
+      if (idemError) return idemError;
+
       const body = await req.json();
       const { data, error } = await client
         .from('oracle_thesis_evidence_links')
@@ -50,6 +57,11 @@ serve(async (req) => {
       return jsonResponse(data, 201);
     } else if (req.method === 'DELETE') {
       // DELETE link
+      const roleCheck = await requireRole(auth.claims.userId, 'operator');
+      if (!roleCheck.ok) return roleCheck.response;
+      const idemError = requireIdempotencyKey(req);
+      if (idemError) return idemError;
+
       if (!linkId) {
         return errorResponse('id required in query params', 400);
       }

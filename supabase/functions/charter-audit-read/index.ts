@@ -6,7 +6,7 @@ import { guardAuth } from '../_shared/auth.ts';
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = guardAuth(req);
+  const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
 
   try {

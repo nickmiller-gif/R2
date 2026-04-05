@@ -36,6 +36,14 @@ Every service follows: `interface XxxService` + `interface XxxDb` + `createXxxSe
 | Fusion | Oracle's evidence synthesis and contradiction resolution |
 | Reweighting | Oracle's scoring recalibration based on new evidence |
 
+## Auth Decision (Phase B)
+- **Pattern:** Offline JWT verification via `jose` + JWKS (ADR-002)
+- **Why:** Zero network overhead per request, supports multiple Lovable frontends, Supabase's recommended template
+- **JWKS endpoint:** `SUPABASE_URL/auth/v1/.well-known/jwks.json`
+- **Library:** `jsr:@panva/jose@6`
+- **RBAC:** Verified `sub` claim → `charter_user_roles` lookup → role-gated writes
+- **Current state:** `guardAuth(req)` performs offline JWT verification and should be awaited at Edge Function call sites
+
 ## Preferences
 - Minimum blast radius — small, reviewable, reversible slices
 - Define contract first (schema + service + types), then implement

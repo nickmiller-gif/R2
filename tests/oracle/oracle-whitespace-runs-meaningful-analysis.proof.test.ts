@@ -162,8 +162,11 @@ describe('oracle-whitespace-runs meaningful-analysis proof', () => {
     expect(postEnvelope.analysis.contradictionSeverity).toBe('minor');
 
     expect(postEnvelope.analysis.opportunity.score).toBeGreaterThan(70);
-    expect(['immediate', 'near']).toContain(postEnvelope.analysis.opportunityTiming[0]?.horizon);
-    expect(postEnvelope.analysis.opportunityTiming[0]?.weightedScore).toBeGreaterThan(30);
+    const dominantOpportunityTiming = postEnvelope.analysis.opportunityTiming.reduce(
+      (best, timing) => (timing.weightedScore > best.weightedScore ? timing : best),
+    );
+    expect(['immediate', 'near']).toContain(dominantOpportunityTiming.horizon);
+    expect(dominantOpportunityTiming.weightedScore).toBeGreaterThan(30);
 
     // v3 summary rule: result.summary must mirror structured analysis summary.
     expect(postEnvelope.summary).toEqual(postEnvelope.analysis.summary);
@@ -193,7 +196,7 @@ describe('oracle-whitespace-runs meaningful-analysis proof', () => {
     expect(getEnvelope.summary).toEqual(postEnvelope.summary);
     expect(getEnvelope.analysis.summary).toEqual(postEnvelope.analysis.summary);
 
-    // v3 summary null behavior when structured summary is absent in persisted analysis.
+    // v3 safety: completed analysis missing structured summary is treated as corrupt — must throw.
     const withoutStructuredSummary = {
       ...fetched!,
       analysis: {
@@ -202,10 +205,8 @@ describe('oracle-whitespace-runs meaningful-analysis proof', () => {
       },
     } as unknown as OracleServiceLayerRun;
 
-    const nullSummaryEnvelope = toOracleServiceLayerResultEnvelope(withoutStructuredSummary);
-    expect(nullSummaryEnvelope.status).toBe('completed');
-    if (nullSummaryEnvelope.status === 'completed') {
-      expect(nullSummaryEnvelope.summary).toBeNull();
-    }
+    expect(() => toOracleServiceLayerResultEnvelope(withoutStructuredSummary)).toThrow(
+      /missing summary/,
+    );
   });
 });

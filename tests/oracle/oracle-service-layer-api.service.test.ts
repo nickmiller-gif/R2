@@ -82,7 +82,7 @@ describe('toOracleServiceLayerResultEnvelope', () => {
     expect(envelope.status).toBe('completed');
     if (envelope.status === 'completed') {
       expect(envelope.summary).not.toBeNull();
-      expect(envelope.summary?.opportunityScore).toBe(42);
+      expect(envelope.summary.opportunityScore).toBe(42);
       expect(envelope.analysis.summary.opportunityScore).toBe(42);
     }
   });
@@ -111,5 +111,52 @@ describe('toOracleServiceLayerResultEnvelope', () => {
     };
 
     expect(() => toOracleServiceLayerResultEnvelope(run)).toThrow(/missing analysis payload/);
+  });
+
+  it('throws for completed runs with analysis missing summary', () => {
+    const run = {
+      ...makeBaseRun(),
+      status: 'completed' as const,
+      errorMessage: null,
+      analysis: {
+        gaps: [],
+        predictiveGaps: [],
+        retrievalQualified: [],
+        rescoreCandidates: [],
+        verification: {
+          consistent: true,
+          contradictionWeight: 0,
+          validationWeight: 1,
+          contradictionRatio: 0,
+          uncertaintyLevel: 'low' as const,
+        },
+        contradictionSeverity: 'none' as const,
+        opportunity: { score: 42, confidence: 'medium' as const, signalCount: 1 },
+        opportunityTiming: [],
+        temporalDrift: { trend: 'stable' as const, totalDrift: 0, driftPerDay: 0, windowDays: 0 },
+        runDiff: { added: [], removed: [], scoreDeltas: [], statusChanged: [] },
+        reasoning: {
+          consistent: true,
+          contradictionRatio: 0,
+          uncertaintyLevel: 'low' as const,
+          contradictionSeverity: 'none' as const,
+          retrievalQualifiedCount: 0,
+          rescoreCandidateCount: 0,
+        },
+        temporalSignals: {
+          trend: 'stable' as const,
+          driftPerDay: 0,
+          windowDays: 0,
+          staleEvidenceCount: 0,
+          freshnessReferenceTime: '2026-04-06T01:00:00.000Z',
+        },
+        // summary intentionally omitted to simulate legacy/corrupt payload
+        summary: undefined as unknown as ReturnType<typeof Object>,
+      },
+    };
+
+    expect(() => toOracleServiceLayerResultEnvelope(run as OracleServiceLayerRun)).toThrow(
+      /missing summary/,
+    );
   });
 });

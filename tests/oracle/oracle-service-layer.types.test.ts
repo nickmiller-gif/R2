@@ -82,7 +82,7 @@ describe('Oracle service-layer result envelope type', () => {
     const envelope: OracleServiceLayerResultEnvelope = completed;
     if (envelope.status === 'completed') {
       expect(envelope.summary).not.toBeNull();
-      expect(envelope.summary?.opportunityScore).toBe(77);
+      expect(envelope.summary.opportunityScore).toBe(77);
       expect(envelope.analysis.gaps).toHaveLength(1);
     }
     expect(failed.errorMessage).toContain('blew up');

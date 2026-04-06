@@ -22,7 +22,7 @@ export interface OracleServiceLayerRunningResultEnvelope
 export interface OracleServiceLayerCompletedResultEnvelope
   extends OracleServiceLayerResultEnvelopeBase {
   status: 'completed';
-  summary: OracleWhitespaceRunSummary | null;
+  summary: OracleWhitespaceRunSummary;
   analysis: OracleWhitespaceAnalysis;
   errorMessage: null;
 }

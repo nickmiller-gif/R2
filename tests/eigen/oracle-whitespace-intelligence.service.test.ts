@@ -199,6 +199,29 @@ describe('EigenOracleWhitespaceReaderService', () => {
     });
   });
 
+  it('returns failed result when envelope mapper throws (completed run missing analysis)', async () => {
+    const service = createEigenOracleWhitespaceReaderService({
+      oracleServiceLayer: {
+        async getRunById() {
+          return makeServiceLayerRun({
+            status: 'completed',
+            analysis: null,
+            updatedAt: new Date('2026-04-06T10:05:00.000Z'),
+          });
+        },
+      },
+    });
+
+    const result = await service.getWhitespaceIntelligenceByRunId('oracle-run-1');
+
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('failed');
+    expect(result!.runId).toBe('oracle-run-1');
+    expect(result!.generatedAt).toBe('2026-04-06T10:05:00.000Z');
+    expect(result!.payload).toBeNull();
+    expect(result!.errorMessage).toBe('Completed service-layer run is missing analysis payload');
+  });
+
   it('returns failed status with propagated error message', async () => {
     const service = createEigenOracleWhitespaceReaderService({
       oracleServiceLayer: {

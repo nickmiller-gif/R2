@@ -6,7 +6,10 @@
  */
 
 import { toOracleServiceLayerResultEnvelope } from '../oracle/oracle-service-layer-api.service.js';
-import type { OracleServiceLayerRun } from '../../types/oracle/index.js';
+import type {
+  OracleServiceLayerRun,
+  OracleServiceLayerCompletedResultEnvelope,
+} from '../../types/oracle/index.js';
 import type {
   EigenOracleWhitespaceIntelligence,
   EigenOracleWhitespaceIntelligencePayload,
@@ -22,12 +25,10 @@ export interface EigenOracleWhitespaceReaderDeps {
   };
 }
 
-function toEigenPayload(run: OracleServiceLayerRun): EigenOracleWhitespaceIntelligencePayload {
-  if (!run.analysis) {
-    throw new Error('Oracle completed run is missing analysis payload');
-  }
-
-  const topPredictiveGaps = [...run.analysis.predictiveGaps]
+function toEigenPayload(
+  envelope: OracleServiceLayerCompletedResultEnvelope,
+): EigenOracleWhitespaceIntelligencePayload {
+  const topPredictiveGaps = [...envelope.analysis.predictiveGaps]
     .sort((a, b) => b.predictiveScore - a.predictiveScore)
     .slice(0, 3)
     .map((gap) => ({
@@ -37,12 +38,12 @@ function toEigenPayload(run: OracleServiceLayerRun): EigenOracleWhitespaceIntell
     }));
 
   return {
-    gapCount: run.analysis.summary.gapCount,
-    predictiveGapCount: run.analysis.summary.predictiveGapCount,
-    retrievalQualifiedCount: run.analysis.summary.retrievalQualifiedCount,
-    topPredictiveGapScore: run.analysis.summary.topPredictiveGapScore,
-    trend: run.analysis.summary.trend,
-    opportunityScore: run.analysis.summary.opportunityScore,
+    gapCount: envelope.summary.gapCount,
+    predictiveGapCount: envelope.summary.predictiveGapCount,
+    retrievalQualifiedCount: envelope.summary.retrievalQualifiedCount,
+    topPredictiveGapScore: envelope.summary.topPredictiveGapScore,
+    trend: envelope.summary.trend,
+    opportunityScore: envelope.summary.opportunityScore,
     topPredictiveGaps,
   };
 }
@@ -57,13 +58,24 @@ export function createEigenOracleWhitespaceReaderService(
         return null;
       }
 
-      const envelope = toOracleServiceLayerResultEnvelope(run);
+      let envelope;
+      try {
+        envelope = toOracleServiceLayerResultEnvelope(run);
+      } catch (err) {
+        return {
+          runId: run.id,
+          status: 'failed',
+          generatedAt: run.updatedAt.toISOString(),
+          payload: null,
+          errorMessage: err instanceof Error ? err.message : 'Unknown error normalizing Oracle run',
+        };
+      }
 
       return {
         runId: envelope.runId,
         status: envelope.status,
         generatedAt: envelope.generatedAt,
-        payload: envelope.status === 'completed' ? toEigenPayload(run) : null,
+        payload: envelope.status === 'completed' ? toEigenPayload(envelope) : null,
         errorMessage: envelope.errorMessage,
       };
     },

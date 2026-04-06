@@ -81,7 +81,8 @@ describe('Oracle service-layer result envelope type', () => {
     // discriminated union narrows correctly
     const envelope: OracleServiceLayerResultEnvelope = completed;
     if (envelope.status === 'completed') {
-      expect(envelope.summary.opportunityScore).toBe(77);
+      expect(envelope.summary).not.toBeNull();
+      expect(envelope.summary?.opportunityScore).toBe(77);
       expect(envelope.analysis.gaps).toHaveLength(1);
     }
     expect(failed.errorMessage).toContain('blew up');

@@ -19,7 +19,7 @@ export function toOracleServiceLayerResultEnvelope(
       runId: run.id,
       generatedAt,
       status: 'completed',
-      summary: run.analysis.summary,
+      summary: run.analysis.summary ?? null,
       analysis: run.analysis,
       errorMessage: null,
     };

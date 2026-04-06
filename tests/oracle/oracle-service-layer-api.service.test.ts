@@ -81,7 +81,8 @@ describe('toOracleServiceLayerResultEnvelope', () => {
     const envelope = toOracleServiceLayerResultEnvelope(run);
     expect(envelope.status).toBe('completed');
     if (envelope.status === 'completed') {
-      expect(envelope.summary.opportunityScore).toBe(42);
+      expect(envelope.summary).not.toBeNull();
+      expect(envelope.summary?.opportunityScore).toBe(42);
       expect(envelope.analysis.summary.opportunityScore).toBe(42);
     }
   });

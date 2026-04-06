@@ -1,7 +1,7 @@
 /**
  * Tests for Oracle whitespace core service orchestration.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createOracleWhitespaceCoreService,
   type DbOracleWhitespaceCoreRow,
@@ -24,10 +24,6 @@ function makeMockDb(): OracleWhitespaceCoreDb & { rows: DbOracleWhitespaceCoreRo
 }
 
 describe('OracleWhitespaceCoreService', () => {
-  beforeEach(() => {
-    process.env.TZ = 'UTC';
-  });
-
   it('composes shared whitespace-core analysis outputs', () => {
     const db = makeMockDb();
     const service = createOracleWhitespaceCoreService(db);

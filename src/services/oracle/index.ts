@@ -54,7 +54,6 @@ export {
   type DbOracleOutcomeRow,
 } from './oracle-outcome.service.js';
 
-
 export {
   createOracleWhitespaceCoreService,
   type OracleWhitespaceCoreService,

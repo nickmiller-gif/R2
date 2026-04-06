@@ -6,6 +6,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -13,13 +14,57 @@ concurrency:
   cancel-in-progress: false # never cancel an in-flight deploy
 
 jobs:
-  # Gate: CI must pass first
-  ci:
-    uses: ./.github/workflows/ci.yml
+  # Gate: wait for the CI workflow for this same commit
+  ci_gate:
+    name: Wait for CI workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Wait for CI to complete
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = context.sha;
+            const workflowId = 'ci.yml';
+            const timeoutMs = 20 * 60 * 1000;
+            const intervalMs = 15 * 1000;
+            const started = Date.now();
+
+            while (Date.now() - started < timeoutMs) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflowId,
+                head_sha: sha,
+                event: 'push',
+                per_page: 10,
+              });
+
+              const run = data.workflow_runs.find((r) => r.head_sha === sha);
+
+              if (!run) {
+                core.info(`No CI run found for ${sha} yet. Retrying in ${intervalMs / 1000}s...`);
+              } else if (run.status !== 'completed') {
+                core.info(`CI run ${run.id} status is ${run.status}. Retrying in ${intervalMs / 1000}s...`);
+              } else if (run.conclusion === 'success') {
+                core.info(`CI run ${run.id} succeeded.`);
+                return;
+              } else {
+                core.setFailed(`CI run ${run.id} completed with conclusion: ${run.conclusion}`);
+                return;
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+
+            core.setFailed(`Timed out after ${timeoutMs / 60000} minutes waiting for CI workflow on ${sha}.`);
 
   deploy:
     name: Deploy migrations & edge functions
-    needs: ci
+    needs: ci_gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production # requires manual approval in repo settings

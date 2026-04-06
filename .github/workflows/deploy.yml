@@ -1,0 +1,73 @@
+name: Deploy to Supabase
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never cancel an in-flight deploy
+
+jobs:
+  # Gate: CI must pass first
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy migrations & edge functions
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production # requires manual approval in repo settings
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.203.0
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy edge functions
+        run: |
+          for dir in supabase/functions/*/; do
+            fn_name=$(basename "$dir")
+            # skip the shared module directory
+            if [ "$fn_name" = "_shared" ]; then
+              continue
+            fi
+            echo "::group::Deploying $fn_name"
+            supabase functions deploy "$fn_name" --no-verify-jwt
+            echo "::endgroup::"
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "## Deploy Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Project:** $SUPABASE_PROJECT_REF" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit:** ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Triggered by:** ${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Edge Functions Deployed" >> "$GITHUB_STEP_SUMMARY"
+          for dir in supabase/functions/*/; do
+            fn_name=$(basename "$dir")
+            if [ "$fn_name" != "_shared" ]; then
+              echo "- \`$fn_name\`" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

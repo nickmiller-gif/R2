@@ -60,3 +60,12 @@ export {
   type OracleWhitespaceCoreDb,
   type DbOracleWhitespaceCoreRow,
 } from './oracle-whitespace-core.service.js';
+
+
+export {
+  createOracleServiceLayerService,
+  type OracleServiceLayerService,
+  type OracleServiceLayerDb,
+  type OracleServiceLayerDeps,
+  type DbOracleServiceLayerRow,
+} from './oracle-service-layer.service.js';

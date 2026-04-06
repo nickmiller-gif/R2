@@ -25,3 +25,10 @@ export {
   type MemoryEntryDb,
   type DbMemoryEntryRow,
 } from './memory-entry.service.js';
+
+
+export {
+  createEigenOracleWhitespaceReaderService,
+  type EigenOracleWhitespaceReaderService,
+  type EigenOracleWhitespaceReaderDeps,
+} from './oracle-whitespace-intelligence.service.js';

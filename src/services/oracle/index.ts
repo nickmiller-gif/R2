@@ -68,3 +68,5 @@ export {
   type OracleServiceLayerDeps,
   type DbOracleServiceLayerRow,
 } from './oracle-service-layer.service.js';
+
+export { toOracleServiceLayerResultEnvelope } from './oracle-service-layer-api.service.js';

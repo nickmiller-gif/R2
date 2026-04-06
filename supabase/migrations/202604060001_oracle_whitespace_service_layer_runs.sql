@@ -43,9 +43,11 @@ CREATE TABLE oracle_service_layer_runs (
   whitespace_run_id uuid REFERENCES oracle_whitespace_core_runs(id) ON DELETE SET NULL,
   status text NOT NULL
     CHECK (status IN ('running', 'completed', 'failed')),
-  analysis_json text,
+  analysis_json text
+    CHECK (analysis_json IS NULL OR analysis_json::jsonb IS NOT NULL),
   error_message text,
-  metadata text NOT NULL DEFAULT '{}',
+  metadata text NOT NULL DEFAULT '{}'
+    CHECK (metadata::jsonb IS NOT NULL),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now()
 );

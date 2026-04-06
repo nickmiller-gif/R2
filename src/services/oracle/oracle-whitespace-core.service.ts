@@ -6,11 +6,7 @@
  * evidence freshness, opportunity modeling, cross-run diff, verification core).
  */
 
-import {
-  identifyGaps,
-  predictiveGapScore,
-  type GapContext,
-} from '../../lib/oracle/whitespace.js';
+import { identifyGaps, predictiveGapScore } from '../../lib/oracle/whitespace.js';
 import { filterByRelevance } from '../../lib/oracle/retrieval-contract.js';
 import { feedRescore } from '../../lib/oracle/evidence-freshness.js';
 import { scoreOpportunity, multiHorizonTiming } from '../../lib/oracle/opportunity.js';
@@ -27,6 +23,7 @@ import type {
   OracleWhitespaceAnalysisInput,
   CreateOracleWhitespaceCoreRunInput,
   OraclePredictiveGap,
+  OracleWhitespaceGapContext,
 } from '../../types/oracle/whitespace-core.js';
 
 export interface DbOracleWhitespaceCoreRow {
@@ -60,7 +57,7 @@ export function rowToEntity(row: DbOracleWhitespaceCoreRow): OracleWhitespaceCor
   };
 }
 
-const DEFAULT_GAP_CONTEXT: GapContext = {
+const DEFAULT_GAP_CONTEXT: OracleWhitespaceGapContext = {
   topicImportance: 50,
   recencyFactor: 0.5,
   closureEase: 0.5,

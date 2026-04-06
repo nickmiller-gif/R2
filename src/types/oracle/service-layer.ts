@@ -1,6 +1,19 @@
-import type { OracleWhitespaceAnalysis, OracleWhitespaceAnalysisInput } from './whitespace-core.js';
+import type {
+  OracleWhitespaceAnalysis,
+  OracleWhitespaceAnalysisInput,
+  OracleWhitespaceRunSummary,
+} from './whitespace-core.js';
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
+
+export interface OracleServiceLayerResultEnvelope {
+  runId: string;
+  status: OracleServiceLayerRunStatus;
+  generatedAt: string;
+  summary: OracleWhitespaceRunSummary | null;
+  analysis: OracleWhitespaceAnalysis | null;
+  errorMessage: string | null;
+}
 
 export interface OracleServiceLayerRun {
   id: string;

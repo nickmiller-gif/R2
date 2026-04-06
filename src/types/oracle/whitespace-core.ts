@@ -1,58 +1,155 @@
 /**
  * Oracle whitespace core contracts.
  *
- * Shared backend-only domain contracts for whitespace/gap reasoning,
- * retrieval-aware verification, temporal drift, freshness handling,
- * and opportunity modeling.
+ * Backend-only Oracle domain contracts for whitespace and opportunity analysis.
+ * This is an Oracle-owned type layer that intentionally avoids exposing
+ * low-level lib/oracle primitive interfaces as the public model.
  */
 
-import type {
-  GapContext,
-  TopicCoverage,
-  WhitespaceGap,
-} from '../../lib/oracle/whitespace.js';
-import type { RetrievalResultItem } from '../../lib/oracle/retrieval-contract.js';
-import type { EvidenceItemAge, RescoreCandidate } from '../../lib/oracle/evidence-freshness.js';
-import type { OpportunitySignalInput, OpportunityScore, HorizonScore } from '../../lib/oracle/opportunity.js';
-import type { RunScoreEntry, CrossRunDiff } from '../../lib/oracle/cross-run-diff.js';
-import type {
-  EvidenceWeightItem,
-  VerificationResult,
-  ContradictionSeverity,
-} from '../../lib/oracle/verification.js';
-import type { ScoreSnapshot, TemporalDrift } from '../../lib/oracle/temporal.js';
+import type { ConfidenceBand } from './signal.js';
+import type { OracleSourceLane, OracleThesisEvidenceRole } from './shared.js';
 
-export type OracleWhitespaceTopicCoverage = TopicCoverage;
-export type OracleWhitespaceGap = WhitespaceGap;
-export type OracleWhitespaceGapContext = GapContext;
-export type OracleWhitespaceRetrievalItem = RetrievalResultItem;
-export type OracleFreshnessEvidenceAge = EvidenceItemAge;
-export type OracleFreshnessRescoreCandidate = RescoreCandidate;
-export type OracleOpportunitySignal = OpportunitySignalInput;
-export type OracleOpportunityCandidate = OpportunityScore;
-export type OracleOpportunityPlay = HorizonScore;
-export type OracleRunScoreEntry = RunScoreEntry;
-export type OracleRunDiff = CrossRunDiff;
-export type OracleReasoningEvidenceWeight = EvidenceWeightItem;
-export type OracleTemporalScoreSnapshot = ScoreSnapshot;
-export type OracleTemporalDriftSignal = TemporalDrift;
+export type OracleWhitespaceGapPriority = 'critical' | 'high' | 'medium' | 'low';
 
-export interface OraclePredictiveGap extends WhitespaceGap {
+export interface OracleWhitespaceTopicCoverage {
+  topicId: string;
+  coverageScore: number;
+  evidenceCount: number;
+}
+
+export interface OracleWhitespaceGap {
+  topicId: string;
+  gapScore: number;
+  priority: OracleWhitespaceGapPriority;
+}
+
+export interface OracleWhitespaceGapContext {
+  topicImportance: number;
+  recencyFactor: number;
+  closureEase: number;
+}
+
+export interface OracleWhitespaceRetrievalItem {
+  id: string;
+  relevance: number;
+  sourceLane: OracleSourceLane;
+  excerpt: string;
+  metadata: Record<string, unknown>;
+}
+
+export type OracleEvidenceFreshnessLabel = 'fresh' | 'aging' | 'stale' | 'expired';
+
+export interface OracleFreshnessSnapshot {
+  ageDays: number;
+  freshnessScore: number;
+  label: OracleEvidenceFreshnessLabel;
+}
+
+export interface OracleFreshnessEvidenceAge {
+  id: string;
+  createdAt: Date;
+}
+
+export interface OracleFreshnessRescoreCandidate {
+  id: string;
+  freshness: OracleFreshnessSnapshot;
+}
+
+export interface OracleOpportunitySignal {
+  score: number;
+  weight: number;
+  tags?: string[];
+}
+
+export interface OracleOpportunityCandidate {
+  score: number;
+  confidence: ConfidenceBand;
+  signalCount: number;
+}
+
+export type OracleOpportunityHorizon = 'immediate' | 'near' | 'medium' | 'long';
+
+export interface OracleOpportunityPlay {
+  horizon: OracleOpportunityHorizon;
+  weightedScore: number;
+  proximityFactor: number;
+}
+
+export interface OracleRunScoreEntry {
+  id: string;
+  score: number;
+  status: string;
+}
+
+export type OracleScoreChangeSeverity = 'none' | 'minor' | 'significant' | 'major';
+
+export interface OracleRunScoreDelta {
+  id: string;
+  previousScore: number;
+  currentScore: number;
+  delta: number;
+  severity: OracleScoreChangeSeverity;
+}
+
+export interface OracleRunStatusChange {
+  id: string;
+  previousStatus: string;
+  currentStatus: string;
+}
+
+export interface OracleRunDiff {
+  scoreDeltas: OracleRunScoreDelta[];
+  added: string[];
+  removed: string[];
+  statusChanged: OracleRunStatusChange[];
+}
+
+export interface OracleReasoningEvidenceWeight {
+  role: OracleThesisEvidenceRole;
+  weight: number;
+}
+
+export type OracleUncertaintyLevel = 'low' | 'medium' | 'high';
+export type OracleContradictionSeverity = 'none' | 'minor' | 'major' | 'fatal';
+
+export interface OracleVerificationResult {
+  consistent: boolean;
+  validationWeight: number;
+  contradictionWeight: number;
+  contradictionRatio: number;
+  uncertaintyLevel: OracleUncertaintyLevel;
+}
+
+export interface OracleTemporalScoreSnapshot {
+  recordedAt: Date;
+  score: number;
+}
+
+export type OracleTemporalTrend = 'rising' | 'falling' | 'stable';
+
+export interface OracleTemporalDriftSignal {
+  totalDrift: number;
+  driftPerDay: number;
+  trend: OracleTemporalTrend;
+  windowDays: number;
+}
+
+export interface OraclePredictiveGap extends OracleWhitespaceGap {
   predictiveScore: number;
-  context: GapContext;
+  context: OracleWhitespaceGapContext;
 }
 
 export interface OracleEvidenceAwareReasoning {
   consistent: boolean;
   contradictionRatio: number;
-  uncertaintyLevel: VerificationResult['uncertaintyLevel'];
-  contradictionSeverity: ContradictionSeverity;
+  uncertaintyLevel: OracleUncertaintyLevel;
+  contradictionSeverity: OracleContradictionSeverity;
   retrievalQualifiedCount: number;
   rescoreCandidateCount: number;
 }
 
 export interface OracleTemporalFreshnessSignals {
-  trend: TemporalDrift['trend'];
+  trend: OracleTemporalTrend;
   driftPerDay: number;
   windowDays: number;
   staleEvidenceCount: number;
@@ -66,7 +163,7 @@ export interface OracleWhitespaceRunSummary {
   retrievalQualifiedCount: number;
   rescoreCandidateCount: number;
   opportunityScore: number;
-  trend: TemporalDrift['trend'];
+  trend: OracleTemporalTrend;
   addedCount: number;
   removedCount: number;
 }
@@ -92,8 +189,8 @@ export interface OracleWhitespaceAnalysis {
   predictiveGaps: OraclePredictiveGap[];
   retrievalQualified: OracleWhitespaceRetrievalItem[];
   rescoreCandidates: OracleFreshnessRescoreCandidate[];
-  verification: VerificationResult;
-  contradictionSeverity: ContradictionSeverity;
+  verification: OracleVerificationResult;
+  contradictionSeverity: OracleContradictionSeverity;
   opportunity: OracleOpportunityCandidate;
   opportunityTiming: OracleOpportunityPlay[];
   temporalDrift: OracleTemporalDriftSignal;
@@ -101,6 +198,12 @@ export interface OracleWhitespaceAnalysis {
   reasoning: OracleEvidenceAwareReasoning;
   temporalSignals: OracleTemporalFreshnessSignals;
   summary: OracleWhitespaceRunSummary;
+}
+
+export interface OracleWhitespaceAnalysisResultEnvelope {
+  analysis: OracleWhitespaceAnalysis;
+  summary: OracleWhitespaceRunSummary;
+  generatedAt: string;
 }
 
 export interface OracleWhitespaceCoreRun {

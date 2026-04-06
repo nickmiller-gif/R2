@@ -7,3 +7,4 @@ export * from './thesis-evidence-link.js';
 export * from './profile-run.js';
 export * from './thesis-knowledge-link.js';
 export * from './outcome.js';
+export * from './whitespace-core.js';

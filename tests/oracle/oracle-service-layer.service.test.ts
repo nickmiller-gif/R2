@@ -86,7 +86,7 @@ function makeAnalysis(): OracleWhitespaceAnalysis {
       driftPerDay: 0,
       windowDays: 0,
       staleEvidenceCount: 0,
-      freshnessReferenceTime: new Date('2026-04-06T00:00:00.000Z'),
+      freshnessReferenceTime: '2026-04-06T00:00:00.000Z',
     },
     summary: {
       gapCount: 0,

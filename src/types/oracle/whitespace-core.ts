@@ -56,7 +56,7 @@ export interface OracleTemporalFreshnessSignals {
   driftPerDay: number;
   windowDays: number;
   staleEvidenceCount: number;
-  freshnessReferenceTime: Date;
+  freshnessReferenceTime: string;
 }
 
 export interface OracleWhitespaceRunSummary {

@@ -110,7 +110,10 @@ export function createOracleWhitespaceCoreService(
       const drift = temporalDrift(input.scoreSnapshots ?? []);
       const runDiff = crossRunDiff(input.previousRunEntries ?? [], input.currentRunEntries ?? []);
       const topPredictiveGapScore = predictiveGaps.length
-        ? Math.max(...predictiveGaps.map((gap) => gap.predictiveScore))
+        ? predictiveGaps.reduce(
+            (maxScore, gap) => Math.max(maxScore, gap.predictiveScore),
+            predictiveGaps[0]!.predictiveScore,
+          )
         : null;
 
       return {
@@ -137,7 +140,7 @@ export function createOracleWhitespaceCoreService(
           driftPerDay: drift.driftPerDay,
           windowDays: drift.windowDays,
           staleEvidenceCount: rescoreCandidates.length,
-          freshnessReferenceTime,
+          freshnessReferenceTime: freshnessReferenceTime.toISOString(),
         },
         summary: {
           gapCount: gaps.length,

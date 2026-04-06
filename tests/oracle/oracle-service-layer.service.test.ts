@@ -73,6 +73,32 @@ function makeAnalysis(): OracleWhitespaceAnalysis {
       scoreDeltas: [],
       statusChanged: [],
     },
+    reasoning: {
+      consistent: true,
+      contradictionRatio: 0,
+      uncertaintyLevel: 'low',
+      contradictionSeverity: 'none',
+      retrievalQualifiedCount: 0,
+      rescoreCandidateCount: 0,
+    },
+    temporalSignals: {
+      trend: 'stable',
+      driftPerDay: 0,
+      windowDays: 0,
+      staleEvidenceCount: 0,
+      freshnessReferenceTime: new Date('2026-04-06T00:00:00.000Z'),
+    },
+    summary: {
+      gapCount: 0,
+      predictiveGapCount: 1,
+      topPredictiveGapScore: 91,
+      retrievalQualifiedCount: 0,
+      rescoreCandidateCount: 0,
+      opportunityScore: 88,
+      trend: 'stable',
+      addedCount: 0,
+      removedCount: 0,
+    },
   };
 }
 

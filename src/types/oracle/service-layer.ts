@@ -1,6 +1,44 @@
-import type { OracleWhitespaceAnalysis, OracleWhitespaceAnalysisInput } from './whitespace-core.js';
+import type {
+  OracleWhitespaceAnalysis,
+  OracleWhitespaceAnalysisInput,
+  OracleWhitespaceRunSummary,
+} from './whitespace-core.js';
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
+
+interface OracleServiceLayerResultEnvelopeBase {
+  runId: string;
+  generatedAt: string;
+}
+
+export interface OracleServiceLayerRunningResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'running';
+  summary: null;
+  analysis: null;
+  errorMessage: null;
+}
+
+export interface OracleServiceLayerCompletedResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'completed';
+  summary: OracleWhitespaceRunSummary;
+  analysis: OracleWhitespaceAnalysis;
+  errorMessage: null;
+}
+
+export interface OracleServiceLayerFailedResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'failed';
+  summary: null;
+  analysis: null;
+  errorMessage: string;
+}
+
+export type OracleServiceLayerResultEnvelope =
+  | OracleServiceLayerRunningResultEnvelope
+  | OracleServiceLayerCompletedResultEnvelope
+  | OracleServiceLayerFailedResultEnvelope;
 
 export interface OracleServiceLayerRun {
   id: string;

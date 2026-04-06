@@ -202,7 +202,7 @@ export interface OracleWhitespaceAnalysis {
 
 export interface OracleWhitespaceAnalysisResultEnvelope {
   analysis: OracleWhitespaceAnalysis;
-  summary: OracleWhitespaceRunSummary;
+  summary: OracleWhitespaceAnalysis['summary'];
   generatedAt: string;
 }
 

@@ -6,14 +6,39 @@ import type {
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
 
-export interface OracleServiceLayerResultEnvelope {
+interface OracleServiceLayerResultEnvelopeBase {
   runId: string;
-  status: OracleServiceLayerRunStatus;
   generatedAt: string;
-  summary: OracleWhitespaceRunSummary | null;
-  analysis: OracleWhitespaceAnalysis | null;
-  errorMessage: string | null;
 }
+
+export interface OracleServiceLayerRunningResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'running';
+  summary: null;
+  analysis: null;
+  errorMessage: null;
+}
+
+export interface OracleServiceLayerCompletedResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'completed';
+  summary: OracleWhitespaceRunSummary;
+  analysis: OracleWhitespaceAnalysis;
+  errorMessage: null;
+}
+
+export interface OracleServiceLayerFailedResultEnvelope
+  extends OracleServiceLayerResultEnvelopeBase {
+  status: 'failed';
+  summary: null;
+  analysis: null;
+  errorMessage: string;
+}
+
+export type OracleServiceLayerResultEnvelope =
+  | OracleServiceLayerRunningResultEnvelope
+  | OracleServiceLayerCompletedResultEnvelope
+  | OracleServiceLayerFailedResultEnvelope;
 
 export interface OracleServiceLayerRun {
   id: string;

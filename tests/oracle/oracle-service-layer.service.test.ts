@@ -18,6 +18,12 @@ function makeMockDb(): OracleServiceLayerDb & { rows: DbOracleServiceLayerRow[] 
     async findRunById(id) {
       return rows.find((row) => row.id === id) ?? null;
     },
+    async updateRun(id, patch) {
+      const idx = rows.findIndex((row) => row.id === id);
+      if (idx === -1) throw new Error(`run not found: ${id}`);
+      rows[idx] = { ...rows[idx], ...patch };
+      return rows[idx];
+    },
   };
 }
 
@@ -140,6 +146,48 @@ describe('OracleServiceLayerService', () => {
     expect(result.errorMessage).toContain('analysis blew up');
     expect(deps.profileRun.fail).toHaveBeenCalledWith('profile-run-1');
     expect(deps.profileRun.complete).not.toHaveBeenCalled();
+  });
+
+  it('does not call profileRun.complete when db.updateRun rejects after analysis, and records run as failed', async () => {
+    // Simulate a DB outage that occurs only when trying to persist 'completed'.
+    // This is the scenario where analysis succeeds but persistence fails —
+    // the profile-run should NOT be completed, and a 'failed' record must be written.
+    let updateCallCount = 0;
+    const db: OracleServiceLayerDb & { rows: DbOracleServiceLayerRow[] } = {
+      rows: [],
+      async insertRun(row) {
+        db.rows.push(row);
+        return row;
+      },
+      async findRunById(id) {
+        return db.rows.find((r) => r.id === id) ?? null;
+      },
+      async updateRun(id, patch) {
+        updateCallCount++;
+        if (patch.status === 'completed') throw new Error('DB constraint error');
+        const idx = db.rows.findIndex((r) => r.id === id);
+        if (idx === -1) throw new Error(`run not found: ${id}`);
+        db.rows[idx] = { ...db.rows[idx], ...patch };
+        return db.rows[idx];
+      },
+    };
+
+    const deps = makeDeps();
+    const service = createOracleServiceLayerService(db, deps);
+
+    const result = await service.executeWhitespaceRun({
+      entityAssetId: '00000000-0000-0000-0000-00000000abc4',
+      runLabel: 'slice-06-update-fail',
+      triggeredBy: 'operator@test',
+      analysisInput: { coverage: [] },
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toContain('DB constraint error');
+    expect(deps.profileRun.complete).not.toHaveBeenCalled();
+    expect(deps.profileRun.fail).toHaveBeenCalledWith('profile-run-1');
+    // updateRun called twice: once for 'completed' (throws), once for 'failed' (succeeds)
+    expect(updateCallCount).toBe(2);
   });
 
   it('reads persisted service-layer runs by id', async () => {

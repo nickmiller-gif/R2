@@ -1,6 +1,6 @@
 import type { OracleWhitespaceAnalysis, OracleWhitespaceAnalysisInput } from './whitespace-core.js';
 
-export type OracleServiceLayerRunStatus = 'completed' | 'failed';
+export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
 
 export interface OracleServiceLayerRun {
   id: string;

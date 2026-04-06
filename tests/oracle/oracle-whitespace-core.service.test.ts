@@ -88,6 +88,11 @@ describe('OracleWhitespaceCoreService', () => {
     expect(analysis.temporalDrift.trend).toBe('rising');
     expect(analysis.runDiff.added).toEqual(['thesis-2']);
     expect(analysis.runDiff.scoreDeltas[0].severity).toBe('major');
+    expect(analysis.reasoning.retrievalQualifiedCount).toBe(1);
+    expect(analysis.reasoning.consistent).toBe(true);
+    expect(analysis.temporalSignals.staleEvidenceCount).toBe(1);
+    expect(analysis.temporalSignals.trend).toBe('rising');
+    expect(analysis.summary.topPredictiveGapScore).toBeGreaterThan(0);
   });
 
   it('creates and reads persisted whitespace-core runs', async () => {

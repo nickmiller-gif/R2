@@ -109,6 +109,12 @@ export function createOracleWhitespaceCoreService(
 
       const drift = temporalDrift(input.scoreSnapshots ?? []);
       const runDiff = crossRunDiff(input.previousRunEntries ?? [], input.currentRunEntries ?? []);
+      const topPredictiveGapScore = predictiveGaps.length
+        ? predictiveGaps.reduce(
+            (maxScore, gap) => Math.max(maxScore, gap.predictiveScore),
+            predictiveGaps[0]!.predictiveScore,
+          )
+        : null;
 
       return {
         gaps,
@@ -121,6 +127,32 @@ export function createOracleWhitespaceCoreService(
         opportunityTiming,
         temporalDrift: drift,
         runDiff,
+        reasoning: {
+          consistent: verification.consistent,
+          contradictionRatio: verification.contradictionRatio,
+          uncertaintyLevel: verification.uncertaintyLevel,
+          contradictionSeverity,
+          retrievalQualifiedCount: retrievalQualified.length,
+          rescoreCandidateCount: rescoreCandidates.length,
+        },
+        temporalSignals: {
+          trend: drift.trend,
+          driftPerDay: drift.driftPerDay,
+          windowDays: drift.windowDays,
+          staleEvidenceCount: rescoreCandidates.length,
+          freshnessReferenceTime: freshnessReferenceTime.toISOString(),
+        },
+        summary: {
+          gapCount: gaps.length,
+          predictiveGapCount: predictiveGaps.length,
+          topPredictiveGapScore,
+          retrievalQualifiedCount: retrievalQualified.length,
+          rescoreCandidateCount: rescoreCandidates.length,
+          opportunityScore: opportunity.score,
+          trend: drift.trend,
+          addedCount: runDiff.added.length,
+          removedCount: runDiff.removed.length,
+        },
       };
     },
 

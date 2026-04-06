@@ -22,38 +22,85 @@ import type {
 } from '../../lib/oracle/verification.js';
 import type { ScoreSnapshot, TemporalDrift } from '../../lib/oracle/temporal.js';
 
+export type OracleWhitespaceTopicCoverage = TopicCoverage;
+export type OracleWhitespaceGap = WhitespaceGap;
+export type OracleWhitespaceGapContext = GapContext;
+export type OracleWhitespaceRetrievalItem = RetrievalResultItem;
+export type OracleFreshnessEvidenceAge = EvidenceItemAge;
+export type OracleFreshnessRescoreCandidate = RescoreCandidate;
+export type OracleOpportunitySignal = OpportunitySignalInput;
+export type OracleOpportunityCandidate = OpportunityScore;
+export type OracleOpportunityPlay = HorizonScore;
+export type OracleRunScoreEntry = RunScoreEntry;
+export type OracleRunDiff = CrossRunDiff;
+export type OracleReasoningEvidenceWeight = EvidenceWeightItem;
+export type OracleTemporalScoreSnapshot = ScoreSnapshot;
+export type OracleTemporalDriftSignal = TemporalDrift;
+
 export interface OraclePredictiveGap extends WhitespaceGap {
   predictiveScore: number;
   context: GapContext;
 }
 
+export interface OracleEvidenceAwareReasoning {
+  consistent: boolean;
+  contradictionRatio: number;
+  uncertaintyLevel: VerificationResult['uncertaintyLevel'];
+  contradictionSeverity: ContradictionSeverity;
+  retrievalQualifiedCount: number;
+  rescoreCandidateCount: number;
+}
+
+export interface OracleTemporalFreshnessSignals {
+  trend: TemporalDrift['trend'];
+  driftPerDay: number;
+  windowDays: number;
+  staleEvidenceCount: number;
+  freshnessReferenceTime: string;
+}
+
+export interface OracleWhitespaceRunSummary {
+  gapCount: number;
+  predictiveGapCount: number;
+  topPredictiveGapScore: number | null;
+  retrievalQualifiedCount: number;
+  rescoreCandidateCount: number;
+  opportunityScore: number;
+  trend: TemporalDrift['trend'];
+  addedCount: number;
+  removedCount: number;
+}
+
 export interface OracleWhitespaceAnalysisInput {
-  coverage: TopicCoverage[];
-  gapContextsByTopicId?: Record<string, GapContext>;
-  retrievalResults?: RetrievalResultItem[];
+  coverage: OracleWhitespaceTopicCoverage[];
+  gapContextsByTopicId?: Record<string, OracleWhitespaceGapContext>;
+  retrievalResults?: OracleWhitespaceRetrievalItem[];
   retrievalMinRelevance?: number;
-  evidenceAges?: EvidenceItemAge[];
+  evidenceAges?: OracleFreshnessEvidenceAge[];
   freshnessReferenceTime?: Date;
   freshnessHalfLifeDays?: number;
-  verificationEvidence?: EvidenceWeightItem[];
-  opportunitySignals?: OpportunitySignalInput[];
+  verificationEvidence?: OracleReasoningEvidenceWeight[];
+  opportunitySignals?: OracleOpportunitySignal[];
   opportunityDaysToAction?: number;
-  scoreSnapshots?: ScoreSnapshot[];
-  previousRunEntries?: RunScoreEntry[];
-  currentRunEntries?: RunScoreEntry[];
+  scoreSnapshots?: OracleTemporalScoreSnapshot[];
+  previousRunEntries?: OracleRunScoreEntry[];
+  currentRunEntries?: OracleRunScoreEntry[];
 }
 
 export interface OracleWhitespaceAnalysis {
-  gaps: WhitespaceGap[];
+  gaps: OracleWhitespaceGap[];
   predictiveGaps: OraclePredictiveGap[];
-  retrievalQualified: RetrievalResultItem[];
-  rescoreCandidates: RescoreCandidate[];
+  retrievalQualified: OracleWhitespaceRetrievalItem[];
+  rescoreCandidates: OracleFreshnessRescoreCandidate[];
   verification: VerificationResult;
   contradictionSeverity: ContradictionSeverity;
-  opportunity: OpportunityScore;
-  opportunityTiming: HorizonScore[];
-  temporalDrift: TemporalDrift;
-  runDiff: CrossRunDiff;
+  opportunity: OracleOpportunityCandidate;
+  opportunityTiming: OracleOpportunityPlay[];
+  temporalDrift: OracleTemporalDriftSignal;
+  runDiff: OracleRunDiff;
+  reasoning: OracleEvidenceAwareReasoning;
+  temporalSignals: OracleTemporalFreshnessSignals;
+  summary: OracleWhitespaceRunSummary;
 }
 
 export interface OracleWhitespaceCoreRun {

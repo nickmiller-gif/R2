@@ -15,6 +15,9 @@ export function toOracleServiceLayerResultEnvelope(
     if (!run.analysis) {
       throw new Error('Completed service-layer run is missing analysis payload');
     }
+    if (!run.analysis.summary) {
+      throw new Error('Completed service-layer run analysis is missing summary');
+    }
     return {
       runId: run.id,
       generatedAt,

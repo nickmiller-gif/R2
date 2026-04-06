@@ -32,7 +32,7 @@ export function toOracleServiceLayerResultEnvelope(
       status: 'failed',
       summary: null,
       analysis: null,
-      errorMessage: run.errorMessage ?? 'Oracle whitespace run failed',
+      errorMessage: run.errorMessage ?? 'Oracle service-layer run failed',
     };
   }
 

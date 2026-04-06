@@ -7,18 +7,29 @@ import { requireIdempotencyKey, validateBody } from '../_shared/validate.ts';
 
 import {
   createOracleWhitespaceCoreService,
-  createOracleProfileRunService,
-  createOracleServiceLayerService,
-  toOracleServiceLayerResultEnvelope,
   type DbOracleWhitespaceCoreRow,
+} from '../../../src/services/oracle/oracle-whitespace-core.service.ts';
+import {
+  createOracleProfileRunService,
   type DbOracleProfileRunRow,
+} from '../../../src/services/oracle/oracle-profile-run.service.ts';
+import {
+  createOracleServiceLayerService,
   type DbOracleServiceLayerRow,
-} from '../../../src/services/oracle/index.ts';
+} from '../../../src/services/oracle/oracle-service-layer.service.ts';
+import { toOracleServiceLayerResultEnvelope } from '../../../src/services/oracle/oracle-service-layer-api.service.ts';
 
-import type {
-  ExecuteOracleServiceLayerRunInput,
-  OracleWhitespaceAnalysisInput,
-} from '../../../src/types/oracle/index.ts';
+interface OracleWhitespaceAnalysisInput {
+  [key: string]: unknown;
+}
+
+interface ExecuteOracleServiceLayerRunInput {
+  entityAssetId: string;
+  runLabel: string;
+  triggeredBy: string;
+  analysisInput: OracleWhitespaceAnalysisInput;
+  metadata?: Record<string, unknown>;
+}
 
 const ORACLE_WHITESPACE_CORE_TABLE = 'oracle_whitespace_core_runs';
 const ORACLE_SERVICE_LAYER_TABLE = 'oracle_service_layer_runs';
@@ -183,6 +194,23 @@ serve(async (req) => {
         { name: 'metadata', type: 'object', required: false },
       ]);
       if (!body.ok) return body.response;
+
+      if (
+        body.data.analysisInput === null ||
+        typeof body.data.analysisInput !== 'object' ||
+        Array.isArray(body.data.analysisInput)
+      ) {
+        return errorResponse('analysisInput must be a non-array object', 400);
+      }
+
+      if (
+        body.data.metadata !== undefined &&
+        (body.data.metadata === null ||
+          typeof body.data.metadata !== 'object' ||
+          Array.isArray(body.data.metadata))
+      ) {
+        return errorResponse('metadata must be a non-array object', 400);
+      }
 
       const input: ExecuteOracleServiceLayerRunInput = {
         entityAssetId: body.data.entityAssetId,

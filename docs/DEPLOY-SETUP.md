@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `deploy.yml` workflow automatically deploys migrations and all 24 edge functions to Supabase when code is pushed to `main`. It requires manual approval via a GitHub environment gate.
+The `deploy.yml` workflow automatically deploys migrations and all 24 edge functions to Supabase when code is pushed to `main` (or via manual `workflow_dispatch`). It requires manual approval via a GitHub environment gate. This replaces the previous `deploy-supabase.yml` workflow, adding a CI gate before deploy.
 
 ## Step 1: Create the `production` environment
 

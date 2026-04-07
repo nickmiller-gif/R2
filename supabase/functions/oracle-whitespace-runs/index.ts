@@ -215,9 +215,13 @@ serve(async (req) => {
       });
     }
 
-    if (req.method === 'PUT') {
+    if (req.method === 'PATCH') {
       const roleCheck = await requireRole(auth.claims.userId, 'operator');
       if (!roleCheck.ok) return roleCheck.response;
+
+      const idemError = requireIdempotencyKey(req);
+      if (idemError) return idemError;
+
       if (!runId) {
         return errorResponse('id query parameter is required', 400);
       }

@@ -54,14 +54,15 @@ export function createOracleServiceLayerRunDecisionService(
   return {
     async upsertDecision(input) {
       const now = nowUtc().toISOString();
+      const existing = await db.findDecisionByRunId(input.oracleServiceLayerRunId);
       const row = await db.upsertDecision({
-        id: crypto.randomUUID(),
+        id: existing?.id ?? crypto.randomUUID(),
         oracle_service_layer_run_id: input.oracleServiceLayerRunId,
         decision_status: input.decisionStatus,
         notes: input.notes ?? null,
         decided_by: input.decidedBy,
         decided_at: input.decidedAt ?? now,
-        created_at: now,
+        created_at: existing?.created_at ?? now,
         updated_at: now,
       });
       return rowToEntity(row);

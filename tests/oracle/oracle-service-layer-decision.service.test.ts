@@ -14,15 +14,9 @@ function makeMockDb(): OracleServiceLayerRunDecisionDb & { rows: DbOracleService
         (candidate) => candidate.oracle_service_layer_run_id === row.oracle_service_layer_run_id,
       );
       if (existingIdx >= 0) {
-        rows[existingIdx] = {
-          ...rows[existingIdx],
-          decision_status: row.decision_status,
-          notes: row.notes,
-          decided_by: row.decided_by,
-          decided_at: row.decided_at,
-          updated_at: row.updated_at,
-        };
-        return rows[existingIdx];
+        // Replace the whole row (service already populated stable id/created_at from the read-first lookup)
+        rows[existingIdx] = row;
+        return row;
       }
       rows.push(row);
       return row;
@@ -60,7 +54,7 @@ describe('OracleServiceLayerRunDecisionService', () => {
     const service = createOracleServiceLayerRunDecisionService(db);
     const runId = '00000000-0000-0000-0000-00000000d002';
 
-    await service.upsertDecision({
+    const first = await service.upsertDecision({
       oracleServiceLayerRunId: runId,
       decisionStatus: 'defer',
       decidedBy: 'operator@test',
@@ -77,5 +71,9 @@ describe('OracleServiceLayerRunDecisionService', () => {
     expect(updated.notes).toBe('no longer relevant');
     expect(updated.decidedBy).toBe('operator-2@test');
     expect(db.rows).toHaveLength(1);
+
+    // Immutable fields must be preserved across updates
+    expect(updated.id).toBe(first.id);
+    expect(updated.createdAt.toISOString()).toBe(first.createdAt.toISOString());
   });
 });

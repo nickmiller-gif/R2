@@ -63,6 +63,8 @@ export {
 
 export {
   createOracleServiceLayerService,
+  ORACLE_SERVICE_LAYER_HISTORY_LIMIT_DEFAULT,
+  ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX,
   type OracleServiceLayerService,
   type OracleServiceLayerDb,
   type OracleServiceLayerDeps,

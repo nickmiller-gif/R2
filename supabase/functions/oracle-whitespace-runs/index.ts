@@ -228,6 +228,16 @@ serve(async (req) => {
         if (error) throw new Error(error.message);
         return (data as DbOracleServiceLayerRunDecisionRow | null) ?? null;
       },
+      async findDecisionsByRunIds(runIds: string[]) {
+        if (runIds.length === 0) return [];
+        const { data, error } = await callerScopedClient
+          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+          .select('*')
+          .in('oracle_service_layer_run_id', runIds);
+
+        if (error) throw new Error(error.message);
+        return (data as DbOracleServiceLayerRunDecisionRow[] | null) ?? [];
+      },
     });
 
     const runOutcomeService = createOracleServiceLayerRunOutcomeService({
@@ -260,6 +270,16 @@ serve(async (req) => {
 
         if (error) throw new Error(error.message);
         return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
+      },
+      async findOutcomesByRunIds(runIds: string[]) {
+        if (runIds.length === 0) return [];
+        const { data, error } = await callerScopedClient
+          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+          .select('*')
+          .in('oracle_service_layer_run_id', runIds);
+
+        if (error) throw new Error(error.message);
+        return (data as DbOracleServiceLayerRunOutcomeRow[] | null) ?? [];
       },
       async queryOutcomes() {
         throw new Error('queryOutcomes not implemented for oracle-whitespace-runs edge function');
@@ -301,22 +321,26 @@ serve(async (req) => {
         if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
           return errorResponse('limit must be a positive integer', 400);
         }
+        if (parsedLimit > 100) {
+          return errorResponse('limit must be at most 100', 400);
+        }
         limit = parsedLimit;
       }
 
       const runs = await serviceLayer.listRecentRuns({ entityAssetId, limit });
-      const history = await Promise.all(
-        runs.map(async (run) => {
-          const [operatorDecision, runOutcome] = await Promise.all([
-            decisionService.getDecisionByRunId(run.id),
-            runOutcomeService.getOutcomeByRunId(run.id),
-          ]);
 
-          return toOracleServiceLayerRunHistoryItem({
-            run,
-            operatorDecision,
-            runOutcome,
-          });
+      // Batch fetch decisions and outcomes in 2 queries instead of 2×N
+      const runIds = runs.map((r) => r.id);
+      const [decisionsMap, outcomesMap] = await Promise.all([
+        decisionService.getDecisionsByRunIds(runIds),
+        runOutcomeService.getOutcomesByRunIds(runIds),
+      ]);
+
+      const history = runs.map((run) =>
+        toOracleServiceLayerRunHistoryItem({
+          run,
+          operatorDecision: decisionsMap.get(run.id) ?? null,
+          runOutcome: outcomesMap.get(run.id) ?? null,
         }),
       );
 

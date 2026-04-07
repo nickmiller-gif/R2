@@ -74,6 +74,20 @@ export interface OracleServiceLayerRunHistoryFilter {
   limit?: number;
 }
 
+/**
+ * Lightweight projection of a service-layer run for history list responses.
+ * Avoids full analysis deserialization; only the summary field is extracted.
+ */
+export interface OracleServiceLayerRunSummaryRow {
+  id: string;
+  status: OracleServiceLayerRunStatus;
+  entityAssetId: string;
+  runLabel: string;
+  createdAt: Date;
+  updatedAt: Date;
+  summary: OracleWhitespaceRunSummary | null;
+}
+
 export interface OracleServiceLayerRunHistoryItem {
   id: string;
   status: OracleServiceLayerRunStatus;

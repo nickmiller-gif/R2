@@ -23,6 +23,7 @@ export interface OracleServiceLayerRunOutcomeService {
   getOutcomeByRunId(
     oracleServiceLayerRunId: string,
   ): Promise<OracleServiceLayerRunOutcome | null>;
+  getOutcomesByRunIds(runIds: string[]): Promise<Map<string, OracleServiceLayerRunOutcome>>;
   updateOutcome(
     id: string,
     input: UpdateOracleServiceLayerRunOutcomeInput,
@@ -52,6 +53,7 @@ export interface OracleServiceLayerRunOutcomeDb {
     oracleServiceLayerRunId: string,
   ): Promise<DbOracleServiceLayerRunOutcomeRow | null>;
   findOutcomeById(id: string): Promise<DbOracleServiceLayerRunOutcomeRow | null>;
+  findOutcomesByRunIds(runIds: string[]): Promise<DbOracleServiceLayerRunOutcomeRow[]>;
   queryOutcomes(
     filter?: OracleServiceLayerRunOutcomeFilter,
   ): Promise<DbOracleServiceLayerRunOutcomeRow[]>;
@@ -116,6 +118,16 @@ export function createOracleServiceLayerRunOutcomeService(
     async getOutcomeByRunId(oracleServiceLayerRunId) {
       const row = await db.findOutcomeByRunId(oracleServiceLayerRunId);
       return row ? rowToEntity(row) : null;
+    },
+
+    async getOutcomesByRunIds(runIds) {
+      if (runIds.length === 0) return new Map();
+      const rows = await db.findOutcomesByRunIds(runIds);
+      const map = new Map<string, OracleServiceLayerRunOutcome>();
+      for (const row of rows) {
+        map.set(row.oracle_service_layer_run_id, rowToEntity(row));
+      }
+      return map;
     },
 
     async updateOutcome(id, input) {

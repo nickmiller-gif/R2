@@ -29,6 +29,9 @@ function makeMockDb(): OracleServiceLayerRunOutcomeDb & {
     async findOutcomeById(id) {
       return rows.find((r) => r.id === id) ?? null;
     },
+    async findOutcomesByRunIds(runIds) {
+      return rows.filter((r) => runIds.includes(r.oracle_service_layer_run_id));
+    },
     async queryOutcomes(filter?: OracleServiceLayerRunOutcomeFilter) {
       return rows.filter((r) => {
         if (!filter) return true;

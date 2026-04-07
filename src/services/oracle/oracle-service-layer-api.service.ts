@@ -4,6 +4,7 @@ import type {
   OracleServiceLayerRunDecision,
   OracleServiceLayerRunHistoryItem,
   OracleServiceLayerRunOutcome,
+  OracleServiceLayerRunSummaryRow,
 } from '../../types/oracle/index.js';
 
 /**
@@ -54,7 +55,7 @@ export function toOracleServiceLayerResultEnvelope(
 
 
 export function toOracleServiceLayerRunHistoryItem(input: {
-  run: OracleServiceLayerRun;
+  run: OracleServiceLayerRunSummaryRow;
   operatorDecision: OracleServiceLayerRunDecision | null;
   runOutcome: OracleServiceLayerRunOutcome | null;
 }): OracleServiceLayerRunHistoryItem {
@@ -65,7 +66,7 @@ export function toOracleServiceLayerRunHistoryItem(input: {
     runLabel: input.run.runLabel,
     createdAt: input.run.createdAt,
     updatedAt: input.run.updatedAt,
-    summary: input.run.analysis?.summary ?? null,
+    summary: input.run.summary,
     operatorDecision: input.operatorDecision,
     runOutcome: input.runOutcome,
   };

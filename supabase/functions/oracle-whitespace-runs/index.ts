@@ -17,6 +17,10 @@ import {
   createOracleServiceLayerService,
   type DbOracleServiceLayerRow,
 } from '../../../src/services/oracle/oracle-service-layer.service.ts';
+import {
+  createOracleServiceLayerRunDecisionService,
+  type DbOracleServiceLayerRunDecisionRow,
+} from '../../../src/services/oracle/oracle-service-layer-decision.service.ts';
 import { toOracleServiceLayerResultEnvelope } from '../../../src/services/oracle/oracle-service-layer-api.service.ts';
 
 interface OracleWhitespaceAnalysisInput {
@@ -33,12 +37,18 @@ interface ExecuteOracleServiceLayerRunInput {
 
 const ORACLE_WHITESPACE_CORE_TABLE = 'oracle_whitespace_core_runs';
 const ORACLE_SERVICE_LAYER_TABLE = 'oracle_service_layer_runs';
+const ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE = 'oracle_service_layer_run_decisions';
 
 interface ExecuteWhitespaceRunRequest {
   entityAssetId: string;
   runLabel: string;
   analysisInput: OracleWhitespaceAnalysisInput;
   metadata?: Record<string, unknown>;
+}
+
+interface UpsertOperatorDecisionRequest {
+  decisionStatus: 'pursue' | 'defer' | 'dismiss';
+  notes?: string;
 }
 
 serve(async (req) => {
@@ -166,6 +176,29 @@ serve(async (req) => {
       },
     );
 
+    const decisionService = createOracleServiceLayerRunDecisionService({
+      async upsertDecision(row: DbOracleServiceLayerRunDecisionRow) {
+        const { data, error } = await serviceClient
+          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+          .upsert([row], { onConflict: 'oracle_service_layer_run_id' })
+          .select()
+          .single();
+
+        if (error) throw new Error(error.message);
+        return data as DbOracleServiceLayerRunDecisionRow;
+      },
+      async findDecisionByRunId(oracleServiceLayerRunId: string) {
+        const { data, error } = await callerScopedClient
+          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+          .select('*')
+          .eq('oracle_service_layer_run_id', oracleServiceLayerRunId)
+          .maybeSingle();
+
+        if (error) throw new Error(error.message);
+        return (data as DbOracleServiceLayerRunDecisionRow | null) ?? null;
+      },
+    });
+
     if (req.method === 'GET') {
       if (!runId) {
         return errorResponse('id query parameter is required', 400);
@@ -173,11 +206,43 @@ serve(async (req) => {
 
       const run = await serviceLayer.getRunById(runId);
       if (!run) return errorResponse('Oracle service-layer run not found', 404);
+      const operatorDecision = await decisionService.getDecisionByRunId(runId);
 
       return jsonResponse({
         run,
         result: toOracleServiceLayerResultEnvelope(run),
+        operatorDecision,
       });
+    }
+
+    if (req.method === 'PUT') {
+      const roleCheck = await requireRole(auth.claims.userId, 'operator');
+      if (!roleCheck.ok) return roleCheck.response;
+      if (!runId) {
+        return errorResponse('id query parameter is required', 400);
+      }
+
+      const run = await serviceLayer.getRunById(runId);
+      if (!run) return errorResponse('Oracle service-layer run not found', 404);
+
+      const body = await validateBody<UpsertOperatorDecisionRequest>(req, [
+        { name: 'decisionStatus', type: 'string' },
+        { name: 'notes', type: 'string', required: false },
+      ]);
+      if (!body.ok) return body.response;
+
+      if (!['pursue', 'defer', 'dismiss'].includes(body.data.decisionStatus)) {
+        return errorResponse('decisionStatus must be pursue, defer, or dismiss', 400);
+      }
+
+      const decision = await decisionService.upsertDecision({
+        oracleServiceLayerRunId: runId,
+        decisionStatus: body.data.decisionStatus,
+        notes: body.data.notes ?? null,
+        decidedBy: auth.claims.userId,
+      });
+
+      return jsonResponse({ decision });
     }
 
     if (req.method === 'POST') {

@@ -5,6 +5,18 @@ import type {
 } from './whitespace-core.js';
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
+export type OracleOperatorDecisionStatus = 'pursue' | 'defer' | 'dismiss';
+
+export interface OracleServiceLayerRunDecision {
+  id: string;
+  oracleServiceLayerRunId: string;
+  decisionStatus: OracleOperatorDecisionStatus;
+  notes: string | null;
+  decidedBy: string;
+  decidedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface OracleServiceLayerResultEnvelopeBase {
   runId: string;

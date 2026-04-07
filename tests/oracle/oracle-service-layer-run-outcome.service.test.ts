@@ -252,6 +252,20 @@ describe('OracleServiceLayerRunOutcomeService', () => {
     ).rejects.toThrow('Outcome revenue cannot be negative.');
   });
 
+  it('rejects invalid outcomeClosedAt on upsert', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+
+    await expect(
+      service.upsertOutcome({
+        oracleServiceLayerRunId: RUN_ID_1,
+        outcomeStatus: 'pursued',
+        outcomeClosedAt: 'invalid-date',
+        recordedBy: 'operator@test',
+      }),
+    ).rejects.toThrow('Outcome closed timestamp must be a valid ISO-8601 datetime.');
+  });
+
   it('rejects invalid outcomeClosedAt on update', async () => {
     const db = makeMockDb();
     const service = createOracleServiceLayerRunOutcomeService(db);

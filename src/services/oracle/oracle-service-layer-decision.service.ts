@@ -17,6 +17,7 @@ export interface OracleServiceLayerRunDecisionService {
     input: UpsertOracleServiceLayerRunDecisionInput,
   ): Promise<OracleServiceLayerRunDecision>;
   getDecisionByRunId(oracleServiceLayerRunId: string): Promise<OracleServiceLayerRunDecision | null>;
+  getDecisionsByRunIds(runIds: string[]): Promise<Map<string, OracleServiceLayerRunDecision>>;
 }
 
 export interface DbOracleServiceLayerRunDecisionRow {
@@ -33,6 +34,7 @@ export interface DbOracleServiceLayerRunDecisionRow {
 export interface OracleServiceLayerRunDecisionDb {
   upsertDecision(row: DbOracleServiceLayerRunDecisionRow): Promise<DbOracleServiceLayerRunDecisionRow>;
   findDecisionByRunId(oracleServiceLayerRunId: string): Promise<DbOracleServiceLayerRunDecisionRow | null>;
+  findDecisionsByRunIds(runIds: string[]): Promise<DbOracleServiceLayerRunDecisionRow[]>;
 }
 
 function rowToEntity(row: DbOracleServiceLayerRunDecisionRow): OracleServiceLayerRunDecision {
@@ -71,6 +73,16 @@ export function createOracleServiceLayerRunDecisionService(
     async getDecisionByRunId(oracleServiceLayerRunId) {
       const row = await db.findDecisionByRunId(oracleServiceLayerRunId);
       return row ? rowToEntity(row) : null;
+    },
+
+    async getDecisionsByRunIds(runIds) {
+      if (runIds.length === 0) return new Map();
+      const rows = await db.findDecisionsByRunIds(runIds);
+      const map = new Map<string, OracleServiceLayerRunDecision>();
+      for (const row of rows) {
+        map.set(row.oracle_service_layer_run_id, rowToEntity(row));
+      }
+      return map;
     },
   };
 }

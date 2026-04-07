@@ -25,7 +25,10 @@ import {
   createOracleServiceLayerRunOutcomeService,
   type DbOracleServiceLayerRunOutcomeRow,
 } from '../../../src/services/oracle/oracle-service-layer-run-outcome.service.ts';
-import { toOracleServiceLayerResultEnvelope } from '../../../src/services/oracle/oracle-service-layer-api.service.ts';
+import {
+  toOracleServiceLayerResultEnvelope,
+  toOracleServiceLayerRunHistoryItem,
+} from '../../../src/services/oracle/oracle-service-layer-api.service.ts';
 
 interface OracleWhitespaceAnalysisInput {
   [key: string]: unknown;
@@ -170,6 +173,22 @@ serve(async (req) => {
           if (error) throw new Error(error.message);
           return (data as DbOracleServiceLayerRow | null) ?? null;
         },
+        async queryRuns(filter) {
+          const safeLimit = Math.min(Math.max(filter?.limit ?? 20, 1), 100);
+          let query = callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_TABLE)
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(safeLimit);
+
+          if (filter?.entityAssetId) {
+            query = query.eq('entity_asset_id', filter.entityAssetId);
+          }
+
+          const { data, error } = await query;
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRow[] | null) ?? [];
+        },
         async updateRun(id: string, patch: Partial<DbOracleServiceLayerRow>) {
           const { data, error } = await serviceClient
             .from(ORACLE_SERVICE_LAYER_TABLE)
@@ -209,6 +228,16 @@ serve(async (req) => {
         if (error) throw new Error(error.message);
         return (data as DbOracleServiceLayerRunDecisionRow | null) ?? null;
       },
+      async findDecisionsByRunIds(runIds: string[]) {
+        if (runIds.length === 0) return [];
+        const { data, error } = await callerScopedClient
+          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+          .select('*')
+          .in('oracle_service_layer_run_id', runIds);
+
+        if (error) throw new Error(error.message);
+        return (data as DbOracleServiceLayerRunDecisionRow[] | null) ?? [];
+      },
     });
 
     const runOutcomeService = createOracleServiceLayerRunOutcomeService({
@@ -242,6 +271,16 @@ serve(async (req) => {
         if (error) throw new Error(error.message);
         return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
       },
+      async findOutcomesByRunIds(runIds: string[]) {
+        if (runIds.length === 0) return [];
+        const { data, error } = await callerScopedClient
+          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+          .select('*')
+          .in('oracle_service_layer_run_id', runIds);
+
+        if (error) throw new Error(error.message);
+        return (data as DbOracleServiceLayerRunOutcomeRow[] | null) ?? [];
+      },
       async queryOutcomes() {
         throw new Error('queryOutcomes not implemented for oracle-whitespace-runs edge function');
       },
@@ -259,21 +298,53 @@ serve(async (req) => {
     });
 
     if (req.method === 'GET') {
-      if (!runId) {
-        return errorResponse('id query parameter is required', 400);
+      if (runId) {
+        const run = await serviceLayer.getRunById(runId);
+        if (!run) return errorResponse('Oracle service-layer run not found', 404);
+        const operatorDecision = await decisionService.getDecisionByRunId(runId);
+        const runOutcome = await runOutcomeService.getOutcomeByRunId(runId);
+
+        return jsonResponse({
+          run,
+          result: toOracleServiceLayerResultEnvelope(run),
+          operatorDecision,
+          runOutcome,
+        });
       }
 
-      const run = await serviceLayer.getRunById(runId);
-      if (!run) return errorResponse('Oracle service-layer run not found', 404);
-      const operatorDecision = await decisionService.getDecisionByRunId(runId);
-      const runOutcome = await runOutcomeService.getOutcomeByRunId(runId);
+      const entityAssetId = url.searchParams.get('entityAssetId') ?? undefined;
+      const limitParam = url.searchParams.get('limit');
+      let limit: number | undefined;
 
-      return jsonResponse({
-        run,
-        result: toOracleServiceLayerResultEnvelope(run),
-        operatorDecision,
-        runOutcome,
-      });
+      if (limitParam !== null) {
+        const parsedLimit = Number.parseInt(limitParam, 10);
+        if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+          return errorResponse('limit must be a positive integer', 400);
+        }
+        if (parsedLimit > 100) {
+          return errorResponse('limit must be at most 100', 400);
+        }
+        limit = parsedLimit;
+      }
+
+      const runs = await serviceLayer.listRecentRuns({ entityAssetId, limit });
+
+      // Batch fetch decisions and outcomes in 2 queries instead of 2×N
+      const runIds = runs.map((r) => r.id);
+      const [decisionsMap, outcomesMap] = await Promise.all([
+        decisionService.getDecisionsByRunIds(runIds),
+        runOutcomeService.getOutcomesByRunIds(runIds),
+      ]);
+
+      const history = runs.map((run) =>
+        toOracleServiceLayerRunHistoryItem({
+          run,
+          operatorDecision: decisionsMap.get(run.id) ?? null,
+          runOutcome: outcomesMap.get(run.id) ?? null,
+        }),
+      );
+
+      return jsonResponse({ history });
     }
 
     if (req.method === 'PATCH') {

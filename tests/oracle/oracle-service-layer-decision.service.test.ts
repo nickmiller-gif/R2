@@ -24,6 +24,9 @@ function makeMockDb(): OracleServiceLayerRunDecisionDb & { rows: DbOracleService
     async findDecisionByRunId(oracleServiceLayerRunId) {
       return rows.find((row) => row.oracle_service_layer_run_id === oracleServiceLayerRunId) ?? null;
     },
+    async findDecisionsByRunIds(runIds) {
+      return rows.filter((row) => runIds.includes(row.oracle_service_layer_run_id));
+    },
   };
 }
 

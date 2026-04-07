@@ -9,12 +9,20 @@ import { nowUtc } from '../../lib/provenance/clock.js';
 import type {
   ExecuteOracleServiceLayerRunInput,
   OracleServiceLayerRun,
+  OracleServiceLayerRunHistoryFilter,
+  OracleServiceLayerRunSummaryRow,
+  OracleServiceLayerRunStatus,
   OracleWhitespaceAnalysis,
 } from '../../types/oracle/index.js';
+import type { OracleWhitespaceRunSummary } from '../../types/oracle/whitespace-core.js';
+
+export const ORACLE_SERVICE_LAYER_HISTORY_LIMIT_DEFAULT = 20;
+export const ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX = 100;
 
 export interface OracleServiceLayerService {
   executeWhitespaceRun(input: ExecuteOracleServiceLayerRunInput): Promise<OracleServiceLayerRun>;
   getRunById(id: string): Promise<OracleServiceLayerRun | null>;
+  listRecentRuns(filter?: OracleServiceLayerRunHistoryFilter): Promise<OracleServiceLayerRunSummaryRow[]>;
 }
 
 export interface DbOracleServiceLayerRow {
@@ -35,6 +43,7 @@ export interface DbOracleServiceLayerRow {
 export interface OracleServiceLayerDb {
   insertRun(row: DbOracleServiceLayerRow): Promise<DbOracleServiceLayerRow>;
   findRunById(id: string): Promise<DbOracleServiceLayerRow | null>;
+  queryRuns(filter?: OracleServiceLayerRunHistoryFilter): Promise<DbOracleServiceLayerRow[]>;
   updateRun(id: string, patch: Partial<DbOracleServiceLayerRow>): Promise<DbOracleServiceLayerRow>;
 }
 
@@ -74,6 +83,32 @@ function rowToEntity(row: DbOracleServiceLayerRow): OracleServiceLayerRun {
     metadata: JSON.parse(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+  };
+}
+
+/**
+ * Lightweight mapper for history list responses.
+ * Parses only the `summary` field from `analysis_json` — avoids deserializing
+ * the full analysis payload and skips `metadata` entirely.
+ */
+function rowToHistoryRow(row: DbOracleServiceLayerRow): OracleServiceLayerRunSummaryRow {
+  let summary: OracleWhitespaceRunSummary | null = null;
+  if (row.analysis_json) {
+    try {
+      const parsed = JSON.parse(row.analysis_json) as { summary?: OracleWhitespaceRunSummary };
+      summary = parsed.summary ?? null;
+    } catch {
+      // ignore malformed JSON — summary stays null
+    }
+  }
+  return {
+    id: row.id,
+    entityAssetId: row.entity_asset_id,
+    runLabel: row.run_label,
+    status: row.status as OracleServiceLayerRunStatus,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    summary,
   };
 }
 
@@ -175,6 +210,17 @@ export function createOracleServiceLayerService(
     async getRunById(id) {
       const row = await db.findRunById(id);
       return row ? rowToEntity(row) : null;
+    },
+
+    async listRecentRuns(filter) {
+      const limit = filter?.limit ?? ORACLE_SERVICE_LAYER_HISTORY_LIMIT_DEFAULT;
+      if (!Number.isInteger(limit) || limit < 1 || limit > ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX) {
+        throw new Error(
+          `limit must be a positive integer between 1 and ${ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX}`,
+        );
+      }
+      const rows = await db.queryRuns({ ...filter, limit });
+      return rows.map(rowToHistoryRow);
     },
   };
 }

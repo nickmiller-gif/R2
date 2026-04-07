@@ -63,6 +63,8 @@ export {
 
 export {
   createOracleServiceLayerService,
+  ORACLE_SERVICE_LAYER_HISTORY_LIMIT_DEFAULT,
+  ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX,
   type OracleServiceLayerService,
   type OracleServiceLayerDb,
   type OracleServiceLayerDeps,
@@ -84,4 +86,7 @@ export {
   type DbOracleServiceLayerRunOutcomeRow,
 } from './oracle-service-layer-run-outcome.service.js';
 
-export { toOracleServiceLayerResultEnvelope } from './oracle-service-layer-api.service.js';
+export {
+  toOracleServiceLayerResultEnvelope,
+  toOracleServiceLayerRunHistoryItem,
+} from './oracle-service-layer-api.service.js';

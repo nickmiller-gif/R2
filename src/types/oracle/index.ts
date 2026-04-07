@@ -10,3 +10,4 @@ export * from './outcome.js';
 export * from './whitespace-core.js';
 
 export * from './service-layer.js';
+export * from './run-outcome.js';

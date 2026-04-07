@@ -77,4 +77,11 @@ export {
   type DbOracleServiceLayerRunDecisionRow,
 } from './oracle-service-layer-decision.service.js';
 
+export {
+  createOracleServiceLayerRunOutcomeService,
+  type OracleServiceLayerRunOutcomeService,
+  type OracleServiceLayerRunOutcomeDb,
+  type DbOracleServiceLayerRunOutcomeRow,
+} from './oracle-service-layer-run-outcome.service.js';
+
 export { toOracleServiceLayerResultEnvelope } from './oracle-service-layer-api.service.js';

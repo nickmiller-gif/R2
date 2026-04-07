@@ -37,6 +37,12 @@ function makeServiceLayerDb(): OracleServiceLayerDb & { rows: DbOracleServiceLay
     async findRunById(id) {
       return rows.find((row) => row.id === id) ?? null;
     },
+    async queryRuns(filter) {
+      return rows
+        .filter((row) => (filter?.entityAssetId ? row.entity_asset_id === filter.entityAssetId : true))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, filter?.limit ?? 20);
+    },
     async updateRun(id, patch) {
       const idx = rows.findIndex((row) => row.id === id);
       if (idx === -1) throw new Error(`service-layer run not found: ${id}`);

@@ -3,6 +3,7 @@ import type {
   OracleWhitespaceAnalysisInput,
   OracleWhitespaceRunSummary,
 } from './whitespace-core.js';
+import type { OracleServiceLayerRunOutcome } from './run-outcome.js';
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
 export type OracleOperatorDecisionStatus = 'pursue' | 'defer' | 'dismiss';
@@ -65,6 +66,24 @@ export interface OracleServiceLayerRun {
   metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+}
+
+
+export interface OracleServiceLayerRunHistoryFilter {
+  entityAssetId?: string;
+  limit?: number;
+}
+
+export interface OracleServiceLayerRunHistoryItem {
+  id: string;
+  status: OracleServiceLayerRunStatus;
+  entityAssetId: string;
+  runLabel: string;
+  createdAt: Date;
+  updatedAt: Date;
+  summary: OracleWhitespaceRunSummary | null;
+  operatorDecision: OracleServiceLayerRunDecision | null;
+  runOutcome: OracleServiceLayerRunOutcome | null;
 }
 
 export interface ExecuteOracleServiceLayerRunInput {

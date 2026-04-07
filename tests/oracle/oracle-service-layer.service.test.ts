@@ -18,6 +18,12 @@ function makeMockDb(): OracleServiceLayerDb & { rows: DbOracleServiceLayerRow[] 
     async findRunById(id) {
       return rows.find((row) => row.id === id) ?? null;
     },
+    async queryRuns(filter) {
+      return rows
+        .filter((row) => (filter?.entityAssetId ? row.entity_asset_id === filter.entityAssetId : true))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, filter?.limit ?? 20);
+    },
     async updateRun(id, patch) {
       const idx = rows.findIndex((row) => row.id === id);
       if (idx === -1) throw new Error(`run not found: ${id}`);
@@ -188,6 +194,9 @@ describe('OracleServiceLayerService', () => {
       async findRunById(id) {
         return db.rows.find((r) => r.id === id) ?? null;
       },
+      async queryRuns() {
+        return db.rows;
+      },
       async updateRun(id, patch) {
         updateCallCount++;
         if (patch.status === 'completed') throw new Error('DB constraint error');
@@ -214,6 +223,45 @@ describe('OracleServiceLayerService', () => {
     expect(deps.profileRun.fail).toHaveBeenCalledWith('profile-run-1');
     // updateRun called twice: once for 'completed' (throws), once for 'failed' (succeeds)
     expect(updateCallCount).toBe(2);
+  });
+
+
+
+  it('lists recent runs ordered by createdAt desc and filtered by entityAssetId', async () => {
+    const db = makeMockDb();
+    const deps = makeDeps();
+    const service = createOracleServiceLayerService(db, deps);
+
+    await service.executeWhitespaceRun({
+      entityAssetId: 'entity-a',
+      runLabel: 'older-a',
+      triggeredBy: 'operator@test',
+      analysisInput: { coverage: [] },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await service.executeWhitespaceRun({
+      entityAssetId: 'entity-b',
+      runLabel: 'b-only',
+      triggeredBy: 'operator@test',
+      analysisInput: { coverage: [] },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await service.executeWhitespaceRun({
+      entityAssetId: 'entity-a',
+      runLabel: 'newer-a',
+      triggeredBy: 'operator@test',
+      analysisInput: { coverage: [] },
+    });
+
+    const filtered = await service.listRecentRuns({ entityAssetId: 'entity-a', limit: 2 });
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((run) => run.runLabel)).toEqual(['newer-a', 'older-a']);
+    expect(filtered.every((run) => run.entityAssetId === 'entity-a')).toBe(true);
   });
 
   it('reads persisted service-layer runs by id', async () => {

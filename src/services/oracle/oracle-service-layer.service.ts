@@ -9,12 +9,14 @@ import { nowUtc } from '../../lib/provenance/clock.js';
 import type {
   ExecuteOracleServiceLayerRunInput,
   OracleServiceLayerRun,
+  OracleServiceLayerRunHistoryFilter,
   OracleWhitespaceAnalysis,
 } from '../../types/oracle/index.js';
 
 export interface OracleServiceLayerService {
   executeWhitespaceRun(input: ExecuteOracleServiceLayerRunInput): Promise<OracleServiceLayerRun>;
   getRunById(id: string): Promise<OracleServiceLayerRun | null>;
+  listRecentRuns(filter?: OracleServiceLayerRunHistoryFilter): Promise<OracleServiceLayerRun[]>;
 }
 
 export interface DbOracleServiceLayerRow {
@@ -35,6 +37,7 @@ export interface DbOracleServiceLayerRow {
 export interface OracleServiceLayerDb {
   insertRun(row: DbOracleServiceLayerRow): Promise<DbOracleServiceLayerRow>;
   findRunById(id: string): Promise<DbOracleServiceLayerRow | null>;
+  queryRuns(filter?: OracleServiceLayerRunHistoryFilter): Promise<DbOracleServiceLayerRow[]>;
   updateRun(id: string, patch: Partial<DbOracleServiceLayerRow>): Promise<DbOracleServiceLayerRow>;
 }
 
@@ -175,6 +178,11 @@ export function createOracleServiceLayerService(
     async getRunById(id) {
       const row = await db.findRunById(id);
       return row ? rowToEntity(row) : null;
+    },
+
+    async listRecentRuns(filter) {
+      const rows = await db.queryRuns(filter);
+      return rows.map(rowToEntity);
     },
   };
 }

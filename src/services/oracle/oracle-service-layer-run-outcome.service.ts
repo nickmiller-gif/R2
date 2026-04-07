@@ -75,11 +75,28 @@ function rowToEntity(row: DbOracleServiceLayerRunOutcomeRow): OracleServiceLayer
   };
 }
 
+function assertValidOutcomeRevenue(outcomeRevenue: number | null | undefined): void {
+  if (outcomeRevenue !== null && outcomeRevenue !== undefined && outcomeRevenue < 0) {
+    throw new Error('Outcome revenue cannot be negative.');
+  }
+}
+
+function assertValidOutcomeClosedAt(outcomeClosedAt: string | null | undefined): void {
+  if (outcomeClosedAt === null || outcomeClosedAt === undefined) return;
+  const parsed = new Date(outcomeClosedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Outcome closed timestamp must be a valid ISO-8601 datetime.');
+  }
+}
+
 export function createOracleServiceLayerRunOutcomeService(
   db: OracleServiceLayerRunOutcomeDb,
 ): OracleServiceLayerRunOutcomeService {
   return {
     async upsertOutcome(input) {
+      assertValidOutcomeRevenue(input.outcomeRevenue);
+      assertValidOutcomeClosedAt(input.outcomeClosedAt);
+
       const now = nowUtc().toISOString();
       const existing = await db.findOutcomeByRunId(input.oracleServiceLayerRunId);
       const row = await db.upsertOutcome({
@@ -102,6 +119,9 @@ export function createOracleServiceLayerRunOutcomeService(
     },
 
     async updateOutcome(id, input) {
+      assertValidOutcomeRevenue(input.outcomeRevenue);
+      assertValidOutcomeClosedAt(input.outcomeClosedAt);
+
       const now = nowUtc().toISOString();
       const patch: Partial<DbOracleServiceLayerRunOutcomeRow> = { updated_at: now };
       if (input.outcomeStatus !== undefined) patch.outcome_status = input.outcomeStatus;

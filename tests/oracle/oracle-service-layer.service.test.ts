@@ -280,4 +280,17 @@ describe('OracleServiceLayerService', () => {
     expect(fetched).not.toBeNull();
     expect(fetched?.id).toBe(created.id);
   });
+
+  it('rejects invalid history limit values', async () => {
+    const db = makeMockDb();
+    const deps = makeDeps();
+    const service = createOracleServiceLayerService(db, deps);
+
+    await expect(service.listRecentRuns({ limit: 0 })).rejects.toThrow(
+      /limit must be a positive integer/,
+    );
+    await expect(service.listRecentRuns({ limit: 101 })).rejects.toThrow(
+      /limit must be a positive integer/,
+    );
+  });
 });

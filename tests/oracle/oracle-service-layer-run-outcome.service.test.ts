@@ -237,4 +237,34 @@ describe('OracleServiceLayerRunOutcomeService', () => {
 
     expect(o1.id).not.toBe(o2.id);
   });
+
+  it('rejects negative outcomeRevenue on upsert', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+
+    await expect(
+      service.upsertOutcome({
+        oracleServiceLayerRunId: RUN_ID_1,
+        outcomeStatus: 'won',
+        outcomeRevenue: -1,
+        recordedBy: 'operator@test',
+      }),
+    ).rejects.toThrow('Outcome revenue cannot be negative.');
+  });
+
+  it('rejects invalid outcomeClosedAt on update', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+    const created = await service.upsertOutcome({
+      oracleServiceLayerRunId: RUN_ID_1,
+      outcomeStatus: 'pursued',
+      recordedBy: 'operator@test',
+    });
+
+    await expect(
+      service.updateOutcome(created.id, {
+        outcomeClosedAt: 'not-a-date',
+      }),
+    ).rejects.toThrow('Outcome closed timestamp must be a valid ISO-8601 datetime.');
+  });
 });

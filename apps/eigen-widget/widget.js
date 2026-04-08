@@ -3,6 +3,7 @@ const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
 const siteId = params.get('site_id') || '';
 const mode = params.get('mode') === 'eigenx' ? 'eigenx' : 'public';
 const theme = params.get('theme') || 'light';
+const parentOriginParam = (params.get('parent_origin') || '').replace(/\/+$/, '');
 
 const head = document.getElementById('head');
 const chat = document.getElementById('chat');
@@ -26,8 +27,12 @@ head.textContent = mode === 'public' ? `Public Eigen â€¢ ${siteId}` : `EigenX â€
 
 let widgetToken = '';
 let authBearer = '';
+const allowedParentOrigin = parentOriginParam.toLowerCase();
 
 window.addEventListener('message', (event) => {
+  if (allowedParentOrigin && event.origin.toLowerCase() !== allowedParentOrigin) {
+    return;
+  }
   const data = event.data || {};
   if (data && data.type === 'eigen_widget_auth' && typeof data.authBearer === 'string') {
     authBearer = data.authBearer;

@@ -40,6 +40,11 @@ Create an `eigen_site_registry` row for each website using the widget:
 - `default_policy_scope` (`["eigen_public"]` for public mode; include `eigenx` for private mode)
 - `status = active`
 
+You can automate this using:
+
+- `scripts/eigen-site-bootstrap.sh`
+- `make eigen-site-bootstrap` (requires env vars; see script header)
+
 ## 4) Embed snippet
 
 Use the hosted widget URL:
@@ -56,7 +61,8 @@ Use the hosted widget URL:
 For private EigenX mode:
 
 - Use `mode=eigenx`.
-- Parent page posts user bearer token to iframe (`eigen_widget_auth` message).
+- Add `parent_origin=https://your-site-origin.com` in the iframe URL.
+- Parent page posts user bearer token to iframe (`eigen_widget_auth` message) with strict `targetOrigin` matching that same parent origin (avoid `*`).
 - `eigen-widget-session` validates origin/site and member role before issuing session token.
 
 ## 5) Required Supabase environment

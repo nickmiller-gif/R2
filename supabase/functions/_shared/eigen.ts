@@ -36,6 +36,53 @@ function normalizeWhitespace(input: string): string {
   return input.replace(/\r\n/g, '\n').replace(/\t/g, ' ').replace(/[ ]{2,}/g, ' ').trim();
 }
 
+function readMaxChunkChars(): number {
+  const raw = Deno.env.get('EIGEN_INGEST_MAX_CHUNK_CHARS') ?? '6000';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 500) return 6000;
+  return Math.min(parsed, 20000);
+}
+
+function splitByMaxChars(input: string, maxChars: number): string[] {
+  const normalized = input.trim();
+  if (!normalized) return [];
+  if (normalized.length <= maxChars) return [normalized];
+
+  const pieces: string[] = [];
+  const paragraphs = normalized.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  let buffer = '';
+
+  const flush = () => {
+    const chunk = buffer.trim();
+    if (chunk) pieces.push(chunk);
+    buffer = '';
+  };
+
+  for (const paragraph of paragraphs) {
+    if (paragraph.length > maxChars) {
+      flush();
+      let offset = 0;
+      while (offset < paragraph.length) {
+        const part = paragraph.slice(offset, offset + maxChars).trim();
+        if (part) pieces.push(part);
+        offset += maxChars;
+      }
+      continue;
+    }
+
+    const next = buffer ? `${buffer}\n\n${paragraph}` : paragraph;
+    if (next.length <= maxChars) {
+      buffer = next;
+    } else {
+      flush();
+      buffer = paragraph;
+    }
+  }
+
+  flush();
+  return pieces;
+}
+
 function splitParagraphs(body: string): string[] {
   return normalizeWhitespace(body)
     .split(/\n{2,}/)
@@ -53,23 +100,45 @@ function splitClaims(paragraph: string): string[] {
 export function buildChunks(title: string, body: string, mode: 'hierarchical' | 'flat'): IngestChunk[] {
   const normalizedBody = normalizeWhitespace(body);
   if (!normalizedBody) return [];
+  const maxChunkChars = readMaxChunkChars();
 
-  const chunks: IngestChunk[] = [
-    {
+  const chunks: IngestChunk[] = [];
+  const documentParts = splitByMaxChars(normalizedBody, maxChunkChars);
+  if (documentParts.length === 1) {
+    chunks.push({
       chunkLevel: 'document',
       headingPath: [title],
-      content: normalizedBody,
-    },
-  ];
+      content: documentParts[0]!,
+    });
+  } else {
+    for (let i = 0; i < documentParts.length; i += 1) {
+      chunks.push({
+        chunkLevel: 'document',
+        headingPath: [title, `Document Part ${i + 1}`],
+        content: documentParts[i]!,
+      });
+    }
+  }
 
   const paragraphs = splitParagraphs(normalizedBody);
   if (mode === 'flat') {
     for (const paragraph of paragraphs) {
-      chunks.push({
-        chunkLevel: 'paragraph',
-        headingPath: [title],
-        content: paragraph,
-      });
+      const paragraphParts = splitByMaxChars(paragraph, maxChunkChars);
+      if (paragraphParts.length === 1) {
+        chunks.push({
+          chunkLevel: 'paragraph',
+          headingPath: [title],
+          content: paragraphParts[0]!,
+        });
+      } else {
+        for (let i = 0; i < paragraphParts.length; i += 1) {
+          chunks.push({
+            chunkLevel: 'paragraph',
+            headingPath: [title, `Paragraph Segment ${i + 1}`],
+            content: paragraphParts[i]!,
+          });
+        }
+      }
     }
     return chunks;
   }
@@ -79,20 +148,42 @@ export function buildChunks(title: string, body: string, mode: 'hierarchical' | 
     const sectionIndex = Math.floor(idx / sectionSize) + 1;
     const sectionParagraphs = paragraphs.slice(idx, idx + sectionSize);
     const sectionName = `Section ${sectionIndex}`;
-    chunks.push({
-      chunkLevel: 'section',
-      headingPath: [title, sectionName],
-      content: sectionParagraphs.join('\n\n'),
-    });
+    const sectionParts = splitByMaxChars(sectionParagraphs.join('\n\n'), maxChunkChars);
+    if (sectionParts.length === 1) {
+      chunks.push({
+        chunkLevel: 'section',
+        headingPath: [title, sectionName],
+        content: sectionParts[0]!,
+      });
+    } else {
+      for (let i = 0; i < sectionParts.length; i += 1) {
+        chunks.push({
+          chunkLevel: 'section',
+          headingPath: [title, sectionName, `Segment ${i + 1}`],
+          content: sectionParts[i]!,
+        });
+      }
+    }
 
     for (let paragraphIndex = 0; paragraphIndex < sectionParagraphs.length; paragraphIndex += 1) {
       const paragraph = sectionParagraphs[paragraphIndex]!;
       const paragraphName = `Paragraph ${idx + paragraphIndex + 1}`;
-      chunks.push({
-        chunkLevel: 'paragraph',
-        headingPath: [title, sectionName, paragraphName],
-        content: paragraph,
-      });
+      const paragraphParts = splitByMaxChars(paragraph, maxChunkChars);
+      if (paragraphParts.length === 1) {
+        chunks.push({
+          chunkLevel: 'paragraph',
+          headingPath: [title, sectionName, paragraphName],
+          content: paragraphParts[0]!,
+        });
+      } else {
+        for (let i = 0; i < paragraphParts.length; i += 1) {
+          chunks.push({
+            chunkLevel: 'paragraph',
+            headingPath: [title, sectionName, paragraphName, `Segment ${i + 1}`],
+            content: paragraphParts[i]!,
+          });
+        }
+      }
 
       const claims = splitClaims(paragraph);
       for (let claimIndex = 0; claimIndex < claims.length; claimIndex += 1) {
@@ -140,6 +231,20 @@ function readEmbeddingBatchConcurrency(): number {
   return Math.min(parsed, 12);
 }
 
+function readEmbeddingRetryMaxAttempts(): number {
+  const raw = Deno.env.get('EIGEN_EMBEDDING_RETRY_MAX_ATTEMPTS') ?? '4';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 4;
+  return Math.min(parsed, 8);
+}
+
+function readEmbeddingRetryBaseMs(): number {
+  const raw = Deno.env.get('EIGEN_EMBEDDING_RETRY_BASE_MS') ?? '400';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 50) return 400;
+  return Math.min(parsed, 5000);
+}
+
 function chunkStringArray(values: string[], chunkSize: number): string[][] {
   const out: string[][] = [];
   for (let i = 0; i < values.length; i += chunkSize) {
@@ -174,44 +279,56 @@ export async function embedTexts(
   const batches = chunkStringArray(texts, readEmbeddingInputBatchSize());
   const embeddings: number[][] = [];
   const concurrency = readEmbeddingBatchConcurrency();
+  const retryAttempts = readEmbeddingRetryMaxAttempts();
+  const retryBaseMs = readEmbeddingRetryBaseMs();
 
   const callEmbeddingBatch = async (batch: string[]): Promise<number[][]> => {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        input: batch,
-      }),
-    });
+    for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
+      const response = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          input: batch,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Embedding request failed: ${response.status} ${errorText}`);
-    }
-
-    const payload = await response.json() as {
-      data?: Array<{ index?: number; embedding?: number[] }>;
-    };
-    const rows = [...(payload.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-    if (rows.length !== batch.length) {
-      throw new Error(
-        `Embedding batch size mismatch: expected ${batch.length}, got ${rows.length}`,
-      );
-    }
-
-    const vectors: number[][] = [];
-    for (const row of rows) {
-      const embedding = row.embedding;
-      if (!embedding || embedding.length === 0) {
-        throw new Error('Embedding response missing vector data');
+      if (!response.ok) {
+        const errorText = await response.text();
+        const retryable = response.status === 429 || response.status >= 500;
+        if (retryable && attempt < retryAttempts) {
+          const backoff = retryBaseMs * 2 ** (attempt - 1);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+        throw new Error(`Embedding request failed: ${response.status} ${errorText}`);
       }
-      vectors.push(embedding);
+
+      const payload = await response.json() as {
+        data?: Array<{ index?: number; embedding?: number[] }>;
+      };
+      const rows = [...(payload.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      if (rows.length !== batch.length) {
+        throw new Error(
+          `Embedding batch size mismatch: expected ${batch.length}, got ${rows.length}`,
+        );
+      }
+
+      const vectors: number[][] = [];
+      for (const row of rows) {
+        const embedding = row.embedding;
+        if (!embedding || embedding.length === 0) {
+          throw new Error('Embedding response missing vector data');
+        }
+        vectors.push(embedding);
+      }
+      return vectors;
     }
-    return vectors;
+
+    throw new Error('Embedding request failed after retries');
   };
 
   for (let i = 0; i < batches.length; i += concurrency) {

@@ -1,0 +1,58 @@
+name: Eigen Ingest Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Incremental sync into Eigen
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      AUTH_BEARER: ${{ secrets.EIGEN_SYNC_AUTH_BEARER }}
+      INPUT_DIR: ${{ vars.EIGEN_SYNC_INPUT_DIR || 'knowledge' }}
+      SOURCE_SYSTEM: ${{ vars.EIGEN_SYNC_SOURCE_SYSTEM || 'eigen-sync' }}
+      SOURCE_REF_PREFIX: ${{ vars.EIGEN_SYNC_SOURCE_REF_PREFIX || 'sync' }}
+      CHUNKING_MODE: ${{ vars.EIGEN_SYNC_CHUNKING_MODE || 'hierarchical' }}
+      POLICY_TAGS: ${{ vars.EIGEN_SYNC_POLICY_TAGS || 'eigen_public' }}
+      ENTITY_IDS: ${{ vars.EIGEN_SYNC_ENTITY_IDS || '' }}
+      EMBEDDING_MODEL: ${{ vars.EIGEN_SYNC_EMBEDDING_MODEL || '' }}
+      ALLOWED_EXTENSIONS: ${{ vars.EIGEN_SYNC_ALLOWED_EXTENSIONS || '.txt,.md,.csv,.pdf,.docx' }}
+      MANIFEST_PATH: .cache/eigen-ingest-manifest.json
+      PRUNE_MANIFEST_MISSING: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Restore sync manifest cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/eigen-ingest-manifest.json
+          key: eigen-ingest-manifest-${{ github.run_id }}
+          restore-keys: |
+            eigen-ingest-manifest-
+
+      - name: Validate input directory
+        run: |
+          if [ ! -d "$INPUT_DIR" ]; then
+            echo "Missing INPUT_DIR: $INPUT_DIR"
+            exit 1
+          fi
+
+      - name: Run incremental ingest sync
+        run: ./scripts/eigen-ingest-sync.sh
+
+      - name: Save sync manifest cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/eigen-ingest-manifest.json
+          key: eigen-ingest-manifest-${{ github.run_id }}

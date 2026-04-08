@@ -34,6 +34,13 @@ interface IngestRequestBody {
   embedding_model?: string;
 }
 
+function readMaxBodyChars(): number {
+  const raw = Deno.env.get('EIGEN_INGEST_MAX_BODY_CHARS') ?? '2000000';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 5000) return 2_000_000;
+  return Math.min(parsed, 10_000_000);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -131,6 +138,7 @@ async function resolveDocumentPayload(
       extraction: {
         extracted_from: extracted.extractedFrom,
         byte_length: extracted.byteLength,
+        truncated: extracted.truncated,
         storage_bucket: bucket,
         storage_path: path,
       },
@@ -181,6 +189,7 @@ async function parseMultipartRequest(
     extractionMeta = {
       extracted_from: extracted.extractedFrom,
       byte_length: extracted.byteLength,
+      truncated: extracted.truncated,
       file_name: fileValue.name,
     };
   }
@@ -280,6 +289,13 @@ serve(async (req) => {
     const requestMeta = extractRequestMeta(req);
     const client = getServiceClient();
     const requestBody = await parseRequest(req, client);
+    const maxBodyChars = readMaxBodyChars();
+    if (requestBody.document.body.length > maxBodyChars) {
+      return errorResponse(
+        `document.body exceeds ${maxBodyChars} chars; split into multiple documents or increase EIGEN_INGEST_MAX_BODY_CHARS`,
+        400,
+      );
+    }
     const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
 
     const effectiveEmbeddingModel =

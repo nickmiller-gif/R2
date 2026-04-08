@@ -626,6 +626,97 @@ export type Database = {
         }
         Relationships: []
       }
+      client_user_assignments: {
+        Row: {
+          assigned_at: string | null
+          client_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          client_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          client_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_user_assignments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          industry: string | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          industry?: string | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          industry?: string | null
+          name?: string
+        }
+        Relationships: []
+      }
+      competitors: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          website: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          website?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competitors_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           body: string
@@ -692,6 +783,110 @@ export type Database = {
         }
         Relationships: []
       }
+      embedding_job_log: {
+        Row: {
+          chunk_id: string
+          content_hash: string
+          embedding_model: string
+          processed_at: string
+        }
+        Insert: {
+          chunk_id: string
+          content_hash: string
+          embedding_model?: string
+          processed_at?: string
+        }
+        Update: {
+          chunk_id?: string
+          content_hash?: string
+          embedding_model?: string
+          processed_at?: string
+        }
+        Relationships: []
+      }
+      emerging_signals: {
+        Row: {
+          category: string
+          compound_name: string
+          confidence_score: number
+          created_at: string
+          emergence_score: number
+          id: string
+          potential_benefits: string[] | null
+          research_links: string[] | null
+          research_phase: string
+          research_summary: string
+          signal_strength: number
+          time_to_trend: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          compound_name: string
+          confidence_score?: number
+          created_at?: string
+          emergence_score?: number
+          id: string
+          potential_benefits?: string[] | null
+          research_links?: string[] | null
+          research_phase: string
+          research_summary?: string
+          signal_strength?: number
+          time_to_trend?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          compound_name?: string
+          confidence_score?: number
+          created_at?: string
+          emergence_score?: number
+          id?: string
+          potential_benefits?: string[] | null
+          research_links?: string[] | null
+          research_phase?: string
+          research_summary?: string
+          signal_strength?: number
+          time_to_trend?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ip_analytics_workspaces: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+          workspace_data: Json | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+          workspace_data?: Json | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+          workspace_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ip_analytics_workspaces_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_chunks: {
         Row: {
           authority_score: number
@@ -700,9 +895,11 @@ export type Database = {
           content_hash: string
           created_at: string
           document_id: string
+          embedding: string | null
           embedding_version: string | null
           entity_ids: Json
           freshness_score: number
+          fts: unknown
           heading_path: Json
           id: string
           ingestion_run_id: string | null
@@ -720,9 +917,11 @@ export type Database = {
           content_hash: string
           created_at?: string
           document_id: string
+          embedding?: string | null
           embedding_version?: string | null
           entity_ids?: Json
           freshness_score?: number
+          fts?: unknown
           heading_path?: Json
           id?: string
           ingestion_run_id?: string | null
@@ -740,9 +939,11 @@ export type Database = {
           content_hash?: string
           created_at?: string
           document_id?: string
+          embedding?: string | null
           embedding_version?: string | null
           entity_ids?: Json
           freshness_score?: number
+          fts?: unknown
           heading_path?: Json
           id?: string
           ingestion_run_id?: string | null
@@ -1089,6 +1290,111 @@ export type Database = {
           },
         ]
       }
+      oracle_profile_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          entity_asset_id: string
+          id: string
+          metadata: Json
+          signal_count: number
+          started_at: string | null
+          status: string
+          summary: string | null
+          top_score: number | null
+          triggered_by: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          entity_asset_id: string
+          id?: string
+          metadata?: Json
+          signal_count?: number
+          started_at?: string | null
+          status?: string
+          summary?: string | null
+          top_score?: number | null
+          triggered_by: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          entity_asset_id?: string
+          id?: string
+          metadata?: Json
+          signal_count?: number
+          started_at?: string | null
+          status?: string
+          summary?: string | null
+          top_score?: number | null
+          triggered_by?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      oracle_service_layer_runs: {
+        Row: {
+          analysis_json: Json | null
+          created_at: string
+          entity_asset_id: string
+          error_message: string | null
+          id: string
+          metadata: Json
+          profile_run_id: string
+          run_label: string
+          status: string
+          triggered_by: string
+          updated_at: string
+          whitespace_run_id: string | null
+        }
+        Insert: {
+          analysis_json?: Json | null
+          created_at?: string
+          entity_asset_id: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          profile_run_id: string
+          run_label: string
+          status?: string
+          triggered_by: string
+          updated_at?: string
+          whitespace_run_id?: string | null
+        }
+        Update: {
+          analysis_json?: Json | null
+          created_at?: string
+          entity_asset_id?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          profile_run_id?: string
+          run_label?: string
+          status?: string
+          triggered_by?: string
+          updated_at?: string
+          whitespace_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_service_layer_runs_profile_run_id_fkey"
+            columns: ["profile_run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_profile_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_service_layer_runs_whitespace_run_id_fkey"
+            columns: ["whitespace_run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_core_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       oracle_signals: {
         Row: {
           analysis_document_id: string | null
@@ -1382,6 +1688,33 @@ export type Database = {
           },
         ]
       }
+      oracle_whitespace_core_runs: {
+        Row: {
+          analysis_json: Json
+          created_at: string
+          entity_asset_id: string
+          id: string
+          run_label: string
+          updated_at: string
+        }
+        Insert: {
+          analysis_json?: Json
+          created_at?: string
+          entity_asset_id: string
+          id?: string
+          run_label: string
+          updated_at?: string
+        }
+        Update: {
+          analysis_json?: Json
+          created_at?: string
+          entity_asset_id?: string
+          id?: string
+          run_label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       retrieval_runs: {
         Row: {
           budget_profile: Json
@@ -1424,6 +1757,96 @@ export type Database = {
           metadata?: Json
           query_hash?: string
           status?: Database["public"]["Enums"]["retrieval_run_status"]
+        }
+        Relationships: []
+      }
+      supplement_combinations: {
+        Row: {
+          ai_insight: string | null
+          created_at: string
+          description: string
+          discussion_links: Json | null
+          id: string
+          name: string
+          popularity_score: number
+          purpose: string
+          references: string[] | null
+          supplement_ids: string[]
+          trend_data: number[]
+          trend_direction: string
+          updated_at: string
+        }
+        Insert: {
+          ai_insight?: string | null
+          created_at?: string
+          description?: string
+          discussion_links?: Json | null
+          id: string
+          name: string
+          popularity_score?: number
+          purpose?: string
+          references?: string[] | null
+          supplement_ids?: string[]
+          trend_data?: number[]
+          trend_direction: string
+          updated_at?: string
+        }
+        Update: {
+          ai_insight?: string | null
+          created_at?: string
+          description?: string
+          discussion_links?: Json | null
+          id?: string
+          name?: string
+          popularity_score?: number
+          purpose?: string
+          references?: string[] | null
+          supplement_ids?: string[]
+          trend_data?: number[]
+          trend_direction?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      supplements: {
+        Row: {
+          ai_insight: string | null
+          category: string
+          created_at: string
+          description: string
+          discussion_links: Json | null
+          id: string
+          name: string
+          popularity_score: number
+          trend_data: number[]
+          trend_direction: string
+          updated_at: string
+        }
+        Insert: {
+          ai_insight?: string | null
+          category: string
+          created_at?: string
+          description?: string
+          discussion_links?: Json | null
+          id: string
+          name: string
+          popularity_score?: number
+          trend_data?: number[]
+          trend_direction: string
+          updated_at?: string
+        }
+        Update: {
+          ai_insight?: string | null
+          category?: string
+          created_at?: string
+          description?: string
+          discussion_links?: Json | null
+          id?: string
+          name?: string
+          popularity_score?: number
+          trend_data?: number[]
+          trend_direction?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1475,6 +1898,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       charter_audit_log: {
@@ -1500,9 +1944,66 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      algorithm_sign: {
+        Args: { algorithm: string; secret: string; signables: string }
+        Returns: string
+      }
+      dispatch_embedding_jobs: { Args: never; Returns: undefined }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      hybrid_search: {
+        Args: {
+          filter_owner_id?: string
+          full_text_weight?: number
+          match_count?: number
+          query_embedding: string
+          query_text: string
+          rrf_k?: number
+          semantic_weight?: number
+        }
+        Returns: {
+          authority_score: number
+          chunk_level: string
+          content: string
+          document_id: string
+          entity_ids: Json
+          freshness_score: number
+          heading_path: Json
+          id: string
+          score: number
+        }[]
+      }
+      is_assigned_to_client: {
+        Args: { _client_id: string; _user_id: string }
+        Returns: boolean
+      }
+      pgmq_delete: {
+        Args: { msg_id: number; queue_name: string }
+        Returns: boolean
+      }
+      sign: {
+        Args: { algorithm?: string; payload: Json; secret: string }
+        Returns: string
+      }
+      try_cast_double: { Args: { inp: string }; Returns: number }
+      url_decode: { Args: { data: string }; Returns: string }
+      url_encode: { Args: { data: string }; Returns: string }
+      verify: {
+        Args: { algorithm?: string; secret: string; token: string }
+        Returns: {
+          header: Json
+          payload: Json
+          valid: boolean
+        }[]
+      }
     }
     Enums: {
+      app_role: "admin" | "analyst" | "viewer"
       approval_policy: "none_required" | "user_approval" | "admin_approval"
       asset_kind:
         | "idea_submission"
@@ -1760,6 +2261,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "analyst", "viewer"],
       approval_policy: ["none_required", "user_approval", "admin_approval"],
       asset_kind: [
         "idea_submission",
@@ -1909,3 +2411,4 @@ export const Constants = {
     },
   },
 } as const
+

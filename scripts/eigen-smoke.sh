@@ -22,10 +22,10 @@ PY
 public_resp=$(curl -sS -X POST "$PUBLIC_URL" -H "Content-Type: application/json" --data "$public_payload")
 echo "$public_resp"
 
-if ! echo "$public_resp" | python3 - <<'PY'
+if ! python3 - "$public_resp" <<'PY'
 import json, sys
 try:
-    body = json.loads(sys.stdin.read())
+    body = json.loads(sys.argv[1])
 except Exception:
     raise SystemExit(1)
 if "response" not in body:
@@ -58,10 +58,10 @@ eigenx_resp=$(curl -sS -X POST "$EIGENX_URL" \
   --data "$eigenx_payload")
 echo "$eigenx_resp"
 
-if ! echo "$eigenx_resp" | python3 - <<'PY'
+if ! python3 - "$eigenx_resp" <<'PY'
 import json, sys
 try:
-    body = json.loads(sys.stdin.read())
+    body = json.loads(sys.argv[1])
 except Exception:
     raise SystemExit(1)
 if "response" not in body or "retrieval_run_id" not in body:

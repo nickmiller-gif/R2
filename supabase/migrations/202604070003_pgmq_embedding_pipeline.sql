@@ -124,9 +124,9 @@ BEGIN
 END;
 $$;
 
--- 7. Schedule dispatcher to run every 10 seconds
+-- 7. Schedule dispatcher to run every minute using a standard pg_cron expression
 SELECT cron.schedule(
   'dispatch-embedding-jobs',
-  '10 seconds',
+  '* * * * *',
   $$SELECT public.dispatch_embedding_jobs()$$
 );

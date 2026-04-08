@@ -88,6 +88,9 @@ export function rerankByAuthority(
 
   // Normalize weights
   const total = w.retrieval + w.authority + w.freshness;
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new Error('Authority rerank weights must sum to a positive finite value.');
+  }
   w.retrieval /= total;
   w.authority /= total;
   w.freshness /= total;

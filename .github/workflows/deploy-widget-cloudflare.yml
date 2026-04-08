@@ -1,0 +1,38 @@
+name: Deploy Eigen Widget (Cloudflare Pages)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/eigen-widget/**"
+      - ".github/workflows/deploy-widget-cloudflare.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_widget:
+    name: Deploy widget to Cloudflare Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy static widget directory
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/eigen-widget --project-name=${{ secrets.CLOUDFLARE_PAGES_PROJECT_EIGEN_WIDGET }} --branch=main
+
+      - name: Deployment summary
+        run: |
+          echo "## Cloudflare Widget Deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Project secret: \`CLOUDFLARE_PAGES_PROJECT_EIGEN_WIDGET\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source path: \`apps/eigen-widget\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

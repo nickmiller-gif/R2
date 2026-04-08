@@ -1,5 +1,7 @@
 # Eigen iframe widget (Phase 1)
 
+Recommended host: **Cloudflare Pages** (see `docs/eigen-widget-hosting-cloudflare-pages.md`).
+
 Host `apps/eigen-widget` on a static origin and embed with:
 
 ```html

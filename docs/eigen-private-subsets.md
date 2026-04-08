@@ -58,3 +58,7 @@ For subset docs, ingest with specific tags:
 For broad private access docs, keep `eigenx`.
 
 For per-user supplements (members without full-access roles), tag chunks with `eigenx:user:<user_uuid>` (same UUID as `auth.users.id`).
+
+### Migration
+
+If you previously relied on “no grants = everyone searches full `eigenx`”, deploy only after: (1) org corpus stays tagged `eigenx` (or your `EIGENX_DEFAULT_POLICY_SCOPE`), (2) every user who should still see that corpus has role `admin` or is listed in `EIGENX_FULL_ACCESS_ROLES`, (3) personal material for everyone else is ingested under `eigenx:user:<their id>`.

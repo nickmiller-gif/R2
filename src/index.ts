@@ -33,6 +33,7 @@ export * from './services/meg/index.js';
 // ── Eigen / EigenX (Knowledge Operating System) ──────────────────────
 export * from './types/eigen/index.js';
 export * from './services/eigen/index.js';
+export * from './adapters/index.js';
 
 // ── Library Primitives ───────────────────────────────────────────────
 export { hashPayload, genesisChainHash, nextChainHash } from './lib/provenance/hash.js';
@@ -47,6 +48,7 @@ export {
   intersectTimeWindows,
 } from './lib/temporal/index.js';
 export { makeEntityRef, entityRefKey, entityRefsEqual, makeAlias, findAlias, aliasIndex, normalizeActor, type MegIdentity } from './lib/identity/index.js';
+export * from './lib/eigen/index.js';
 
 // ── Oracle Intelligence Primitives ───────────────────────────────────
 export * from './lib/oracle/index.js';

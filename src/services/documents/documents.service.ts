@@ -29,6 +29,7 @@ export interface DocumentsService {
 export interface DbDocumentRow {
   id: string;
   source_system: string;
+  source_ref: string | null;
   owner_id: string;
   title: string;
   body: string;
@@ -59,6 +60,7 @@ function rowToDocument(row: DbDocumentRow): Document {
   return {
     id: row.id,
     sourceSystem: row.source_system,
+    sourceRef: row.source_ref ?? null,
     ownerId: row.owner_id,
     title: row.title,
     body: row.body,
@@ -88,6 +90,7 @@ export function createDocumentsService(db: DocumentsDb): DocumentsService {
       const row = await db.insertDocument({
         id: crypto.randomUUID(),
         source_system: input.sourceSystem,
+        source_ref: input.sourceRef ?? null,
         owner_id: input.ownerId,
         title: input.title,
         body: input.body,

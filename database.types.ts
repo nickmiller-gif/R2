@@ -640,6 +640,7 @@ export type Database = {
           index_status: Database["public"]["Enums"]["index_status"]
           indexed_at: string | null
           owner_id: string
+          source_ref: string | null
           source_system: string
           source_title: string | null
           source_url: string | null
@@ -661,6 +662,7 @@ export type Database = {
           index_status?: Database["public"]["Enums"]["index_status"]
           indexed_at?: string | null
           owner_id: string
+          source_ref?: string | null
           source_system: string
           source_title?: string | null
           source_url?: string | null
@@ -682,6 +684,7 @@ export type Database = {
           index_status?: Database["public"]["Enums"]["index_status"]
           indexed_at?: string | null
           owner_id?: string
+          source_ref?: string | null
           source_system?: string
           source_title?: string | null
           source_url?: string | null
@@ -692,6 +695,162 @@ export type Database = {
         }
         Relationships: []
       }
+      eigen_chat_sessions: {
+        Row: {
+          created_at: string
+          entity_scope: Json
+          id: string
+          last_retrieval_run_id: string | null
+          metadata: Json
+          owner_id: string
+          policy_scope: Json
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entity_scope?: Json
+          id?: string
+          last_retrieval_run_id?: string | null
+          metadata?: Json
+          owner_id: string
+          policy_scope?: Json
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entity_scope?: Json
+          id?: string
+          last_retrieval_run_id?: string | null
+          metadata?: Json
+          owner_id?: string
+          policy_scope?: Json
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_chat_sessions_last_retrieval_run_id_fkey"
+            columns: ["last_retrieval_run_id"]
+            isOneToOne: false
+            referencedRelation: "retrieval_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eigen_oracle_outbox: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          correlation_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          idempotency_key: string
+          oracle_signal_id: string | null
+          payload: Json
+          processed_at: string | null
+          source_document_id: string | null
+          source_ref: string
+          source_system: string
+          status: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          idempotency_key: string
+          oracle_signal_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source_document_id?: string | null
+          source_ref: string
+          source_system: string
+          status?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          oracle_signal_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source_document_id?: string | null
+          source_ref?: string
+          source_system?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_oracle_outbox_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingestion_runs: {
+        Row: {
+          chunk_count: number
+          chunking_mode: string
+          completed_at: string | null
+          created_at: string
+          document_id: string | null
+          embedding_model: string
+          id: string
+          metadata: Json
+          source_ref: string
+          source_system: string
+          started_at: string
+          status: Database["public"]["Enums"]["ingestion_run_status"]
+        }
+        Insert: {
+          chunk_count?: number
+          chunking_mode?: string
+          completed_at?: string | null
+          created_at?: string
+          document_id?: string | null
+          embedding_model?: string
+          id?: string
+          metadata?: Json
+          source_ref: string
+          source_system: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["ingestion_run_status"]
+        }
+        Update: {
+          chunk_count?: number
+          chunking_mode?: string
+          completed_at?: string | null
+          created_at?: string
+          document_id?: string | null
+          embedding_model?: string
+          id?: string
+          metadata?: Json
+          source_ref?: string
+          source_system?: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["ingestion_run_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_runs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_chunks: {
         Row: {
           authority_score: number
@@ -700,12 +859,15 @@ export type Database = {
           content_hash: string
           created_at: string
           document_id: string
+          embedding: string | null
           embedding_version: string | null
           entity_ids: Json
           freshness_score: number
           heading_path: Json
           id: string
           ingestion_run_id: string | null
+          oracle_relevance_score: number | null
+          oracle_signal_id: string | null
           parent_chunk_id: string | null
           policy_tags: Json
           provenance_completeness: number
@@ -720,12 +882,15 @@ export type Database = {
           content_hash: string
           created_at?: string
           document_id: string
+          embedding?: string | null
           embedding_version?: string | null
           entity_ids?: Json
           freshness_score?: number
           heading_path?: Json
           id?: string
           ingestion_run_id?: string | null
+          oracle_relevance_score?: number | null
+          oracle_signal_id?: string | null
           parent_chunk_id?: string | null
           policy_tags?: Json
           provenance_completeness?: number
@@ -740,12 +905,15 @@ export type Database = {
           content_hash?: string
           created_at?: string
           document_id?: string
+          embedding?: string | null
           embedding_version?: string | null
           entity_ids?: Json
           freshness_score?: number
           heading_path?: Json
           id?: string
           ingestion_run_id?: string | null
+          oracle_relevance_score?: number | null
+          oracle_signal_id?: string | null
           parent_chunk_id?: string | null
           policy_tags?: Json
           provenance_completeness?: number
@@ -1394,6 +1562,7 @@ export type Database = {
           id: string
           latency_ms: number
           metadata: Json
+          oracle_context: Json
           query_hash: string
           status: Database["public"]["Enums"]["retrieval_run_status"]
         }
@@ -1408,6 +1577,7 @@ export type Database = {
           id?: string
           latency_ms?: number
           metadata?: Json
+          oracle_context?: Json
           query_hash: string
           status?: Database["public"]["Enums"]["retrieval_run_status"]
         }
@@ -1422,6 +1592,7 @@ export type Database = {
           id?: string
           latency_ms?: number
           metadata?: Json
+          oracle_context?: Json
           query_hash?: string
           status?: Database["public"]["Enums"]["retrieval_run_status"]
         }
@@ -1500,7 +1671,16 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      match_knowledge_chunks: {
+        Args: {
+          ann_limit: number
+          filter_entity_ids?: string[] | null
+          filter_policy_tags?: string[] | null
+          query_embedding: number[]
+          valid_at?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       approval_policy: "none_required" | "user_approval" | "admin_approval"
@@ -1553,6 +1733,7 @@ export type Database = {
         | "not_applicable"
       governance_entity_kind: "charter" | "policy" | "rule" | "amendment"
       governance_status: "draft" | "active" | "superseded" | "revoked"
+      ingestion_run_status: "pending" | "running" | "completed" | "failed"
       index_status: "pending" | "indexed" | "failed" | "stale"
       meg_alias_kind:
         | "slug"
@@ -1815,6 +1996,7 @@ export const Constants = {
       ],
       governance_entity_kind: ["charter", "policy", "rule", "amendment"],
       governance_status: ["draft", "active", "superseded", "revoked"],
+      ingestion_run_status: ["pending", "running", "completed", "failed"],
       index_status: ["pending", "indexed", "failed", "stale"],
       meg_alias_kind: [
         "slug",

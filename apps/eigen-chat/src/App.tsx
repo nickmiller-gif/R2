@@ -85,6 +85,24 @@ interface IngestResponse {
 type IngestCorpusTier = 'eigenx' | 'public';
 type ChatTier = 'eigenx' | 'public';
 
+interface SourceInventorySummary {
+  source_system: string;
+  document_count: number;
+  chunk_count: number;
+  public_document_count: number;
+  eigenx_document_count: number;
+  latest_updated_at: string | null;
+  sample_source_refs: string[];
+}
+
+interface SourceInventoryResponse {
+  generated_at: string;
+  mode: 'all' | 'public';
+  total_documents: number;
+  total_chunks: number;
+  sources: SourceInventorySummary[];
+}
+
 function getApiBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
   if (fromEnv && fromEnv.length > 0) {
@@ -111,6 +129,8 @@ export function App() {
   const [isStreamingChat, setIsStreamingChat] = useState(false);
   const [chatResult, setChatResult] = useState<ChatResponse | null>(null);
   const [streamChatError, setStreamChatError] = useState<string | null>(null);
+  const [sourceInventory, setSourceInventory] = useState<SourceInventoryResponse | null>(null);
+  const [sourceInventoryError, setSourceInventoryError] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
@@ -193,6 +213,32 @@ export function App() {
     },
     onSuccess: () => {
       setIngestLocalError(null);
+    },
+  });
+
+  const sourceInventoryMutation = useMutation({
+    mutationFn: async (tier: ChatTier) => {
+      const endpoint = tier === 'public' ? 'eigen-public-sources' : 'eigen-source-inventory';
+      const headers: HeadersInit = {};
+      if (tier === 'eigenx') {
+        headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
+      }
+      const response = await fetch(`${apiBaseUrl}/${endpoint}`, { method: 'GET', headers });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+      }
+      return (await response.json()) as SourceInventoryResponse;
+    },
+    onMutate: () => {
+      setSourceInventoryError(null);
+    },
+    onSuccess: (result) => {
+      setSourceInventory(result);
+      setSourceInventoryError(null);
+    },
+    onError: (err) => {
+      setSourceInventoryError(err instanceof Error ? err.message : 'Failed to load sources');
     },
   });
 
@@ -422,6 +468,70 @@ export function App() {
           {chatMutation.isPending || isStreamingChat ? 'Asking...' : 'Ask Eigen'}
         </button>
       </form>
+
+      <section
+        style={{
+          marginTop: 20,
+          padding: 16,
+          border: '1px solid #e2e8f0',
+          borderRadius: 8,
+          background: '#fff',
+        }}
+      >
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Source inventory</h2>
+        <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
+          View which ingested sources each chatbot tier can currently retrieve from.
+        </p>
+        <button
+          type="button"
+          onClick={() => sourceInventoryMutation.mutate(chatTier)}
+          disabled={sourceInventoryMutation.isPending}
+          style={{ padding: 10, width: 220 }}
+        >
+          {sourceInventoryMutation.isPending ? 'Loading sources...' : `Load ${chatTier} sources`}
+        </button>
+        {sourceInventoryError ? (
+          <pre style={{ marginTop: 12, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>
+            {sourceInventoryError}
+          </pre>
+        ) : null}
+        {sourceInventory ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ color: '#334155', marginBottom: 8 }}>
+              Mode: <code>{sourceInventory.mode}</code> | Documents: <strong>{sourceInventory.total_documents}</strong>{' '}
+              | Chunks: <strong>{sourceInventory.total_chunks}</strong>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Source system</th>
+                  <th style={{ textAlign: 'right', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Docs</th>
+                  <th style={{ textAlign: 'right', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Chunks</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Sample refs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sourceInventory.sources.map((source) => (
+                  <tr key={source.source_system}>
+                    <td style={{ padding: 6, borderBottom: '1px solid #f1f5f9' }}>
+                      <code>{source.source_system}</code>
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
+                      {source.document_count}
+                    </td>
+                    <td style={{ padding: 6, textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
+                      {source.chunk_count}
+                    </td>
+                    <td style={{ padding: 6, borderBottom: '1px solid #f1f5f9' }}>
+                      {source.sample_source_refs.length > 0 ? source.sample_source_refs.join(', ') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       {chatMutation.isError ? (
         <pre style={{ marginTop: 18, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>

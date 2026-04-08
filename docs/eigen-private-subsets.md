@@ -6,10 +6,19 @@ EigenX now supports per-user and per-role private subset access using policy tag
 
 - Private chunks are tagged with policy tags in `knowledge_chunks.policy_tags`.
 - Access grants live in `eigen_policy_access_grants`.
-- On `eigen-chat` and `eigen-widget-chat`, policy scope is resolved server-side:
-  - If no grants exist for the user/roles, behavior is backward-compatible.
-  - If grants exist, effective scope is restricted to granted tags only.
-  - If no granted overlap remains, request is denied (`403`).
+- On `eigen-chat`, `eigen-retrieve`, and `eigen-widget-session` (eigenx mode), the server picks a **base** policy scope, then intersects with grants when grants exist.
+
+### Default scope (recommended operations model)
+
+- **Full-access roles** (env `EIGENX_FULL_ACCESS_ROLES`, default `admin`) use the org default: `EIGENX_DEFAULT_POLICY_SCOPE` or `eigenx`. No per-user tagging required for org-wide corpus.
+- **All other members** default to **personal supplements only**: `eigenx:user:<their Supabase user id>`. Ingest user-specific material with that tag. They cannot widen scope by sending a different `policy_scope` from the client (only the same tag or `eigenx:user:<id>:*` sub-tags).
+- **Site administration**: assign `admin` (or add roles to `EIGENX_FULL_ACCESS_ROLES`, e.g. `admin,operator`) so those users see the full org index without maintaining grants for each person.
+
+### Grants (`eigen_policy_access_grants`)
+
+- If **no** grant rows apply to the user, full-access users keep the org default; limited users keep `eigenx:user:<id>` only.
+- If grants exist, effective scope is the intersection of the requested tags with granted tags.
+- If that intersection is empty, the request is denied (`403`).
 
 ## Grant model
 
@@ -47,3 +56,5 @@ For subset docs, ingest with specific tags:
 - `eigenx:ops`
 
 For broad private access docs, keep `eigenx`.
+
+For per-user supplements (members without full-access roles), tag chunks with `eigenx:user:<user_uuid>` (same UUID as `auth.users.id`).

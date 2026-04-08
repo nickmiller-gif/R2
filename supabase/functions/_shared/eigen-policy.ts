@@ -1,6 +1,11 @@
 export const POLICY_TAG_EIGEN_PUBLIC = 'eigen_public';
 export const POLICY_TAG_EIGENX = 'eigenx';
 
+/** Per-user private supplements in `knowledge_chunks.policy_tags` (see eigenx-scope.ts). */
+export function policyTagEigenxUser(userId: string): string {
+  return `eigenx:user:${userId}`;
+}
+
 export type EigenCorpusTier = 'public' | 'eigenx';
 
 /**

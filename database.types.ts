@@ -1668,7 +1668,16 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      match_knowledge_chunks: {
+        Args: {
+          ann_limit: number
+          filter_entity_ids?: string[] | null
+          filter_policy_tags?: string[] | null
+          query_embedding: number[]
+          valid_at?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       approval_policy: "none_required" | "user_approval" | "admin_approval"

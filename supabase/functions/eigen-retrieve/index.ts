@@ -3,15 +3,7 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
-import {
-  embedText,
-  cosineSimilarity,
-  hasFilterOverlap,
-  parseEmbedding,
-  scoreCandidate,
-  withinTemporalWindow,
-  sha256Hex,
-} from '../_shared/eigen.ts';
+import { embedText, scoreCandidate, sha256Hex } from '../_shared/eigen.ts';
 
 interface RetrieveRequest {
   query: string;
@@ -24,6 +16,30 @@ interface RetrieveRequest {
   };
   rerank?: boolean;
   include_provenance?: boolean;
+}
+
+interface MatchChunkRow {
+  id: string;
+  document_id: string;
+  chunk_level: string;
+  heading_path: unknown;
+  entity_ids: unknown;
+  policy_tags: unknown;
+  valid_from: string | null;
+  valid_to: string | null;
+  authority_score: number;
+  freshness_score: number;
+  provenance_completeness: number;
+  content: string;
+  ingestion_run_id: string | null;
+  source_system: string;
+  similarity: number;
+}
+
+interface MatchKnowledgeChunksPayload {
+  ann_row_count: number;
+  passed_row_count: number;
+  chunks: MatchChunkRow[];
 }
 
 function normalizeList(value: unknown): string[] {
@@ -71,6 +87,19 @@ function parseRequest(body: unknown): RetrieveRequest {
   };
 }
 
+function parseMatchPayload(raw: unknown): MatchKnowledgeChunksPayload {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('match_knowledge_chunks returned invalid payload');
+  }
+  const o = raw as Record<string, unknown>;
+  const chunks = Array.isArray(o.chunks) ? o.chunks : [];
+  return {
+    ann_row_count: typeof o.ann_row_count === 'number' ? o.ann_row_count : 0,
+    passed_row_count: typeof o.passed_row_count === 'number' ? o.passed_row_count : 0,
+    chunks: chunks as MatchChunkRow[],
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
@@ -89,8 +118,9 @@ serve(async (req) => {
   try {
     const payload = parseRequest(await req.json());
     const maxChunks = Math.max(1, payload.budget_profile?.max_chunks ?? 20);
-    const candidateLimit = Math.max(maxChunks * 3, 30);
+    const annLimit = Math.min(Math.max(maxChunks * 8, 100), 500);
     const queryHash = await sha256Hex(payload.query);
+    const nowIso = new Date().toISOString();
 
     const runInsert = await client
       .from('retrieval_runs')
@@ -114,56 +144,49 @@ serve(async (req) => {
 
     const { embedding: queryEmbedding } = await embedText(payload.query);
 
-    const chunkQuery = await client
-      .from('knowledge_chunks')
-      .select(
-        'id,document_id,chunk_level,heading_path,entity_ids,policy_tags,valid_from,valid_to,authority_score,freshness_score,provenance_completeness,content,embedding,ingestion_run_id,documents(source_system)',
-      )
-      .not('embedding', 'is', null)
-      .limit(Math.max(candidateLimit * 6, 120));
+    const rpcResult = await client.rpc('match_knowledge_chunks', {
+      query_embedding: queryEmbedding,
+      ann_limit: annLimit,
+      filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
+      filter_policy_tags: payload.policy_scope?.length ? payload.policy_scope : null,
+      valid_at: nowIso,
+    });
 
-    if (chunkQuery.error) return errorResponse(chunkQuery.error.message, 400);
+    if (rpcResult.error) return errorResponse(rpcResult.error.message, 400);
 
-    const nowIso = new Date().toISOString();
-    const allCandidates = (chunkQuery.data ?? []).map((row) => {
+    const envelope = parseMatchPayload(rpcResult.data);
+    const droppedReasons: string[] = [
+      `ann_index_probe: ${envelope.ann_row_count} rows (limit ${annLimit})`,
+    ];
+    const hardDropped = envelope.ann_row_count - envelope.passed_row_count;
+    if (hardDropped > 0) {
+      droppedReasons.push(`hard_filter_dropped: ${hardDropped} chunks (entity/policy on ANN pool)`);
+    }
+
+    const temporalFiltered = envelope.chunks.map((row) => {
       const entityIds = Array.isArray(row.entity_ids) ? row.entity_ids.map(String) : [];
       const policyTags = Array.isArray(row.policy_tags) ? row.policy_tags.map(String) : [];
-      const embedding = parseEmbedding(row.embedding);
-      const similarity = cosineSimilarity(queryEmbedding, embedding);
-      const sourceSystem = ((row.documents as { source_system?: string } | null)?.source_system ??
-        'unknown') as string;
-
       return {
-        chunk_id: row.id as string,
-        content: row.content as string,
-        chunk_level: row.chunk_level as string,
+        chunk_id: row.id,
+        content: row.content,
+        chunk_level: row.chunk_level,
         heading_path: Array.isArray(row.heading_path) ? row.heading_path.map(String) : [],
-        document_id: row.document_id as string,
-        ingestion_run_id: (row.ingestion_run_id as string | null) ?? null,
-        source_system: sourceSystem,
+        document_id: row.document_id,
+        ingestion_run_id: row.ingestion_run_id,
+        source_system: row.source_system ?? 'unknown',
         entity_ids: entityIds,
         policy_tags: policyTags,
-        valid_from: (row.valid_from as string | null) ?? null,
-        valid_to: (row.valid_to as string | null) ?? null,
+        valid_from: row.valid_from,
+        valid_to: row.valid_to,
         authority_score: Number(row.authority_score ?? 50),
         freshness_score: Number(row.freshness_score ?? 100),
         provenance_completeness: Number(row.provenance_completeness ?? 0),
-        similarity_score: similarity,
+        similarity_score: Number(row.similarity ?? 0),
       };
     });
 
-    const policyFiltered = allCandidates.filter((candidate) =>
-      hasFilterOverlap(candidate.policy_tags, payload.policy_scope),
-    );
-    const entityFiltered = policyFiltered.filter((candidate) =>
-      hasFilterOverlap(candidate.entity_ids, payload.entity_scope),
-    );
-    const temporalFiltered = entityFiltered.filter((candidate) =>
-      withinTemporalWindow(candidate.valid_from, candidate.valid_to, nowIso),
-    );
-
     const runIdSet = Array.from(
-      new Set(temporalFiltered.map((candidate) => candidate.ingestion_run_id).filter(Boolean)),
+      new Set(temporalFiltered.map((c) => c.ingestion_run_id).filter(Boolean)),
     ) as string[];
 
     const sourceRefByRunId = new Map<string, string>();
@@ -204,25 +227,12 @@ serve(async (req) => {
       .sort((left, right) => right.composite_score - left.composite_score)
       .slice(0, maxChunks);
 
-    const droppedReasons: string[] = [];
-    if (allCandidates.length > policyFiltered.length) {
-      droppedReasons.push(`policy_filtered: ${allCandidates.length - policyFiltered.length} chunks`);
-    }
-    if (policyFiltered.length > entityFiltered.length) {
-      droppedReasons.push(`entity_filtered: ${policyFiltered.length - entityFiltered.length} chunks`);
-    }
-    if (entityFiltered.length > temporalFiltered.length) {
-      droppedReasons.push(
-        `temporal_filtered: ${entityFiltered.length - temporalFiltered.length} chunks`,
-      );
-    }
-
     const elapsed = Date.now() - startedAt;
     const runComplete = await client
       .from('retrieval_runs')
       .update({
-        candidate_count: allCandidates.length,
-        filtered_count: temporalFiltered.length,
+        candidate_count: envelope.ann_row_count,
+        filtered_count: envelope.passed_row_count,
         final_count: reranked.length,
         dropped_context_reasons: droppedReasons,
         latency_ms: elapsed,

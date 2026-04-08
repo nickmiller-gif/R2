@@ -4,6 +4,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { embedText, scoreCandidate, sha256Hex } from '../_shared/eigen.ts';
+import { selectChunksWithinBudget } from '../_shared/retrieval-budget.ts';
 
 interface RetrieveRequest {
   query: string;
@@ -201,7 +202,7 @@ serve(async (req) => {
       }
     }
 
-    const reranked = temporalFiltered
+    const scoredDescending = temporalFiltered
       .map((candidate) => ({
         ...candidate,
         composite_score: payload.rerank === false
@@ -224,8 +225,20 @@ serve(async (req) => {
               provenance_completeness: candidate.provenance_completeness,
             }),
       }))
-      .sort((left, right) => right.composite_score - left.composite_score)
-      .slice(0, maxChunks);
+      .sort((left, right) => right.composite_score - left.composite_score);
+
+    const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(
+      scoredDescending,
+      {
+        maxChunks,
+        maxTokens: payload.budget_profile?.max_tokens,
+        strataWeights: payload.budget_profile?.strata_weights,
+      },
+    );
+
+    if (skippedDueToTokenBudget > 0) {
+      droppedReasons.push(`token_budget_skipped: ${skippedDueToTokenBudget} chunks`);
+    }
 
     const elapsed = Date.now() - startedAt;
     const runComplete = await client

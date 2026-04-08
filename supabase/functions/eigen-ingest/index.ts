@@ -146,12 +146,19 @@ serve(async (req) => {
       `${requestBody.source_system}:${requestBody.source_ref}:${requestBody.document.body}`,
     );
 
-    const documentInsert = await client
-      .from('documents')
-      .insert([
-        {
-          source_system: requestBody.source_system,
-          owner_id: auth.claims.userId,
+    const existingDocumentId = existingRunResult.data?.document_id as string | null | undefined;
+    let documentId: string;
+
+    if (existingDocumentId) {
+      const deleteChunks = await client
+        .from('knowledge_chunks')
+        .delete()
+        .eq('document_id', existingDocumentId);
+      if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
+
+      const documentUpdate = await client
+        .from('documents')
+        .update({
           title: requestBody.document.title,
           body: requestBody.document.body,
           content_type: requestBody.document.content_type,
@@ -159,13 +166,41 @@ serve(async (req) => {
           index_status: 'indexed',
           embedding_status: 'embedded',
           extracted_text_status: 'extracted',
-        },
-      ])
-      .select('id')
-      .single();
-    if (documentInsert.error) return errorResponse(documentInsert.error.message, 400);
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingDocumentId)
+        .select('id')
+        .single();
+      if (documentUpdate.error) return errorResponse(documentUpdate.error.message, 400);
+      documentId = existingDocumentId;
+    } else {
+      const documentInsert = await client
+        .from('documents')
+        .insert([
+          {
+            source_system: requestBody.source_system,
+            owner_id: auth.claims.userId,
+            title: requestBody.document.title,
+            body: requestBody.document.body,
+            content_type: requestBody.document.content_type,
+            content_hash: documentHash,
+            index_status: 'indexed',
+            embedding_status: 'embedded',
+            extracted_text_status: 'extracted',
+          },
+        ])
+        .select('id')
+        .single();
+      if (documentInsert.error) return errorResponse(documentInsert.error.message, 400);
+      documentId = documentInsert.data.id as string;
+    }
 
-    const documentId = documentInsert.data.id as string;
+    const linkDocToRun = await client
+      .from('ingestion_runs')
+      .update({ document_id: documentId })
+      .eq('id', ingestionRunId);
+    if (linkDocToRun.error) return errorResponse(linkDocToRun.error.message, 400);
+
     const chunks = buildChunks(
       requestBody.document.title,
       requestBody.document.body,
@@ -208,37 +243,48 @@ serve(async (req) => {
 
     let oracleOutboxEventId: string | null = null;
     const outboxEnabled = (Deno.env.get('EIGEN_ORACLE_OUTBOX_ENABLED') ?? 'false') === 'true';
-    if (outboxEnabled) {
-      const outboxInsert = await client
+    if (outboxEnabled && requestMeta.idempotencyKey) {
+      const existingOutbox = await client
         .from('eigen_oracle_outbox')
-        .insert([
-          {
-            event_type: 'signal_candidate',
-            payload: {
+        .select('id')
+        .eq('idempotency_key', requestMeta.idempotencyKey)
+        .maybeSingle();
+
+      if (existingOutbox.error) return errorResponse(existingOutbox.error.message, 400);
+      if (existingOutbox.data?.id) {
+        oracleOutboxEventId = existingOutbox.data.id as string;
+      } else {
+        const outboxInsert = await client
+          .from('eigen_oracle_outbox')
+          .insert([
+            {
+              event_type: 'signal_candidate',
+              payload: {
+                source_document_id: documentId,
+                source_system: requestBody.source_system,
+                source_ref: requestBody.source_ref,
+                signal_type: 'knowledge_ingest',
+                suggested_score: null,
+                confidence_band: null,
+                reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
+                entity_ids: requestBody.entity_ids ?? [],
+                tags: requestBody.policy_tags ?? [],
+                analysis_document_id: null,
+              },
               source_document_id: documentId,
               source_system: requestBody.source_system,
               source_ref: requestBody.source_ref,
-              signal_type: 'knowledge_ingest',
-              suggested_score: null,
-              confidence_band: null,
-              reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
-              entity_ids: requestBody.entity_ids ?? [],
-              tags: requestBody.policy_tags ?? [],
-              analysis_document_id: null,
+              correlation_id: requestMeta.correlationId,
+              idempotency_key: requestMeta.idempotencyKey,
+              status: 'pending',
             },
-            source_document_id: documentId,
-            source_system: requestBody.source_system,
-            source_ref: requestBody.source_ref,
-            correlation_id: requestMeta.correlationId,
-            idempotency_key: requestMeta.idempotencyKey,
-            status: 'pending',
-          },
-        ])
-        .select('id')
-        .single();
+          ])
+          .select('id')
+          .single();
 
-      if (outboxInsert.error) return errorResponse(outboxInsert.error.message, 400);
-      oracleOutboxEventId = outboxInsert.data.id as string;
+        if (outboxInsert.error) return errorResponse(outboxInsert.error.message, 400);
+        oracleOutboxEventId = outboxInsert.data.id as string;
+      }
     }
 
     const runComplete = await client

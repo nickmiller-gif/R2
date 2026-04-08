@@ -11,6 +11,11 @@ interface ChatRequest {
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
   policy_scope?: string[];
+  budget_profile?: {
+    max_chunks?: number;
+    max_tokens?: number;
+    strata_weights?: Record<string, number>;
+  };
 }
 
 interface RetrieveChunk {
@@ -37,6 +42,19 @@ function parseRequest(value: unknown): ChatRequest {
     throw new Error('message is required');
   }
 
+  let budget_profile: ChatRequest['budget_profile'];
+  if (body.budget_profile && typeof body.budget_profile === 'object') {
+    const bp = body.budget_profile as Record<string, unknown>;
+    budget_profile = {
+      max_chunks: typeof bp.max_chunks === 'number' ? bp.max_chunks : undefined,
+      max_tokens: typeof bp.max_tokens === 'number' ? bp.max_tokens : undefined,
+      strata_weights:
+        typeof bp.strata_weights === 'object' && bp.strata_weights !== null
+          ? (bp.strata_weights as Record<string, number>)
+          : undefined,
+    };
+  }
+
   return {
     message: body.message.trim(),
     session_id: typeof body.session_id === 'string' ? body.session_id : undefined,
@@ -44,6 +62,7 @@ function parseRequest(value: unknown): ChatRequest {
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
     policy_scope: toList(body.policy_scope),
+    budget_profile,
   };
 }
 
@@ -148,7 +167,7 @@ serve(async (req) => {
         query: body.message,
         entity_scope: body.entity_scope ?? [],
         policy_scope: body.policy_scope ?? [],
-        budget_profile: { max_chunks: 12, max_tokens: 4000 },
+        budget_profile: body.budget_profile ?? { max_chunks: 12, max_tokens: 4000 },
         rerank: true,
         include_provenance: true,
       }),

@@ -5,25 +5,52 @@ const mode = params.get('mode') === 'eigenx' ? 'eigenx' : 'public';
 const theme = params.get('theme') || 'light';
 const parentOriginParam = (params.get('parent_origin') || '').replace(/\/+$/, '');
 
-const head = document.getElementById('head');
+const backdrop = document.getElementById('backdrop');
+const launcher = document.getElementById('launcher');
+const panel = document.getElementById('panel');
+const headTitle = document.getElementById('head-title');
+const headSub = document.getElementById('head-sub');
 const chat = document.getElementById('chat');
 const form = document.getElementById('form');
 const input = document.getElementById('input');
 
+if (theme === 'dark') {
+  document.documentElement.setAttribute('data-theme', 'dark');
+}
+
+function setOpen(open) {
+  panel.hidden = !open;
+  panel.classList.toggle('open', open);
+  backdrop.classList.toggle('open', open);
+  launcher.setAttribute('aria-expanded', open ? 'true' : 'false');
+  launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat');
+  if (open) {
+    input.focus();
+  }
+}
+
+launcher.addEventListener('click', () => {
+  setOpen(panel.hidden || !panel.classList.contains('open'));
+});
+
+backdrop.addEventListener('click', () => setOpen(false));
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') setOpen(false);
+});
+
 if (!apiBase || !siteId) {
-  head.textContent = 'Eigen widget misconfigured';
-  chat.innerHTML = '<div class="msg bot">Missing api_base or site_id query params.</div>';
+  headTitle.textContent = 'Setup required';
+  headSub.textContent = 'Missing api_base or site_id';
+  chat.innerHTML = '<div class="msg bot">Add query params: api_base, site_id</div>';
   form.remove();
+  launcher.remove();
+  backdrop.remove();
   throw new Error('Missing widget params');
 }
 
-if (theme === 'dark') {
-  document.body.style.background = '#0f172a';
-  chat.style.background = '#111827';
-  head.style.color = '#cbd5e1';
-}
-
-head.textContent = mode === 'public' ? `Public Eigen • ${siteId}` : `EigenX • ${siteId}`;
+headTitle.textContent = mode === 'public' ? 'Public Eigen' : 'EigenX';
+headSub.textContent = siteId;
 
 let widgetToken = '';
 let authBearer = '';
@@ -59,7 +86,6 @@ async function ensureWidgetSession() {
   if (mode === 'eigenx' && authBearer) {
     headers.Authorization = `Bearer ${authBearer}`;
   }
-
   const resp = await fetch(`${apiBase}/eigen-widget-session`, {
     method: 'POST',
     headers,
@@ -77,6 +103,8 @@ form.addEventListener('submit', async (e) => {
   if (!message) return;
   append(message, 'user');
   input.value = '';
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
 
   try {
     const token = await ensureWidgetSession();
@@ -91,16 +119,19 @@ form.addEventListener('submit', async (e) => {
     });
     if (!response.ok) throw new Error(await response.text());
     const payload = await response.json();
-    const meta = `Citations: ${Array.isArray(payload.citations) ? payload.citations.length : 0}`;
+    const n = Array.isArray(payload.citations) ? payload.citations.length : 0;
+    const meta = n ? `${n} source${n === 1 ? '' : 's'}` : 'No citations';
     append(payload.response || 'No response', 'bot', meta);
   } catch (err) {
     append(err instanceof Error ? err.message : 'Request failed', 'bot');
+  } finally {
+    submitBtn.disabled = false;
   }
 });
 
 append(
   mode === 'public'
-    ? 'Public Eigen is ready.'
-    : 'EigenX widget is ready. Parent page should postMessage auth token if needed.',
+    ? 'Ask me about Rays Retreat or R2 — answers use your public corpus when it’s indexed.'
+    : 'EigenX is ready. Your site can postMessage an auth token if this session needs sign-in.',
   'bot',
 );

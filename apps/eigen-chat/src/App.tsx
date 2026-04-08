@@ -1,107 +1,22 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import type {
+  ChatMessage,
+  ChatMessageAssistant,
+  ChatResponse,
+  ChatTier,
+  IngestCorpusTier,
+  IngestResponse,
+  SourceInventoryResponse,
+} from './chatTypes';
+import { consumeEigenChatSse } from './chatSse';
+import { ChatView } from './components/ChatView';
+import { IngestPanel } from './components/IngestPanel';
+import { SourcesPanel } from './components/SourcesPanel';
+import { ThemeToggle } from './components/ThemeToggle';
+import { WorkspaceTabs, type TabId } from './components/WorkspaceTabs';
 
-interface ChatResponse {
-  response: string;
-  citations: Array<{ chunk_id: string; source: string; relevance: number }>;
-  confidence: 'low' | 'medium' | 'high';
-  retrieval_run_id: string | null;
-  memory_updated: boolean;
-  session_id: string;
-}
-
-async function consumeEigenChatSse(
-  response: Response,
-  onDelta: (text: string) => void,
-): Promise<ChatResponse> {
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text);
-  }
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let resolved: ChatResponse | null = null;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const blocks = buffer.split('\n\n');
-      buffer = blocks.pop() ?? '';
-
-      for (const block of blocks) {
-        const line = block.split('\n').find((l) => l.startsWith('data: '));
-        if (!line) continue;
-        const raw = line.slice(6).trim();
-        let data: Record<string, unknown>;
-        try {
-          data = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-          continue;
-        }
-
-        if (typeof data.error === 'string') {
-          throw new Error(data.error);
-        }
-        if (typeof data.text === 'string' && data.text.length > 0) {
-          onDelta(data.text);
-        }
-        if (data.done === true) {
-          resolved = {
-            response: typeof data.response === 'string' ? data.response : '',
-            citations: Array.isArray(data.citations) ? (data.citations as ChatResponse['citations']) : [],
-            confidence: (data.confidence as ChatResponse['confidence']) ?? 'low',
-            retrieval_run_id: typeof data.retrieval_run_id === 'string' ? data.retrieval_run_id : null,
-            memory_updated: data.memory_updated === true,
-            session_id: typeof data.session_id === 'string' ? data.session_id : '',
-          };
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  if (!resolved) {
-    throw new Error('Stream ended before completion');
-  }
-  return resolved;
-}
-
-interface IngestResponse {
-  document_id: string;
-  ingestion_run_id: string;
-  chunks_created: number;
-  content_unchanged?: boolean;
-  idempotent_replay?: boolean;
-}
-
-type IngestCorpusTier = 'eigenx' | 'public';
-type ChatTier = 'eigenx' | 'public';
-
-interface SourceInventorySummary {
-  source_system: string;
-  document_count: number;
-  chunk_count: number;
-  public_document_count: number;
-  eigenx_document_count: number;
-  latest_updated_at: string | null;
-  sample_source_refs: string[];
-}
-
-interface SourceInventoryResponse {
-  generated_at: string;
-  mode: 'all' | 'public';
-  total_documents: number;
-  total_chunks: number;
-  sources: SourceInventorySummary[];
-}
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 function getApiBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
@@ -111,23 +26,20 @@ function getApiBaseUrl(): string {
   return '/functions/v1';
 }
 
-const INGEST_UPLOAD_ACCEPT = '.txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-
 export function App() {
+  const [activeTab, setActiveTab] = useState<TabId>('chat');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState('');
   const [chatTier, setChatTier] = useState<ChatTier>('eigenx');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [entityScope, setEntityScope] = useState('');
   const [policyScope, setPolicyScope] = useState('');
-  const [ingestSourceRef, setIngestSourceRef] = useState('');
   const [ingestTitle, setIngestTitle] = useState('');
+  const [ingestSourceRef, setIngestSourceRef] = useState('');
   const [ingestTier, setIngestTier] = useState<IngestCorpusTier>('eigenx');
   const [ingestLocalError, setIngestLocalError] = useState<string | null>(null);
   const [streamResponses, setStreamResponses] = useState(false);
-  const [streamPreview, setStreamPreview] = useState('');
   const [isStreamingChat, setIsStreamingChat] = useState(false);
-  const [chatResult, setChatResult] = useState<ChatResponse | null>(null);
   const [streamChatError, setStreamChatError] = useState<string | null>(null);
   const [sourceInventory, setSourceInventory] = useState<SourceInventoryResponse | null>(null);
   const [sourceInventoryError, setSourceInventoryError] = useState<string | null>(null);
@@ -143,13 +55,10 @@ export function App() {
       tier: ChatTier;
     }) => {
       const endpoint = input.tier === 'public' ? 'eigen-chat-public' : 'eigen-chat';
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      };
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (input.tier === 'eigenx') {
         headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
       }
-
       const response = await fetch(`${apiBaseUrl}/${endpoint}`, {
         method: 'POST',
         headers,
@@ -162,24 +71,22 @@ export function App() {
           policy_scope: input.tier === 'eigenx' ? input.policyScope : undefined,
         }),
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
-      }
-
+      if (!response.ok) throw new Error(await response.text());
       return (await response.json()) as ChatResponse;
     },
-    onMutate: () => {
-      setChatResult(null);
-    },
-    onSuccess: (result) => {
-      if (chatTier === 'eigenx') {
-        setSessionId(result.session_id);
-      }
+    onSuccess: (result, variables) => {
+      if (variables.tier === 'eigenx') setSessionId(result.session_id);
       setMessage('');
-      setChatResult(result);
       setStreamChatError(null);
+      const assistant: ChatMessageAssistant = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: result.response,
+        citations: result.citations,
+        confidence: result.confidence,
+        retrieval_run_id: result.retrieval_run_id,
+      };
+      setMessages((prev) => [...prev, assistant]);
     },
   });
 
@@ -200,20 +107,10 @@ export function App() {
         },
         body: form,
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
-      }
-
+      if (!response.ok) throw new Error(await response.text());
       return (await response.json()) as IngestResponse;
     },
-    onMutate: () => {
-      setIngestLocalError(null);
-    },
-    onSuccess: () => {
-      setIngestLocalError(null);
-    },
+    onMutate: () => setIngestLocalError(null),
   });
 
   const sourceInventoryMutation = useMutation({
@@ -224,15 +121,10 @@ export function App() {
         headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
       }
       const response = await fetch(`${apiBaseUrl}/${endpoint}`, { method: 'GET', headers });
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
-      }
+      if (!response.ok) throw new Error(await response.text());
       return (await response.json()) as SourceInventoryResponse;
     },
-    onMutate: () => {
-      setSourceInventoryError(null);
-    },
+    onMutate: () => setSourceInventoryError(null),
     onSuccess: (result) => {
       setSourceInventory(result);
       setSourceInventoryError(null);
@@ -245,9 +137,7 @@ export function App() {
   const onUploadTextFile = async (fileList: FileList | null) => {
     const file = fileList?.[0];
     if (!file) return;
-
     setIngestLocalError(null);
-
     if (file.size > MAX_UPLOAD_BYTES) {
       setIngestLocalError(`File is too large (max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB).`);
       return;
@@ -256,18 +146,25 @@ export function App() {
       setIngestLocalError('File is empty.');
       return;
     }
-
     const defaultTitle = ingestTitle.trim() || file.name.replace(/\.[^/.]+$/, '') || 'Uploaded document';
     const sourceRef =
-      ingestSourceRef.trim() ||
-      `file:${file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')}:${Date.now()}`;
+      ingestSourceRef.trim() || `file:${file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')}:${Date.now()}`;
+    ingestMutation.mutate({ title: defaultTitle, sourceRef, file, tier: ingestTier });
+  };
 
-    ingestMutation.mutate({
-      title: defaultTitle,
-      sourceRef,
-      file,
-      tier: ingestTier,
-    });
+  const handleTierChange = (tier: ChatTier) => {
+    setChatTier(tier);
+    setSessionId(undefined);
+    setMessages([]);
+    setStreamChatError(null);
+    chatMutation.reset();
+  };
+
+  const handleClearChat = () => {
+    setMessages([]);
+    setSessionId(undefined);
+    setStreamChatError(null);
+    chatMutation.reset();
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -284,21 +181,35 @@ export function App() {
       .map((item) => item.trim())
       .filter(Boolean);
 
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: trimmed,
+    };
+
     if (streamResponses) {
-      setChatResult(null);
+      const assistantId = crypto.randomUUID();
       setStreamChatError(null);
-      setStreamPreview('');
       setIsStreamingChat(true);
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          citations: [],
+        },
+      ]);
+
       void (async () => {
         try {
           const endpoint = chatTier === 'public' ? 'eigen-chat-public' : 'eigen-chat';
-          const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-          };
+          const headers: HeadersInit = { 'Content-Type': 'application/json' };
           if (chatTier === 'eigenx') {
             headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
           }
-
           const response = await fetch(`${apiBaseUrl}/${endpoint}`, {
             method: 'POST',
             headers,
@@ -314,23 +225,42 @@ export function App() {
           });
 
           const result = await consumeEigenChatSse(response, (delta) => {
-            setStreamPreview((prev: string) => prev + delta);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId && m.role === 'assistant'
+                  ? { ...m, content: m.content + delta }
+                  : m,
+              ),
+            );
           });
 
-          if (chatTier === 'eigenx') {
-            setSessionId(result.session_id);
-          }
+          if (chatTier === 'eigenx') setSessionId(result.session_id);
           setMessage('');
-          setChatResult(result);
-          setStreamPreview('');
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && m.role === 'assistant'
+                ? {
+                    ...m,
+                    content: result.response,
+                    streaming: false,
+                    citations: result.citations,
+                    confidence: result.confidence,
+                    retrieval_run_id: result.retrieval_run_id,
+                  }
+                : m,
+            ),
+          );
         } catch (err) {
           setStreamChatError(err instanceof Error ? err.message : 'Request failed');
+          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
         } finally {
           setIsStreamingChat(false);
         }
       })();
       return;
     }
+
+    setMessages((prev) => [...prev, userMsg]);
 
     chatMutation.mutate({
       message: trimmed,
@@ -341,234 +271,81 @@ export function App() {
     });
   };
 
+  const chatMutationError =
+    chatMutation.isError && chatMutation.error instanceof Error ? chatMutation.error.message : null;
+
   return (
-    <main style={{ maxWidth: 920, margin: '0 auto', padding: 24, fontFamily: 'Inter, sans-serif' }}>
-      <h1 style={{ marginTop: 0 }}>Standalone Eigen Chat</h1>
-      <p style={{ color: '#475569' }}>
-        Grounded retrieval chat UI for <code>eigen-chat</code> and <code>eigen-retrieve</code>.
-      </p>
-
-      <section
-        style={{
-          marginTop: 20,
-          padding: 16,
-          border: '1px solid #e2e8f0',
-          borderRadius: 8,
-          background: '#fafafa',
-        }}
-      >
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Ingest document</h2>
-        <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
-          Upload a .txt, .md, .csv, .pdf, or .docx file (max {(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) into
-          the knowledge index via <code>eigen-ingest</code>. PDF/DOCX text is extracted server-side before chunking and
-          embedding. Choose whether this goes into the <code>eigen_public</code> corpus or the internal
-          <code>eigenx</code> corpus.
-        </p>
-        <div style={{ display: 'grid', gap: 10, maxWidth: 480 }}>
-          <input
-            value={ingestTitle}
-            onChange={(event) => setIngestTitle(event.target.value)}
-            placeholder="Document title (optional; defaults from filename)"
-            style={{ width: '100%', padding: 10 }}
-          />
-          <input
-            value={ingestSourceRef}
-            onChange={(event) => setIngestSourceRef(event.target.value)}
-            placeholder="Stable source ref (optional; auto if empty)"
-            style={{ width: '100%', padding: 10 }}
-          />
-          <select
-            value={ingestTier}
-            onChange={(event) => setIngestTier(event.target.value as IngestCorpusTier)}
-            style={{ width: '100%', padding: 10 }}
-          >
-            <option value="eigenx">EigenX (internal)</option>
-            <option value="public">Public Eigen</option>
-          </select>
-          <label style={{ fontSize: 14, color: '#334155' }}>
-            <span style={{ display: 'block', marginBottom: 6 }}>Choose file</span>
-            <input
-              type="file"
-              accept={INGEST_UPLOAD_ACCEPT}
-              onChange={(event) => {
-                void onUploadTextFile(event.target.files);
-                event.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-        {ingestMutation.isPending ? <p style={{ marginTop: 10 }}>Ingesting…</p> : null}
-        {ingestLocalError ? (
-          <pre style={{ marginTop: 10, color: '#b91c1c', whiteSpace: 'pre-wrap', fontSize: 13 }}>
-            {ingestLocalError}
-          </pre>
-        ) : null}
-        {ingestMutation.isError ? (
-          <pre style={{ marginTop: 10, color: '#b91c1c', whiteSpace: 'pre-wrap', fontSize: 13 }}>
-            {(ingestMutation.error as Error).message}
-          </pre>
-        ) : null}
-        {ingestMutation.data ? (
-          <p style={{ marginTop: 10, color: '#15803d', fontSize: 14 }}>
-            Ingested <code>{ingestMutation.data.document_id}</code> — {ingestMutation.data.chunks_created} chunk(s)
-            {ingestMutation.data.content_unchanged ? ' (content unchanged, skipped embed)' : ''}.
-          </p>
-        ) : null}
-      </section>
-
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-        <select
-          value={chatTier}
-          onChange={(event) => {
-            setChatTier(event.target.value as ChatTier);
-            setSessionId(undefined);
-            setChatResult(null);
-          }}
-          style={{ width: '100%', padding: 10 }}
-        >
-          <option value="eigenx">EigenX (authenticated)</option>
-          <option value="public">Public Eigen (anonymous)</option>
-        </select>
-        <textarea
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          placeholder="Ask Eigen a question..."
-          rows={5}
-          style={{ width: '100%', padding: 12 }}
-        />
-        {chatTier === 'eigenx' ? (
-          <>
-            <input
-              value={entityScope}
-              onChange={(event) => setEntityScope(event.target.value)}
-              placeholder="Entity scope (comma-separated UUIDs)"
-              style={{ width: '100%', padding: 10 }}
-            />
-            <input
-              value={policyScope}
-              onChange={(event) => setPolicyScope(event.target.value)}
-              placeholder="Policy scope (comma-separated tags)"
-              style={{ width: '100%', padding: 10 }}
-            />
-          </>
-        ) : null}
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#334155' }}>
-          <input
-            type="checkbox"
-            checked={streamResponses}
-            onChange={(event) => setStreamResponses(event.target.checked)}
-          />
-          Stream response (SSE; needs <code>OPENAI_API_KEY</code> on the server)
-        </label>
-        <button
-          type="submit"
-          disabled={chatMutation.isPending || isStreamingChat}
-          style={{ width: 220, padding: 10 }}
-        >
-          {chatMutation.isPending || isStreamingChat ? 'Asking...' : 'Ask Eigen'}
-        </button>
-      </form>
-
-      <section
-        style={{
-          marginTop: 20,
-          padding: 16,
-          border: '1px solid #e2e8f0',
-          borderRadius: 8,
-          background: '#fff',
-        }}
-      >
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Source inventory</h2>
-        <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
-          View which ingested sources each chatbot tier can currently retrieve from.
-        </p>
-        <button
-          type="button"
-          onClick={() => sourceInventoryMutation.mutate(chatTier)}
-          disabled={sourceInventoryMutation.isPending}
-          style={{ padding: 10, width: 220 }}
-        >
-          {sourceInventoryMutation.isPending ? 'Loading sources...' : `Load ${chatTier} sources`}
-        </button>
-        {sourceInventoryError ? (
-          <pre style={{ marginTop: 12, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>
-            {sourceInventoryError}
-          </pre>
-        ) : null}
-        {sourceInventory ? (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ color: '#334155', marginBottom: 8 }}>
-              Mode: <code>{sourceInventory.mode}</code> | Documents: <strong>{sourceInventory.total_documents}</strong>{' '}
-              | Chunks: <strong>{sourceInventory.total_chunks}</strong>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Source system</th>
-                  <th style={{ textAlign: 'right', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Docs</th>
-                  <th style={{ textAlign: 'right', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Chunks</th>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: 6 }}>Sample refs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sourceInventory.sources.map((source) => (
-                  <tr key={source.source_system}>
-                    <td style={{ padding: 6, borderBottom: '1px solid #f1f5f9' }}>
-                      <code>{source.source_system}</code>
-                    </td>
-                    <td style={{ padding: 6, textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
-                      {source.document_count}
-                    </td>
-                    <td style={{ padding: 6, textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
-                      {source.chunk_count}
-                    </td>
-                    <td style={{ padding: 6, borderBottom: '1px solid #f1f5f9' }}>
-                      {source.sample_source_refs.length > 0 ? source.sample_source_refs.join(', ') : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-canvas">
+      <header className="border-b border-border bg-surface/80 shadow-soft backdrop-blur-md">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Eigen</h1>
+            <p className="text-sm text-muted">Retrieval-grounded chat · ingest · corpus health</p>
           </div>
-        ) : null}
-      </section>
+          <ThemeToggle />
+        </div>
+      </header>
 
-      {chatMutation.isError ? (
-        <pre style={{ marginTop: 18, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>
-          {(chatMutation.error as Error).message}
-        </pre>
-      ) : null}
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mb-8">
+          <WorkspaceTabs active={activeTab} onChange={setActiveTab} />
+        </div>
 
-      {streamChatError ? (
-        <pre style={{ marginTop: 18, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>{streamChatError}</pre>
-      ) : null}
+        {activeTab === 'chat' && (
+          <ChatView
+            messages={messages}
+            chatTier={chatTier}
+            onTierChange={handleTierChange}
+            message={message}
+            onMessageChange={setMessage}
+            entityScope={entityScope}
+            onEntityScopeChange={setEntityScope}
+            policyScope={policyScope}
+            onPolicyScopeChange={setPolicyScope}
+            streamResponses={streamResponses}
+            onStreamResponsesChange={setStreamResponses}
+            isLoading={chatMutation.isPending || isStreamingChat}
+            chatError={chatMutationError}
+            streamError={streamChatError}
+            onSubmit={onSubmit}
+            onClearChat={handleClearChat}
+          />
+        )}
 
-      {chatResult || streamPreview ? (
-        <section style={{ marginTop: 24, display: 'grid', gap: 12 }}>
-          <h2 style={{ marginBottom: 0 }}>Response</h2>
-          <pre style={{ margin: 0, background: '#f8fafc', padding: 12, whiteSpace: 'pre-wrap' }}>
-            {isStreamingChat ? streamPreview : (chatResult?.response ?? '')}
-          </pre>
-          {chatResult ? (
-            <>
-              <div style={{ color: '#334155' }}>
-                Confidence: <strong>{chatResult.confidence}</strong> | Retrieval run:{' '}
-                <code>{chatResult.retrieval_run_id ?? 'none'}</code>
-              </div>
-              <div>
-                <h3>Citations</h3>
-                <ul>
-                  {chatResult.citations.map((citation) => (
-                    <li key={citation.chunk_id}>
-                      <code>{citation.chunk_id}</code> — {citation.source} ({citation.relevance})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          ) : null}
-        </section>
-      ) : null}
-    </main>
+        {activeTab === 'ingest' && (
+          <IngestPanel
+            ingestTitle={ingestTitle}
+            onIngestTitleChange={setIngestTitle}
+            ingestSourceRef={ingestSourceRef}
+            onIngestSourceRefChange={setIngestSourceRef}
+            ingestTier={ingestTier}
+            onIngestTierChange={setIngestTier}
+            maxMb={MAX_UPLOAD_BYTES / (1024 * 1024)}
+            onFileChange={(files) => {
+              void onUploadTextFile(files);
+            }}
+            isPending={ingestMutation.isPending}
+            localError={ingestLocalError}
+            mutationError={
+              ingestMutation.isError && ingestMutation.error instanceof Error
+                ? ingestMutation.error.message
+                : null
+            }
+            lastResult={ingestMutation.data ?? null}
+          />
+        )}
+
+        {activeTab === 'sources' && (
+          <SourcesPanel
+            chatTier={chatTier}
+            onTierChange={handleTierChange}
+            onLoad={() => sourceInventoryMutation.mutate(chatTier)}
+            isPending={sourceInventoryMutation.isPending}
+            error={sourceInventoryError}
+            data={sourceInventory}
+          />
+        )}
+      </main>
+    </div>
   );
 }

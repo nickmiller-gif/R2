@@ -1,0 +1,56 @@
+name: Deploy Eigen Chat (Cloudflare Pages)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/eigen-chat/**"
+      - ".github/workflows/deploy-eigen-chat-cloudflare.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_eigen_chat:
+    name: Build and deploy eigen-chat to Cloudflare Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/eigen-chat/package-lock.json
+
+      - name: Install and build
+        working-directory: apps/eigen-chat
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/eigen-chat/dist --project-name=${{ secrets.CLOUDFLARE_PAGES_PROJECT_EIGEN_CHAT }} --branch=main
+
+      - name: Deployment summary
+        run: |
+          echo "## Eigen Chat (Cloudflare Pages)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Project secret:** \`CLOUDFLARE_PAGES_PROJECT_EIGEN_CHAT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build:** \`apps/eigen-chat\` → \`dist/\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Optional:** set \`VITE_SUPABASE_URL\` repo secret so the SPA points at your Supabase project." >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit:** \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -7,8 +7,12 @@ import {
   executeEigenRetrieve,
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
-import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
 import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
+import {
+  clampExplicitEigenxPolicyScope,
+  defaultEigenxRetrievePolicyScope,
+  readEigenxEnvDefaultPolicyScope,
+} from '../_shared/eigenx-scope.ts';
 
 interface ChatRequest {
   message: string;
@@ -16,7 +20,9 @@ interface ChatRequest {
   conversation_context?: 'auto' | 'none';
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
-  policy_scope?: string[];
+  /** Resolved after auth; parseRequest may leave empty when client omitted policy_scope. */
+  policy_scope: string[];
+  policy_scope_explicit: boolean;
   site_id?: string;
   site_source_systems?: string[];
   site_boost?: number;
@@ -41,15 +47,6 @@ function readMaxCompletionTokens(): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(n, 16_000);
-}
-
-function readDefaultPolicyScope(): string[] {
-  const raw = Deno.env.get('EIGENX_DEFAULT_POLICY_SCOPE')?.trim();
-  if (!raw) return [POLICY_TAG_EIGENX];
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function readNoContextResponse(): string {
@@ -97,16 +94,15 @@ function parseRequest(value: unknown): ChatRequest {
     };
   }
 
+  const policyScopeList = toList(body.policy_scope);
   return {
     message: body.message.trim(),
     session_id: typeof body.session_id === 'string' ? body.session_id : undefined,
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
-    policy_scope: (() => {
-      const provided = toList(body.policy_scope);
-      return provided.length > 0 ? provided : readDefaultPolicyScope();
-    })(),
+    policy_scope: policyScopeList,
+    policy_scope_explicit: policyScopeList.length > 0,
     stream: body.stream === true,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: toList(body.site_source_systems),
@@ -278,10 +274,13 @@ serve(async (req) => {
   try {
     const body = parseRequest(await req.json());
     const client = getServiceClient();
+    const preScope = body.policy_scope_explicit
+      ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, body.policy_scope)
+      : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);
     const resolvedScope = await resolveEigenxPolicyScope(client, {
       userId: auth.claims.userId,
-      requestedPolicyScope: body.policy_scope ?? [],
-      defaultPolicyScope: readDefaultPolicyScope(),
+      requestedPolicyScope: preScope,
+      defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
     });
     if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
       return errorResponse('No private policy scope access for this user', 403);

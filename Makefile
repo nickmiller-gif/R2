@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: eigen-bootstrap eigen-seed eigen-seed-sql eigen-smoke eigen-bootstrap-sql eigen-eval eigen-eval-public-core eigen-eval-public-leakage eigen-eval-eigenx-core eigen-sources-public eigen-sources-eigenx eigen-site-bootstrap eigen-ingest-bulk eigen-ingest-sync
+.PHONY: eigen-bootstrap eigen-seed eigen-seed-sql eigen-smoke eigen-bootstrap-sql eigen-eval eigen-eval-public-core eigen-eval-public-leakage eigen-eval-eigenx-core eigen-sources-public eigen-sources-eigenx eigen-site-bootstrap eigen-ingest-bulk eigen-ingest-sync eigen-public-corpus
 
 eigen-seed:
 	./scripts/eigen-seed.sh
@@ -41,3 +41,6 @@ eigen-ingest-bulk:
 
 eigen-ingest-sync:
 	./scripts/eigen-ingest-sync.sh
+
+eigen-public-corpus:
+	./scripts/eigen-public-corpus-ingest.sh

@@ -1,0 +1,56 @@
+name: Eigen public corpus ingest
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Monday 06:00 UTC — adjust or rely on manual runs
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  public_corpus:
+    name: Sitemap + RSS + public files
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      AUTH_BEARER: ${{ secrets.EIGEN_SYNC_AUTH_BEARER }}
+      EIGEN_PUBLIC_SITEMAP_URLS: ${{ vars.EIGEN_PUBLIC_SITEMAP_URLS }}
+      EIGEN_PUBLIC_RSS_URLS: ${{ vars.EIGEN_PUBLIC_RSS_URLS }}
+      EIGEN_PUBLIC_FILES_DIR: ${{ vars.EIGEN_PUBLIC_FILES_DIR }}
+      EIGEN_PUBLIC_FILES_MANIFEST_PATH: .cache/eigen-public-files-manifest.json
+      EIGEN_PUBLIC_FILES_PRUNE_MISSING: "true"
+      EIGEN_FETCH_INGEST_DELAY_SEC: ${{ vars.EIGEN_FETCH_INGEST_DELAY_SEC || '0.35' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Restore public-files manifest cache
+        if: ${{ vars.EIGEN_PUBLIC_FILES_DIR != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/eigen-public-files-manifest.json
+          key: eigen-public-files-manifest-${{ github.run_id }}
+          restore-keys: |
+            eigen-public-files-manifest-
+
+      - name: Run public corpus ingest
+        if: ${{ vars.EIGEN_PUBLIC_SITEMAP_URLS != '' || vars.EIGEN_PUBLIC_RSS_URLS != '' || vars.EIGEN_PUBLIC_FILES_DIR != '' }}
+        run: ./scripts/eigen-public-corpus-ingest.sh
+
+      - name: No sources configured
+        if: ${{ vars.EIGEN_PUBLIC_SITEMAP_URLS == '' && vars.EIGEN_PUBLIC_RSS_URLS == '' && vars.EIGEN_PUBLIC_FILES_DIR == '' }}
+        run: |
+          echo "Skipping: set GitHub Variables EIGEN_PUBLIC_SITEMAP_URLS, EIGEN_PUBLIC_RSS_URLS, and/or EIGEN_PUBLIC_FILES_DIR"
+          echo "See docs/eigen-public-corpus.md"
+
+      - name: Save public-files manifest cache
+        if: ${{ always() && vars.EIGEN_PUBLIC_FILES_DIR != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/eigen-public-files-manifest.json
+          key: eigen-public-files-manifest-${{ github.run_id }}

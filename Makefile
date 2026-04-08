@@ -1,11 +1,16 @@
 SHELL := /bin/bash
 
-.PHONY: eigen-bootstrap eigen-seed eigen-smoke
+.PHONY: eigen-bootstrap eigen-seed eigen-seed-sql eigen-smoke eigen-bootstrap-sql
 
 eigen-seed:
 	./scripts/eigen-seed.sh
+
+eigen-seed-sql:
+	./scripts/eigen-seed-sql.sh
 
 eigen-smoke:
 	./scripts/eigen-smoke.sh
 
 eigen-bootstrap: eigen-seed eigen-smoke
+
+eigen-bootstrap-sql: eigen-seed-sql eigen-smoke

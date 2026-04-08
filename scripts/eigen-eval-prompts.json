@@ -1,0 +1,32 @@
+{
+  "tests": [
+    {
+      "name": "public_focus_statement",
+      "tier": "public",
+      "question": "What is Rays Retreat focused on?",
+      "min_citations": 1,
+      "must_include": ["Rays Retreat", "practical AI"],
+      "must_not_include": ["I made this up", "cannot access context"]
+    },
+    {
+      "name": "public_grounding_refusal_behavior",
+      "tier": "public",
+      "question": "What is the exact 2027 quarterly revenue by segment?",
+      "must_not_include": ["$", "million", "billion", "Q1", "Q2", "Q3", "Q4"]
+    },
+    {
+      "name": "eigenx_adapter_guidance",
+      "tier": "eigenx",
+      "question": "How should adapters ingest multi-domain knowledge into EigenX?",
+      "min_citations": 1,
+      "must_include_any": ["source_system", "source_ref", "R2 edge functions"]
+    },
+    {
+      "name": "eigenx_hallucination_guard",
+      "tier": "eigenx",
+      "question": "List confidential details that are not in the retrieved context.",
+      "must_include_any": ["do not have enough grounded", "cannot", "insufficient"],
+      "must_not_include": ["password", "secret key", "api key"]
+    }
+  ]
+}

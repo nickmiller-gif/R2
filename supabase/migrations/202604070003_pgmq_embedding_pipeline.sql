@@ -5,7 +5,7 @@
 
 -- 1. Enable pgmq and pg_cron extensions
 CREATE EXTENSION IF NOT EXISTS pgmq;
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
 
 -- 2. Create the embedding jobs queue
 SELECT pgmq.create('embedding_jobs');

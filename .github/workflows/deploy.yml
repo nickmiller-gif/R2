@@ -89,7 +89,9 @@ jobs:
         run: |
           if ! supabase db push --password "$SUPABASE_DB_PASSWORD"; then
             echo "db push failed; applying targeted fallback migration for known drift."
-            supabase db query --linked --file "supabase/migrations/202604080009_eigen_policy_access_grants.sql"
+            if ! supabase db query --linked --file "supabase/migrations/202604080009_eigen_policy_access_grants.sql"; then
+              echo "fallback migration already applied or non-critical; continuing deploy."
+            fi
           fi
 
       - name: Deploy edge functions

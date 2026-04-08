@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'DM Sans', system-ui, sans-serif;
+    --font-display: 'Outfit', system-ui, sans-serif;
+    --color-canvas: #eef1f7;
+    --color-surface: #ffffff;
+    --color-elevated: #f8fafc;
+    --color-border: #e2e8f0;
+    --color-muted: #64748b;
+    --color-fg: #0f172a;
+    --color-accent: #2563eb;
+    --color-accent-hover: #1d4ed8;
+    --color-danger: #dc2626;
+    --color-success: #16a34a;
+    --shadow-soft: 0 1px 3px rgb(15 23 42 / 0.06);
+    --shadow-lift: 0 12px 40px -12px rgb(15 23 42 / 0.18);
+    --radius-card: 14px;
+  }
+
+  .dark {
+    --color-canvas: #0a0c10;
+    --color-surface: #12151c;
+    --color-elevated: #1a1f2a;
+    --color-border: #2a3142;
+    --color-muted: #94a3b8;
+    --color-fg: #f1f5f9;
+    --color-accent: #60a5fa;
+    --color-accent-hover: #93c5fd;
+    --color-danger: #f87171;
+    --color-success: #4ade80;
+    --shadow-soft: 0 1px 3px rgb(0 0 0 / 0.35);
+    --shadow-lift: 0 16px 48px -8px rgb(0 0 0 / 0.55);
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-canvas text-fg font-sans min-h-screen;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-canvas dark:ring-offset-canvas;
+  }
+}

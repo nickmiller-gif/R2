@@ -6,6 +6,18 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
+import { extractDocumentText } from '../_shared/extract-document.ts';
+import { inferCorpusTier, normalizeCorpusPolicyTags } from '../_shared/eigen-policy.ts';
+
+interface IngestDocumentPayload {
+  title?: string;
+  body?: string;
+  content_type?: string;
+  metadata?: Record<string, unknown>;
+  storage_bucket?: string;
+  storage_path?: string;
+  file_name?: string;
+}
 
 interface IngestRequestBody {
   source_system: string;
@@ -26,47 +38,229 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function validateRequest(body: unknown): IngestRequestBody {
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => String(item).trim()).filter(Boolean);
+        }
+      } catch {
+        // fall through to comma-split parsing.
+      }
+    }
+    return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function parseMetadata(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (isObject(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return {};
+    try {
+      const parsed = JSON.parse(trimmed);
+      return isObject(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function toChunkingMode(value: unknown): 'hierarchical' | 'flat' {
+  return value === 'flat' ? 'flat' : 'hierarchical';
+}
+
+function cleanString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function resolveDocumentPayload(
+  payload: IngestDocumentPayload,
+  client: ReturnType<typeof getServiceClient>,
+): Promise<{ title: string; body: string; contentType: string; metadata: Record<string, unknown> }> {
+  const metadata = isObject(payload.metadata) ? payload.metadata : {};
+  if (typeof payload.body === 'string' && payload.body.trim().length > 0) {
+    if (!payload.title || payload.title.trim().length === 0) {
+      throw new Error('document.title is required when document.body is provided');
+    }
+    return {
+      title: payload.title.trim(),
+      body: payload.body,
+      contentType: payload.content_type ?? 'text/plain',
+      metadata,
+    };
+  }
+
+  const bucket = cleanString(payload.storage_bucket);
+  const path = cleanString(payload.storage_path);
+  if (!bucket || !path) {
+    throw new Error(
+      'Either document.body or both document.storage_bucket and document.storage_path are required',
+    );
+  }
+
+  const download = await client.storage.from(bucket).download(path);
+  if (download.error || !download.data) {
+    throw new Error(download.error?.message ?? 'Failed to download storage object');
+  }
+
+  const bytes = new Uint8Array(await download.data.arrayBuffer());
+  const extracted = await extractDocumentText({
+    bytes,
+    contentType: payload.content_type,
+    fileName: payload.file_name ?? path.split('/').pop(),
+    titleHint: payload.title,
+  });
+
+  return {
+    title: extracted.title,
+    body: extracted.body,
+    contentType: extracted.contentType,
+    metadata: {
+      ...metadata,
+      extraction: {
+        extracted_from: extracted.extractedFrom,
+        byte_length: extracted.byteLength,
+        storage_bucket: bucket,
+        storage_path: path,
+      },
+    },
+  };
+}
+
+async function parseMultipartRequest(
+  req: Request,
+): Promise<{
+  source_system: string;
+  source_ref: string;
+  document: { title: string; body: string; content_type?: string; metadata?: Record<string, unknown> };
+  chunking_mode?: 'hierarchical' | 'flat';
+  policy_tags?: string[];
+  entity_ids?: string[];
+  embedding_model?: string;
+}> {
+  const form = await req.formData();
+  const sourceSystem = cleanString(form.get('source_system'));
+  const sourceRef = cleanString(form.get('source_ref'));
+  if (!sourceSystem) throw new Error('source_system is required');
+  if (!sourceRef) throw new Error('source_ref is required');
+
+  const title = cleanString(form.get('title'));
+  const rawBody = form.get('body');
+  const providedBody = typeof rawBody === 'string' ? rawBody : '';
+  const contentType = cleanString(form.get('content_type')) ?? undefined;
+  const metadata = parseMetadata(form.get('metadata'));
+
+  let docTitle = title;
+  let docBody = providedBody;
+  let resolvedContentType = contentType ?? 'text/plain';
+  let extractionMeta: Record<string, unknown> = {};
+
+  const fileValue = form.get('file');
+  if (fileValue instanceof File) {
+    const bytes = new Uint8Array(await fileValue.arrayBuffer());
+    const extracted = await extractDocumentText({
+      bytes,
+      contentType: contentType ?? fileValue.type,
+      fileName: fileValue.name,
+      titleHint: title,
+    });
+    docTitle = extracted.title;
+    docBody = extracted.body;
+    resolvedContentType = extracted.contentType;
+    extractionMeta = {
+      extracted_from: extracted.extractedFrom,
+      byte_length: extracted.byteLength,
+      file_name: fileValue.name,
+    };
+  }
+
+  if (!docTitle || docTitle.trim().length === 0) {
+    throw new Error('title is required');
+  }
+  if (!docBody || docBody.trim().length === 0) {
+    throw new Error('document body is required');
+  }
+
+  return {
+    source_system: sourceSystem,
+    source_ref: sourceRef,
+    document: {
+      title: docTitle,
+      body: docBody,
+      content_type: resolvedContentType,
+      metadata: Object.keys(extractionMeta).length > 0
+        ? { ...metadata, extraction: extractionMeta }
+        : metadata,
+    },
+    chunking_mode: toChunkingMode(form.get('chunking_mode')),
+    policy_tags: normalizeStringList(form.get('policy_tags')),
+    entity_ids: normalizeStringList(form.get('entity_ids')),
+    embedding_model: cleanString(form.get('embedding_model')),
+  };
+}
+
+async function parseJsonRequest(
+  req: Request,
+  client: ReturnType<typeof getServiceClient>,
+): Promise<IngestRequestBody> {
+  const body = await req.json();
   if (!isObject(body)) {
     throw new Error('Request body must be a JSON object');
   }
 
-  if (typeof body.source_system !== 'string' || body.source_system.trim().length === 0) {
-    throw new Error('source_system is required');
-  }
-  if (typeof body.source_ref !== 'string' || body.source_ref.trim().length === 0) {
-    throw new Error('source_ref is required');
-  }
-  if (!isObject(body.document)) {
-    throw new Error('document object is required');
-  }
-  if (typeof body.document.title !== 'string' || body.document.title.trim().length === 0) {
-    throw new Error('document.title is required');
-  }
-  if (typeof body.document.body !== 'string' || body.document.body.trim().length === 0) {
-    throw new Error('document.body is required');
-  }
+  const sourceSystem = cleanString(body.source_system);
+  const sourceRef = cleanString(body.source_ref);
+  if (!sourceSystem) throw new Error('source_system is required');
+  if (!sourceRef) throw new Error('source_ref is required');
+  if (!isObject(body.document)) throw new Error('document object is required');
 
-  return {
-    source_system: body.source_system.trim(),
-    source_ref: body.source_ref.trim(),
-    document: {
-      title: body.document.title.trim(),
-      body: body.document.body,
-      content_type:
-        typeof body.document.content_type === 'string'
-          ? body.document.content_type
-          : 'text/plain',
-      metadata: isObject(body.document.metadata) ? body.document.metadata : {},
-    },
-    chunking_mode: body.chunking_mode === 'flat' ? 'flat' : 'hierarchical',
-    policy_tags: Array.isArray(body.policy_tags) ? body.policy_tags.map(String) : [],
-    entity_ids: Array.isArray(body.entity_ids) ? body.entity_ids.map(String) : [],
-    embedding_model:
-      typeof body.embedding_model === 'string' && body.embedding_model.trim().length > 0
-        ? body.embedding_model.trim()
-        : undefined,
+  const documentInput: IngestDocumentPayload = {
+    title: cleanString(body.document.title),
+    body: typeof body.document.body === 'string' ? body.document.body : undefined,
+    content_type: cleanString(body.document.content_type),
+    metadata: parseMetadata(body.document.metadata),
+    storage_bucket: cleanString(body.document.storage_bucket),
+    storage_path: cleanString(body.document.storage_path),
+    file_name: cleanString(body.document.file_name),
   };
+
+  const resolvedDocument = await resolveDocumentPayload(documentInput, client);
+  return {
+    source_system: sourceSystem,
+    source_ref: sourceRef,
+    document: {
+      title: resolvedDocument.title,
+      body: resolvedDocument.body,
+      content_type: resolvedDocument.contentType,
+      metadata: resolvedDocument.metadata,
+    },
+    chunking_mode: toChunkingMode(body.chunking_mode),
+    policy_tags: normalizeStringList(body.policy_tags),
+    entity_ids: normalizeStringList(body.entity_ids),
+    embedding_model: cleanString(body.embedding_model),
+  };
+}
+
+async function parseRequest(
+  req: Request,
+  client: ReturnType<typeof getServiceClient>,
+): Promise<IngestRequestBody> {
+  const contentType = req.headers.get('content-type') ?? '';
+  if (contentType.toLowerCase().includes('multipart/form-data')) {
+    return parseMultipartRequest(req);
+  }
+  return parseJsonRequest(req, client);
 }
 
 serve(async (req) => {
@@ -83,9 +277,10 @@ serve(async (req) => {
   if (idemError) return idemError;
 
   try {
-    const requestBody = validateRequest(await req.json());
     const requestMeta = extractRequestMeta(req);
     const client = getServiceClient();
+    const requestBody = await parseRequest(req, client);
+    const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
 
     const effectiveEmbeddingModel =
       typeof requestBody.embedding_model === 'string' && requestBody.embedding_model.trim().length > 0
@@ -93,7 +288,7 @@ serve(async (req) => {
         : 'text-embedding-3-small';
 
     const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
-    const policyKey = [...requestBody.policy_tags].sort().join('\u0002');
+    const policyKey = [...policyTags].sort().join('\u0002');
     const documentHash = await sha256Hex(
       `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
     );
@@ -287,7 +482,7 @@ serve(async (req) => {
         chunk_level: chunk.chunkLevel,
         heading_path: chunk.headingPath,
         entity_ids: requestBody.entity_ids ?? [],
-        policy_tags: requestBody.policy_tags ?? [],
+        policy_tags: policyTags,
         authority_score:
           chunk.chunkLevel === 'claim'
             ? 85
@@ -340,7 +535,7 @@ serve(async (req) => {
                 confidence_band: null,
                 reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
                 entity_ids: requestBody.entity_ids ?? [],
-                tags: requestBody.policy_tags ?? [],
+                tags: policyTags,
                 analysis_document_id: null,
               },
               source_document_id: documentId,
@@ -370,6 +565,7 @@ serve(async (req) => {
         metadata: {
           oracle_outbox_event_id: oracleOutboxEventId,
           request_metadata: requestBody.document.metadata ?? {},
+          corpus_tier: inferCorpusTier(policyTags),
         },
       })
       .eq('id', ingestionRunId);

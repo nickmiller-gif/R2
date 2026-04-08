@@ -82,6 +82,9 @@ interface IngestResponse {
   idempotent_replay?: boolean;
 }
 
+type IngestCorpusTier = 'eigenx' | 'public';
+type ChatTier = 'eigenx' | 'public';
+
 function getApiBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
   if (fromEnv && fromEnv.length > 0) {
@@ -90,16 +93,18 @@ function getApiBaseUrl(): string {
   return '/functions/v1';
 }
 
-const TEXT_UPLOAD_ACCEPT = '.txt,.md,.csv,text/plain';
+const INGEST_UPLOAD_ACCEPT = '.txt,.md,.csv,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 export function App() {
   const [message, setMessage] = useState('');
+  const [chatTier, setChatTier] = useState<ChatTier>('eigenx');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [entityScope, setEntityScope] = useState('');
   const [policyScope, setPolicyScope] = useState('');
   const [ingestSourceRef, setIngestSourceRef] = useState('');
   const [ingestTitle, setIngestTitle] = useState('');
+  const [ingestTier, setIngestTier] = useState<IngestCorpusTier>('eigenx');
   const [ingestLocalError, setIngestLocalError] = useState<string | null>(null);
   const [streamResponses, setStreamResponses] = useState(false);
   const [streamPreview, setStreamPreview] = useState('');
@@ -115,20 +120,26 @@ export function App() {
       sessionId?: string;
       entityScope: string[];
       policyScope: string[];
+      tier: ChatTier;
     }) => {
-      const response = await fetch(`${apiBaseUrl}/eigen-chat`, {
+      const endpoint = input.tier === 'public' ? 'eigen-chat-public' : 'eigen-chat';
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (input.tier === 'eigenx') {
+        headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
+      }
+
+      const response = await fetch(`${apiBaseUrl}/${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`,
-        },
+        headers,
         body: JSON.stringify({
           message: input.message,
-          session_id: input.sessionId,
+          session_id: input.tier === 'eigenx' ? input.sessionId : undefined,
           conversation_context: 'auto',
           response_format: 'structured',
-          entity_scope: input.entityScope,
-          policy_scope: input.policyScope,
+          entity_scope: input.tier === 'eigenx' ? input.entityScope : undefined,
+          policy_scope: input.tier === 'eigenx' ? input.policyScope : undefined,
         }),
       });
 
@@ -143,7 +154,9 @@ export function App() {
       setChatResult(null);
     },
     onSuccess: (result) => {
-      setSessionId(result.session_id);
+      if (chatTier === 'eigenx') {
+        setSessionId(result.session_id);
+      }
       setMessage('');
       setChatResult(result);
       setStreamChatError(null);
@@ -151,23 +164,21 @@ export function App() {
   });
 
   const ingestMutation = useMutation({
-    mutationFn: async (input: { title: string; body: string; sourceRef: string }) => {
+    mutationFn: async (input: { title: string; sourceRef: string; file: File; tier: IngestCorpusTier }) => {
+      const form = new FormData();
+      form.set('source_system', 'manual-upload');
+      form.set('source_ref', input.sourceRef);
+      form.set('title', input.title);
+      form.set('file', input.file, input.file.name);
+      form.set('content_type', input.file.type || 'application/octet-stream');
+      form.set('policy_tags', JSON.stringify(input.tier === 'public' ? ['eigen_public'] : ['eigenx']));
       const response = await fetch(`${apiBaseUrl}/eigen-ingest`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`,
           'x-idempotency-key': crypto.randomUUID(),
         },
-        body: JSON.stringify({
-          source_system: 'manual-upload',
-          source_ref: input.sourceRef,
-          document: {
-            title: input.title,
-            body: input.body,
-            content_type: 'text/plain',
-          },
-        }),
+        body: form,
       });
 
       if (!response.ok) {
@@ -195,10 +206,7 @@ export function App() {
       setIngestLocalError(`File is too large (max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB).`);
       return;
     }
-
-    const text = await file.text();
-    const trimmed = text.trim();
-    if (trimmed.length === 0) {
+    if (file.size === 0) {
       setIngestLocalError('File is empty.');
       return;
     }
@@ -210,8 +218,9 @@ export function App() {
 
     ingestMutation.mutate({
       title: defaultTitle,
-      body: trimmed,
       sourceRef,
+      file,
+      tier: ingestTier,
     });
   };
 
@@ -236,19 +245,24 @@ export function App() {
       setIsStreamingChat(true);
       void (async () => {
         try {
-          const response = await fetch(`${apiBaseUrl}/eigen-chat`, {
+          const endpoint = chatTier === 'public' ? 'eigen-chat-public' : 'eigen-chat';
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+          };
+          if (chatTier === 'eigenx') {
+            headers.Authorization = `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`;
+          }
+
+          const response = await fetch(`${apiBaseUrl}/${endpoint}`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`,
-            },
+            headers,
             body: JSON.stringify({
               message: trimmed,
-              session_id: sessionId,
+              session_id: chatTier === 'eigenx' ? sessionId : undefined,
               conversation_context: 'auto',
               response_format: 'structured',
-              entity_scope: entityList,
-              policy_scope: policyList,
+              entity_scope: chatTier === 'eigenx' ? entityList : undefined,
+              policy_scope: chatTier === 'eigenx' ? policyList : undefined,
               stream: true,
             }),
           });
@@ -257,7 +271,9 @@ export function App() {
             setStreamPreview((prev: string) => prev + delta);
           });
 
-          setSessionId(result.session_id);
+          if (chatTier === 'eigenx') {
+            setSessionId(result.session_id);
+          }
           setMessage('');
           setChatResult(result);
           setStreamPreview('');
@@ -275,6 +291,7 @@ export function App() {
       sessionId,
       entityScope: entityList,
       policyScope: policyList,
+      tier: chatTier,
     });
   };
 
@@ -294,11 +311,12 @@ export function App() {
           background: '#fafafa',
         }}
       >
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Ingest text file</h2>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Ingest document</h2>
         <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
-          Upload a .txt, .md, or .csv file (max {(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) into the knowledge
-          index via <code>eigen-ingest</code>. Re-uploading the same <strong>source ref</strong> and unchanged content
-          skips re-embedding.
+          Upload a .txt, .md, .csv, .pdf, or .docx file (max {(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) into
+          the knowledge index via <code>eigen-ingest</code>. PDF/DOCX text is extracted server-side before chunking and
+          embedding. Choose whether this goes into the <code>eigen_public</code> corpus or the internal
+          <code>eigenx</code> corpus.
         </p>
         <div style={{ display: 'grid', gap: 10, maxWidth: 480 }}>
           <input
@@ -313,11 +331,19 @@ export function App() {
             placeholder="Stable source ref (optional; auto if empty)"
             style={{ width: '100%', padding: 10 }}
           />
+          <select
+            value={ingestTier}
+            onChange={(event) => setIngestTier(event.target.value as IngestCorpusTier)}
+            style={{ width: '100%', padding: 10 }}
+          >
+            <option value="eigenx">EigenX (internal)</option>
+            <option value="public">Public Eigen</option>
+          </select>
           <label style={{ fontSize: 14, color: '#334155' }}>
             <span style={{ display: 'block', marginBottom: 6 }}>Choose file</span>
             <input
               type="file"
-              accept={TEXT_UPLOAD_ACCEPT}
+              accept={INGEST_UPLOAD_ACCEPT}
               onChange={(event) => {
                 void onUploadTextFile(event.target.files);
                 event.target.value = '';
@@ -345,6 +371,18 @@ export function App() {
       </section>
 
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+        <select
+          value={chatTier}
+          onChange={(event) => {
+            setChatTier(event.target.value as ChatTier);
+            setSessionId(undefined);
+            setChatResult(null);
+          }}
+          style={{ width: '100%', padding: 10 }}
+        >
+          <option value="eigenx">EigenX (authenticated)</option>
+          <option value="public">Public Eigen (anonymous)</option>
+        </select>
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -352,18 +390,22 @@ export function App() {
           rows={5}
           style={{ width: '100%', padding: 12 }}
         />
-        <input
-          value={entityScope}
-          onChange={(event) => setEntityScope(event.target.value)}
-          placeholder="Entity scope (comma-separated UUIDs)"
-          style={{ width: '100%', padding: 10 }}
-        />
-        <input
-          value={policyScope}
-          onChange={(event) => setPolicyScope(event.target.value)}
-          placeholder="Policy scope (comma-separated tags)"
-          style={{ width: '100%', padding: 10 }}
-        />
+        {chatTier === 'eigenx' ? (
+          <>
+            <input
+              value={entityScope}
+              onChange={(event) => setEntityScope(event.target.value)}
+              placeholder="Entity scope (comma-separated UUIDs)"
+              style={{ width: '100%', padding: 10 }}
+            />
+            <input
+              value={policyScope}
+              onChange={(event) => setPolicyScope(event.target.value)}
+              placeholder="Policy scope (comma-separated tags)"
+              style={{ width: '100%', padding: 10 }}
+            />
+          </>
+        ) : null}
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#334155' }}>
           <input
             type="checkbox"

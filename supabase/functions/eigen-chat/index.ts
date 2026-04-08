@@ -7,6 +7,7 @@ import {
   executeEigenRetrieve,
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
+import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
 
 interface ChatRequest {
   message: string;
@@ -35,6 +36,30 @@ function readMaxCompletionTokens(): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(n, 16_000);
+}
+
+function readDefaultPolicyScope(): string[] {
+  const raw = Deno.env.get('EIGENX_DEFAULT_POLICY_SCOPE')?.trim();
+  if (!raw) return [POLICY_TAG_EIGENX];
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function readNoContextResponse(): string {
+  return (
+    Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() ||
+    'I do not have enough grounded knowledge to answer that yet.'
+  );
+}
+
+function readSystemPrompt(format: 'structured' | 'freeform'): string {
+  const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  return format === 'structured'
+    ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
+    : 'You are EigenX. Provide a concise grounded answer using only provided context.';
 }
 
 function toList(value: unknown): string[] {
@@ -73,7 +98,10 @@ function parseRequest(value: unknown): ChatRequest {
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
-    policy_scope: toList(body.policy_scope),
+    policy_scope: (() => {
+      const provided = toList(body.policy_scope);
+      return provided.length > 0 ? provided : readDefaultPolicyScope();
+    })(),
     stream: body.stream === true,
     budget_profile,
   };
@@ -110,17 +138,16 @@ async function synthesizeResponse(
   format: 'structured' | 'freeform',
 ): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (retrievedChunks.length === 0) {
+    return readNoContextResponse();
+  }
   if (!apiKey) {
     return buildFallbackAnswer(message, retrievedChunks);
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
   const context = buildContextBlock(retrievedChunks);
-
-  const systemPrompt =
-    format === 'structured'
-      ? 'You are Eigen Chat. Answer only from provided context. Include concise reasoning and avoid speculation.'
-      : 'You are Eigen Chat. Provide a concise grounded answer using only provided context.';
+  const systemPrompt = readSystemPrompt(format);
 
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -166,10 +193,7 @@ async function* streamOpenAiChatDeltas(
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const systemPrompt =
-    format === 'structured'
-      ? 'You are Eigen Chat. Answer only from provided context. Include concise reasoning and avoid speculation.'
-      : 'You are Eigen Chat. Provide a concise grounded answer using only provided context.';
+  const systemPrompt = readSystemPrompt(format);
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -301,7 +325,10 @@ serve(async (req) => {
             let fullText = '';
             const apiKey = Deno.env.get('OPENAI_API_KEY');
 
-            if (!apiKey) {
+            if (retrievedChunks.length === 0) {
+              fullText = readNoContextResponse();
+              send({ text: fullText });
+            } else if (!apiKey) {
               fullText = buildFallbackAnswer(body.message, retrievedChunks);
               send({ text: fullText });
             } else {

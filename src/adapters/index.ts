@@ -5,6 +5,7 @@ export {
   type EigenIngestRequest,
   type EigenIngestResponse,
   type EigenIngestDocument,
+  type EigenMultipartIngestInput,
 } from './eigen-ingest-client.js';
 
 export {
@@ -13,3 +14,8 @@ export {
   type IpAnalysisCompletedEvent,
   type IpAdapterConfig,
 } from './ip-insights-hub/eigen-ip-adapter.js';
+
+export {
+  DOMAIN_ADAPTER_ROADMAP,
+  type AdapterRoadmapItem,
+} from './domain-adapter-roadmap.js';

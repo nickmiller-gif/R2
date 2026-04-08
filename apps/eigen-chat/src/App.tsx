@@ -10,6 +10,70 @@ interface ChatResponse {
   session_id: string;
 }
 
+async function consumeEigenChatSse(
+  response: Response,
+  onDelta: (text: string) => void,
+): Promise<ChatResponse> {
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text);
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let resolved: ChatResponse | null = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop() ?? '';
+
+      for (const block of blocks) {
+        const line = block.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const raw = line.slice(6).trim();
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+
+        if (typeof data.error === 'string') {
+          throw new Error(data.error);
+        }
+        if (typeof data.text === 'string' && data.text.length > 0) {
+          onDelta(data.text);
+        }
+        if (data.done === true) {
+          resolved = {
+            response: typeof data.response === 'string' ? data.response : '',
+            citations: Array.isArray(data.citations) ? (data.citations as ChatResponse['citations']) : [],
+            confidence: (data.confidence as ChatResponse['confidence']) ?? 'low',
+            retrieval_run_id: typeof data.retrieval_run_id === 'string' ? data.retrieval_run_id : null,
+            memory_updated: data.memory_updated === true,
+            session_id: typeof data.session_id === 'string' ? data.session_id : '',
+          };
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!resolved) {
+    throw new Error('Stream ended before completion');
+  }
+  return resolved;
+}
+
 interface IngestResponse {
   document_id: string;
   ingestion_run_id: string;
@@ -37,6 +101,11 @@ export function App() {
   const [ingestSourceRef, setIngestSourceRef] = useState('');
   const [ingestTitle, setIngestTitle] = useState('');
   const [ingestLocalError, setIngestLocalError] = useState<string | null>(null);
+  const [streamResponses, setStreamResponses] = useState(false);
+  const [streamPreview, setStreamPreview] = useState('');
+  const [isStreamingChat, setIsStreamingChat] = useState(false);
+  const [chatResult, setChatResult] = useState<ChatResponse | null>(null);
+  const [streamChatError, setStreamChatError] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
@@ -70,9 +139,14 @@ export function App() {
 
       return (await response.json()) as ChatResponse;
     },
+    onMutate: () => {
+      setChatResult(null);
+    },
     onSuccess: (result) => {
       setSessionId(result.session_id);
       setMessage('');
+      setChatResult(result);
+      setStreamChatError(null);
     },
   });
 
@@ -145,17 +219,62 @@ export function App() {
     event.preventDefault();
     const trimmed = message.trim();
     if (trimmed.length === 0) return;
+
+    const entityList = entityScope
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const policyList = policyScope
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (streamResponses) {
+      setChatResult(null);
+      setStreamChatError(null);
+      setStreamPreview('');
+      setIsStreamingChat(true);
+      void (async () => {
+        try {
+          const response = await fetch(`${apiBaseUrl}/eigen-chat`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`,
+            },
+            body: JSON.stringify({
+              message: trimmed,
+              session_id: sessionId,
+              conversation_context: 'auto',
+              response_format: 'structured',
+              entity_scope: entityList,
+              policy_scope: policyList,
+              stream: true,
+            }),
+          });
+
+          const result = await consumeEigenChatSse(response, (delta) => {
+            setStreamPreview((prev: string) => prev + delta);
+          });
+
+          setSessionId(result.session_id);
+          setMessage('');
+          setChatResult(result);
+          setStreamPreview('');
+        } catch (err) {
+          setStreamChatError(err instanceof Error ? err.message : 'Request failed');
+        } finally {
+          setIsStreamingChat(false);
+        }
+      })();
+      return;
+    }
+
     chatMutation.mutate({
       message: trimmed,
       sessionId,
-      entityScope: entityScope
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-      policyScope: policyScope
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
+      entityScope: entityList,
+      policyScope: policyList,
     });
   };
 
@@ -245,8 +364,20 @@ export function App() {
           placeholder="Policy scope (comma-separated tags)"
           style={{ width: '100%', padding: 10 }}
         />
-        <button type="submit" disabled={chatMutation.isPending} style={{ width: 220, padding: 10 }}>
-          {chatMutation.isPending ? 'Asking...' : 'Ask Eigen'}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#334155' }}>
+          <input
+            type="checkbox"
+            checked={streamResponses}
+            onChange={(event) => setStreamResponses(event.target.checked)}
+          />
+          Stream response (SSE; needs <code>OPENAI_API_KEY</code> on the server)
+        </label>
+        <button
+          type="submit"
+          disabled={chatMutation.isPending || isStreamingChat}
+          style={{ width: 220, padding: 10 }}
+        >
+          {chatMutation.isPending || isStreamingChat ? 'Asking...' : 'Ask Eigen'}
         </button>
       </form>
 
@@ -256,26 +387,34 @@ export function App() {
         </pre>
       ) : null}
 
-      {chatMutation.data ? (
+      {streamChatError ? (
+        <pre style={{ marginTop: 18, color: '#b91c1c', whiteSpace: 'pre-wrap' }}>{streamChatError}</pre>
+      ) : null}
+
+      {chatResult || streamPreview ? (
         <section style={{ marginTop: 24, display: 'grid', gap: 12 }}>
           <h2 style={{ marginBottom: 0 }}>Response</h2>
           <pre style={{ margin: 0, background: '#f8fafc', padding: 12, whiteSpace: 'pre-wrap' }}>
-            {chatMutation.data.response}
+            {isStreamingChat ? streamPreview : (chatResult?.response ?? '')}
           </pre>
-          <div style={{ color: '#334155' }}>
-            Confidence: <strong>{chatMutation.data.confidence}</strong> | Retrieval run:{' '}
-            <code>{chatMutation.data.retrieval_run_id ?? 'none'}</code>
-          </div>
-          <div>
-            <h3>Citations</h3>
-            <ul>
-              {chatMutation.data.citations.map((citation) => (
-                <li key={citation.chunk_id}>
-                  <code>{citation.chunk_id}</code> — {citation.source} ({citation.relevance})
-                </li>
-              ))}
-            </ul>
-          </div>
+          {chatResult ? (
+            <>
+              <div style={{ color: '#334155' }}>
+                Confidence: <strong>{chatResult.confidence}</strong> | Retrieval run:{' '}
+                <code>{chatResult.retrieval_run_id ?? 'none'}</code>
+              </div>
+              <div>
+                <h3>Citations</h3>
+                <ul>
+                  {chatResult.citations.map((citation) => (
+                    <li key={citation.chunk_id}>
+                      <code>{citation.chunk_id}</code> — {citation.source} ({citation.relevance})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : null}
         </section>
       ) : null}
     </main>

@@ -92,8 +92,10 @@ serve(async (req) => {
         ? requestBody.embedding_model.trim()
         : 'text-embedding-3-small';
 
+    const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
+    const policyKey = [...requestBody.policy_tags].sort().join('\u0002');
     const documentHash = await sha256Hex(
-      `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}`,
+      `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
     );
 
     const [existingRunResult, existingDocResult] = await Promise.all([
@@ -269,6 +271,10 @@ serve(async (req) => {
       effectiveEmbeddingModel,
     );
 
+    const chunkContentHashes = await Promise.all(
+      chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
+    );
+
     const chunkRows: Record<string, unknown>[] = [];
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index]!;
@@ -293,15 +299,17 @@ serve(async (req) => {
         freshness_score: 100,
         provenance_completeness: 100,
         content: chunk.content,
-        content_hash: await sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`),
+        content_hash: chunkContentHashes[index],
         embedding_version: resolvedEmbeddingModel,
         ingestion_run_id: ingestionRunId,
         embedding,
       });
     }
 
-    if (chunkRows.length > 0) {
-      const chunkInsert = await client.from('knowledge_chunks').insert(chunkRows);
+    const CHUNK_INSERT_BATCH = 150;
+    for (let offset = 0; offset < chunkRows.length; offset += CHUNK_INSERT_BATCH) {
+      const slice = chunkRows.slice(offset, offset + CHUNK_INSERT_BATCH);
+      const chunkInsert = await client.from('knowledge_chunks').insert(slice);
       if (chunkInsert.error) return errorResponse(chunkInsert.error.message, 400);
     }
 

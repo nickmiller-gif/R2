@@ -1,8 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
+import {
+  executeEigenRetrieve,
+  type EigenRetrieveChunk,
+} from '../_shared/eigen-retrieve-core.ts';
 
 interface ChatRequest {
   message: string;
@@ -11,6 +15,7 @@ interface ChatRequest {
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
   policy_scope?: string[];
+  stream?: boolean;
   budget_profile?: {
     max_chunks?: number;
     max_tokens?: number;
@@ -18,16 +23,18 @@ interface ChatRequest {
   };
 }
 
-interface RetrieveChunk {
-  chunk_id: string;
-  content: string;
-  chunk_level: string;
-  similarity_score: number;
-  composite_score: number;
-  provenance?: {
-    source_system?: string;
-    source_ref?: string;
-  };
+function readMaxMessageChars(): number {
+  const raw = Deno.env.get('EIGEN_CHAT_MAX_MESSAGE_CHARS') ?? '32000';
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 2000) return 32000;
+  return Math.min(n, 200_000);
+}
+
+function readMaxCompletionTokens(): number {
+  const raw = Deno.env.get('OPENAI_CHAT_MAX_TOKENS') ?? '1200';
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 64) return 1200;
+  return Math.min(n, 16_000);
 }
 
 function toList(value: unknown): string[] {
@@ -40,6 +47,11 @@ function parseRequest(value: unknown): ChatRequest {
   const body = value as Record<string, unknown>;
   if (typeof body.message !== 'string' || body.message.trim().length === 0) {
     throw new Error('message is required');
+  }
+
+  const maxChars = readMaxMessageChars();
+  if (body.message.length > maxChars) {
+    throw new Error(`message exceeds maximum length (${maxChars} characters)`);
   }
 
   let budget_profile: ChatRequest['budget_profile'];
@@ -62,31 +74,48 @@ function parseRequest(value: unknown): ChatRequest {
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
     policy_scope: toList(body.policy_scope),
+    stream: body.stream === true,
     budget_profile,
   };
 }
 
+function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
+  return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
+}
+
+function buildFallbackAnswer(message: string, retrievedChunks: EigenRetrieveChunk[]): string {
+  const top = retrievedChunks.slice(0, 3).map((chunk, index) => {
+    return `${index + 1}. ${chunk.content.slice(0, 240)}`;
+  });
+  if (top.length === 0) {
+    return 'No grounded knowledge was retrieved for this query.';
+  }
+  return `Grounded answer for "${message}":\n${top.join('\n')}`;
+}
+
+function buildCitations(chunks: EigenRetrieveChunk[]) {
+  return chunks.slice(0, 8).map((chunk) => ({
+    chunk_id: chunk.chunk_id,
+    source:
+      chunk.provenance?.source_ref ??
+      chunk.provenance?.source_system ??
+      'unknown',
+    relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
+  }));
+}
+
 async function synthesizeResponse(
   message: string,
-  retrievedChunks: RetrieveChunk[],
+  retrievedChunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
 ): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) {
-    const top = retrievedChunks.slice(0, 3).map((chunk, index) => {
-      return `${index + 1}. ${chunk.content.slice(0, 240)}`;
-    });
-    if (top.length === 0) {
-      return 'No grounded knowledge was retrieved for this query.';
-    }
-    return `Grounded answer for "${message}":\n${top.join('\n')}`;
+    return buildFallbackAnswer(message, retrievedChunks);
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const context = retrievedChunks
-    .slice(0, 12)
-    .map((chunk, index) => `[${index + 1}] ${chunk.content}`)
-    .join('\n\n');
+  const context = buildContextBlock(retrievedChunks);
 
   const systemPrompt =
     format === 'structured'
@@ -102,6 +131,7 @@ async function synthesizeResponse(
     body: JSON.stringify({
       model,
       temperature: 0.1,
+      max_tokens: readMaxCompletionTokens(),
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -123,6 +153,84 @@ async function synthesizeResponse(
   const answer = payload.choices?.[0]?.message?.content?.trim();
   if (!answer) throw new Error('Chat completion returned empty content');
   return answer;
+}
+
+async function* streamOpenAiChatDeltas(
+  message: string,
+  context: string,
+  format: 'structured' | 'freeform',
+): AsyncGenerator<string, void, void> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) {
+    throw new Error('Streaming requires OPENAI_API_KEY');
+  }
+
+  const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
+  const systemPrompt =
+    format === 'structured'
+      ? 'You are Eigen Chat. Answer only from provided context. Include concise reasoning and avoid speculation.'
+      : 'You are Eigen Chat. Provide a concise grounded answer using only provided context.';
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      max_tokens: readMaxCompletionTokens(),
+      stream: true,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `Question: ${message}\n\nRetrieved context:\n${context}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    const text = await response.text();
+    throw new Error(`Chat stream failed: ${response.status} ${text}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const segments = buffer.split('\n\n');
+      buffer = segments.pop() ?? '';
+
+      for (const segment of segments) {
+        const line = segment.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') return;
+
+        try {
+          const json = JSON.parse(data) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const piece = json.choices?.[0]?.delta?.content;
+          if (typeof piece === 'string' && piece.length > 0) {
+            yield piece;
+          }
+        } catch {
+          /* ignore malformed SSE payloads */
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 serve(async (req) => {
@@ -156,51 +264,124 @@ serve(async (req) => {
       sessionId = sessionInsert.data.id as string;
     }
 
-    const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
-    const retrieveResponse = await fetch(`${supabaseUrl}/functions/v1/eigen-retrieve`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: req.headers.get('Authorization') ?? '',
-      },
-      body: JSON.stringify({
-        query: body.message,
-        entity_scope: body.entity_scope ?? [],
-        policy_scope: body.policy_scope ?? [],
-        budget_profile: body.budget_profile ?? { max_chunks: 12, max_tokens: 4000 },
-        rerank: true,
-        include_provenance: true,
-      }),
+    const retrieveResult = await executeEigenRetrieve(client, {
+      query: body.message,
+      entity_scope: body.entity_scope ?? [],
+      policy_scope: body.policy_scope ?? [],
+      budget_profile: body.budget_profile ?? { max_chunks: 12, max_tokens: 4000 },
+      rerank: true,
+      include_provenance: true,
     });
 
-    if (!retrieveResponse.ok) {
-      const text = await retrieveResponse.text();
-      return errorResponse(`Retrieve call failed: ${text}`, 500);
+    if (!retrieveResult.ok) {
+      return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
     }
 
-    const retrievePayload = await retrieveResponse.json() as {
-      retrieval_run_id?: string;
-      chunks?: RetrieveChunk[];
-    };
-    const retrievedChunks = retrievePayload.chunks ?? [];
+    const retrievedChunks = retrieveResult.body.chunks;
+    const citations = buildCitations(retrievedChunks);
+    const confidence: 'low' | 'medium' | 'high' =
+      citations.length >= 6 ? 'high' : citations.length >= 3 ? 'medium' : 'low';
+
+    if (body.stream) {
+      const encoder = new TextEncoder();
+      const context = buildContextBlock(retrievedChunks);
+      const sseHeaders = {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      };
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const send = (obj: unknown) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+          };
+
+          try {
+            let fullText = '';
+            const apiKey = Deno.env.get('OPENAI_API_KEY');
+
+            if (!apiKey) {
+              fullText = buildFallbackAnswer(body.message, retrievedChunks);
+              send({ text: fullText });
+            } else {
+              for await (const delta of streamOpenAiChatDeltas(
+                body.message,
+                context,
+                body.response_format ?? 'structured',
+              )) {
+                fullText += delta;
+                send({ text: delta });
+              }
+            }
+
+            const [memoryUpsert, sessionUpdate] = await Promise.all([
+              client.from('memory_entries').upsert(
+                [
+                  {
+                    scope: 'session',
+                    key: `chat:last_turn:${sessionId}`,
+                    value: {
+                      message: body.message,
+                      response: fullText,
+                      citations,
+                      timestamp: new Date().toISOString(),
+                    },
+                    retention_class: 'short_term',
+                    owner_id: auth.claims.userId,
+                    confidence_band: 'high',
+                  },
+                ],
+                { onConflict: 'scope,owner_id,key' },
+              ),
+              client
+                .from('eigen_chat_sessions')
+                .update({
+                  last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', sessionId)
+                .eq('owner_id', auth.claims.userId),
+            ]);
+
+            if (memoryUpsert.error) {
+              send({ error: memoryUpsert.error.message });
+              return;
+            }
+            if (sessionUpdate.error) {
+              send({ error: sessionUpdate.error.message });
+              return;
+            }
+
+            send({
+              done: true,
+              response: fullText,
+              citations,
+              confidence,
+              retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+              memory_updated: true,
+              session_id: sessionId,
+            });
+          } catch (streamErr) {
+            const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
+            send({ error: msg });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, { headers: sseHeaders });
+    }
+
     const responseText = await synthesizeResponse(
       body.message,
       retrievedChunks,
       body.response_format ?? 'structured',
     );
 
-    const citations = retrievedChunks.slice(0, 8).map((chunk) => ({
-      chunk_id: chunk.chunk_id,
-      source:
-        chunk.provenance?.source_ref ??
-        chunk.provenance?.source_system ??
-        'unknown',
-      relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
-    }));
-
-    const memoryUpsert = await client
-      .from('memory_entries')
-      .upsert(
+    const [memoryUpsert, sessionUpdate] = await Promise.all([
+      client.from('memory_entries').upsert(
         [
           {
             scope: 'session',
@@ -217,24 +398,25 @@ serve(async (req) => {
           },
         ],
         { onConflict: 'scope,owner_id,key' },
-      );
-    if (memoryUpsert.error) return errorResponse(memoryUpsert.error.message, 400);
+      ),
+      client
+        .from('eigen_chat_sessions')
+        .update({
+          last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sessionId)
+        .eq('owner_id', auth.claims.userId),
+    ]);
 
-    const sessionUpdate = await client
-      .from('eigen_chat_sessions')
-      .update({
-        last_retrieval_run_id: retrievePayload.retrieval_run_id ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', sessionId)
-      .eq('owner_id', auth.claims.userId);
+    if (memoryUpsert.error) return errorResponse(memoryUpsert.error.message, 400);
     if (sessionUpdate.error) return errorResponse(sessionUpdate.error.message, 400);
 
     return jsonResponse({
       response: responseText,
       citations,
-      confidence: citations.length >= 6 ? 'high' : citations.length >= 3 ? 'medium' : 'low',
-      retrieval_run_id: retrievePayload.retrieval_run_id ?? null,
+      confidence,
+      retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
       memory_updated: true,
       session_id: sessionId,
     });

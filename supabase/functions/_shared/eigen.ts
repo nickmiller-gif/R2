@@ -133,6 +133,13 @@ function readEmbeddingInputBatchSize(): number {
   return Math.min(parsed, 2048);
 }
 
+function readEmbeddingBatchConcurrency(): number {
+  const raw = Deno.env.get('EIGEN_EMBEDDING_BATCH_CONCURRENCY') ?? '3';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 3;
+  return Math.min(parsed, 12);
+}
+
 function chunkStringArray(values: string[], chunkSize: number): string[][] {
   const out: string[][] = [];
   for (let i = 0; i < values.length; i += chunkSize) {
@@ -166,8 +173,9 @@ export async function embedTexts(
 
   const batches = chunkStringArray(texts, readEmbeddingInputBatchSize());
   const embeddings: number[][] = [];
+  const concurrency = readEmbeddingBatchConcurrency();
 
-  for (const batch of batches) {
+  const callEmbeddingBatch = async (batch: string[]): Promise<number[][]> => {
     const response = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -195,12 +203,22 @@ export async function embedTexts(
       );
     }
 
+    const vectors: number[][] = [];
     for (const row of rows) {
       const embedding = row.embedding;
       if (!embedding || embedding.length === 0) {
         throw new Error('Embedding response missing vector data');
       }
-      embeddings.push(embedding);
+      vectors.push(embedding);
+    }
+    return vectors;
+  };
+
+  for (let i = 0; i < batches.length; i += concurrency) {
+    const wave = batches.slice(i, i + concurrency);
+    const waveVectors = await Promise.all(wave.map((batch) => callEmbeddingBatch(batch)));
+    for (const part of waveVectors) {
+      embeddings.push(...part);
     }
   }
 

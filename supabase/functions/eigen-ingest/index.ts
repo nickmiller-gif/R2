@@ -5,7 +5,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta } from '../_shared/correlation.ts';
-import { buildChunks, embedText, sha256Hex } from '../_shared/eigen.ts';
+import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 
 interface IngestRequestBody {
   source_system: string;
@@ -146,19 +146,13 @@ serve(async (req) => {
       `${requestBody.source_system}:${requestBody.source_ref}:${requestBody.document.body}`,
     );
 
-    const existingDocumentId = existingRunResult.data?.document_id as string | null | undefined;
-    let documentId: string;
-
-    if (existingDocumentId) {
-      const deleteChunks = await client
-        .from('knowledge_chunks')
-        .delete()
-        .eq('document_id', existingDocumentId);
-      if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
-
-      const documentUpdate = await client
-        .from('documents')
-        .update({
+    const upsertDoc = await client
+      .from('documents')
+      .upsert(
+        {
+          source_system: requestBody.source_system,
+          source_ref: requestBody.source_ref,
+          owner_id: auth.claims.userId,
           title: requestBody.document.title,
           body: requestBody.document.body,
           content_type: requestBody.document.content_type,
@@ -167,33 +161,17 @@ serve(async (req) => {
           embedding_status: 'embedded',
           extracted_text_status: 'extracted',
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingDocumentId)
-        .select('id')
-        .single();
-      if (documentUpdate.error) return errorResponse(documentUpdate.error.message, 400);
-      documentId = existingDocumentId;
-    } else {
-      const documentInsert = await client
-        .from('documents')
-        .insert([
-          {
-            source_system: requestBody.source_system,
-            owner_id: auth.claims.userId,
-            title: requestBody.document.title,
-            body: requestBody.document.body,
-            content_type: requestBody.document.content_type,
-            content_hash: documentHash,
-            index_status: 'indexed',
-            embedding_status: 'embedded',
-            extracted_text_status: 'extracted',
-          },
-        ])
-        .select('id')
-        .single();
-      if (documentInsert.error) return errorResponse(documentInsert.error.message, 400);
-      documentId = documentInsert.data.id as string;
-    }
+        },
+        { onConflict: 'source_system,source_ref' },
+      )
+      .select('id')
+      .single();
+
+    if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
+    const documentId = upsertDoc.data.id as string;
+
+    const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
+    if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
 
     const linkDocToRun = await client
       .from('ingestion_runs')
@@ -207,11 +185,18 @@ serve(async (req) => {
       requestBody.chunking_mode ?? 'hierarchical',
     );
 
+    const { embeddings, model: effectiveEmbeddingModel } = await embedTexts(
+      chunks.map((chunk) => chunk.content),
+      requestBody.embedding_model,
+    );
+
     const chunkRows: Record<string, unknown>[] = [];
-    let effectiveEmbeddingModel = requestBody.embedding_model ?? 'text-embedding-3-small';
-    for (const chunk of chunks) {
-      const { embedding, model } = await embedText(chunk.content, requestBody.embedding_model);
-      effectiveEmbeddingModel = model;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index]!;
+      const embedding = embeddings[index];
+      if (!embedding) {
+        return errorResponse(`Missing embedding for chunk index ${index}`, 500);
+      }
       chunkRows.push({
         document_id: documentId,
         chunk_level: chunk.chunkLevel,

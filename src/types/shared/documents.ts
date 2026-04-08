@@ -15,6 +15,10 @@ export interface Document {
   id: string;
   /** The product domain that created this document (e.g., 'rays_retreat', 'charter'). */
   sourceSystem: string;
+  /**
+   * Domain-stable external id when set (e.g. analysis run id). Unique with sourceSystem for Eigen ingest.
+   */
+  sourceRef: string | null;
   /** Owner — MEG entity ID. */
   ownerId: string;
   /** Human-readable title. */
@@ -60,6 +64,7 @@ export interface CreateDocumentInput {
   title: string;
   body: string;
   contentType?: string;
+  sourceRef?: string | null;
   sourceUrl?: string;
   sourceTitle?: string;
   capturedAt?: Date;

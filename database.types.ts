@@ -640,6 +640,7 @@ export type Database = {
           index_status: Database["public"]["Enums"]["index_status"]
           indexed_at: string | null
           owner_id: string
+          source_ref: string | null
           source_system: string
           source_title: string | null
           source_url: string | null
@@ -661,6 +662,7 @@ export type Database = {
           index_status?: Database["public"]["Enums"]["index_status"]
           indexed_at?: string | null
           owner_id: string
+          source_ref?: string | null
           source_system: string
           source_title?: string | null
           source_url?: string | null
@@ -682,6 +684,7 @@ export type Database = {
           index_status?: Database["public"]["Enums"]["index_status"]
           indexed_at?: string | null
           owner_id?: string
+          source_ref?: string | null
           source_system?: string
           source_title?: string | null
           source_url?: string | null

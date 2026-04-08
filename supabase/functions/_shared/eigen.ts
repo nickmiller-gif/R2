@@ -126,38 +126,90 @@ function seededEmbeddingFromHash(seedHash: string): number[] {
   return vector;
 }
 
-export async function embedText(text: string, model?: string): Promise<{ embedding: number[]; model: string }> {
+/** OpenAI allows large multi-input batches; keep moderate batches for latency and payload size. */
+const EMBEDDING_INPUT_BATCH_SIZE = 64;
+
+function chunkStringArray(values: string[], chunkSize: number): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < values.length; i += chunkSize) {
+    out.push(values.slice(i, i + chunkSize));
+  }
+  return out;
+}
+
+/**
+ * Batch embedding API: one HTTP call per batch, preserves input order.
+ */
+export async function embedTexts(
+  texts: string[],
+  model?: string,
+): Promise<{ embeddings: number[][]; model: string }> {
   const selectedModel = model ?? DEFAULT_EMBEDDING_MODEL;
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+
+  if (texts.length === 0) {
+    return { embeddings: [], model: selectedModel };
+  }
+
   if (!apiKey) {
-    const seed = await sha256Hex(text);
-    return { embedding: seededEmbeddingFromHash(seed), model: `local-fallback:${selectedModel}` };
+    const embeddings: number[][] = [];
+    for (const text of texts) {
+      const seed = await sha256Hex(text);
+      embeddings.push(seededEmbeddingFromHash(seed));
+    }
+    return { embeddings, model: `local-fallback:${selectedModel}` };
   }
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      input: text,
-    }),
-  });
+  const batches = chunkStringArray(texts, EMBEDDING_INPUT_BATCH_SIZE);
+  const embeddings: number[][] = [];
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Embedding request failed: ${response.status} ${errorText}`);
+  for (const batch of batches) {
+    const response = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        input: batch,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Embedding request failed: ${response.status} ${errorText}`);
+    }
+
+    const payload = await response.json() as {
+      data?: Array<{ index?: number; embedding?: number[] }>;
+    };
+    const rows = [...(payload.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (rows.length !== batch.length) {
+      throw new Error(
+        `Embedding batch size mismatch: expected ${batch.length}, got ${rows.length}`,
+      );
+    }
+
+    for (const row of rows) {
+      const embedding = row.embedding;
+      if (!embedding || embedding.length === 0) {
+        throw new Error('Embedding response missing vector data');
+      }
+      embeddings.push(embedding);
+    }
   }
 
-  const payload = await response.json() as { data?: Array<{ embedding?: number[] }> };
-  const embedding = payload.data?.[0]?.embedding;
-  if (!embedding || embedding.length === 0) {
+  return { embeddings, model: selectedModel };
+}
+
+export async function embedText(text: string, model?: string): Promise<{ embedding: number[]; model: string }> {
+  const { embeddings, model: resolvedModel } = await embedTexts([text], model);
+  const embedding = embeddings[0];
+  if (!embedding) {
     throw new Error('Embedding response did not include vector data');
   }
-
-  return { embedding, model: selectedModel };
+  return { embedding, model: resolvedModel };
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

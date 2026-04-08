@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
-import { guardAuth } from '../_shared/auth.ts';
+import { guardJwt } from '../_shared/jwt.ts';
 
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMS = 1536;
@@ -72,8 +72,19 @@ async function generateEmbeddings(
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = guardAuth(req);
-  if (!auth.ok) return auth.response;
+  if (req.method !== 'POST') {
+    return errorResponse('Method not allowed', 405);
+  }
+
+  // Verify JWT signature and require service_role — this endpoint is internal
+  // (called by pg_cron dispatcher) and performs service-role writes.
+  const auth = await guardJwt(req);
+  if (!auth.ok) {
+    return errorResponse(`Unauthorized: ${auth.error}`, 401);
+  }
+  if (auth.payload.role !== 'service_role') {
+    return errorResponse('Forbidden: service_role required', 403);
+  }
 
   const openaiKey = Deno.env.get('OPENAI_API_KEY');
   if (!openaiKey) {
@@ -130,21 +141,24 @@ serve(async (req) => {
       if (processedSet.has(key)) {
         results.push({ chunk_id: job.chunk_id, status: 'skipped' });
         // Ack the message even though we skipped — it's already done
-        await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id }).catch(() => {});
+        const { error: skipAckErr } = await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id });
+        if (skipAckErr) console.error(`pgmq_delete failed for msg ${msg.msg_id}: ${skipAckErr.message}`);
         continue;
       }
 
       const chunk = chunkMap.get(job.chunk_id);
       if (!chunk) {
         results.push({ chunk_id: job.chunk_id, status: 'failed', error: 'Chunk not found' });
-        await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id }).catch(() => {});
+        const { error: notFoundAckErr } = await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id });
+        if (notFoundAckErr) console.error(`pgmq_delete failed for msg ${msg.msg_id}: ${notFoundAckErr.message}`);
         continue;
       }
 
       // Skip if content_hash changed since enqueue (stale message)
       if (chunk.content_hash !== job.content_hash) {
         results.push({ chunk_id: job.chunk_id, status: 'skipped' });
-        await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id }).catch(() => {});
+        const { error: staleAckErr } = await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id });
+        if (staleAckErr) console.error(`pgmq_delete failed for msg ${msg.msg_id}: ${staleAckErr.message}`);
         continue;
       }
 
@@ -189,7 +203,7 @@ serve(async (req) => {
           }
 
           // Record in idempotency log
-          await client
+          const { error: logError } = await client
             .from('embedding_job_log')
             .upsert({
               chunk_id: chunk.id,
@@ -198,8 +212,20 @@ serve(async (req) => {
               processed_at: new Date().toISOString(),
             });
 
+          if (logError) {
+            // Idempotency log write failed — do NOT ack the message so it can
+            // be retried; the chunk embedding is written but we have no record.
+            results.push({ chunk_id: chunk.id, status: 'failed', error: `Idempotency log write failed: ${logError.message}` });
+            continue;
+          }
+
           // Ack message from queue
-          await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id }).catch(() => {});
+          const { error: deleteError } = await client.rpc('pgmq_delete', { queue_name: 'embedding_jobs', msg_id: msg.msg_id });
+          if (deleteError) {
+            // Non-fatal: embedding is done and logged; queue message will
+            // eventually time out. Record for observability.
+            console.error(`pgmq_delete failed for msg ${msg.msg_id}: ${deleteError.message}`);
+          }
 
           results.push({ chunk_id: chunk.id, status: 'embedded' });
         } catch (err) {

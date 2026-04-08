@@ -10,12 +10,22 @@
  */
 import * as jose from 'jsr:@panva/jose@6';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+// Lazily initialized at first use so module import doesn't crash when
+// SUPABASE_URL is absent (e.g., during unit test imports or cold-start probes).
+let _jwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
 
-// Module-level JWKS — cached across requests in the same isolate
-const JWKS = jose.createRemoteJWKSet(
-  new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`),
-);
+function getJwks(): ReturnType<typeof jose.createRemoteJWKSet> {
+  if (!_jwks) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL environment variable is not set');
+    }
+    _jwks = jose.createRemoteJWKSet(
+      new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
+    );
+  }
+  return _jwks;
+}
 
 export interface JwtPayload {
   /** User ID (subject claim). */
@@ -40,8 +50,12 @@ export interface JwtPayload {
  * @throws {Error} If the token is missing, expired, or has an invalid signature.
  */
 export async function verifyJwt(token: string): Promise<JwtPayload> {
-  const { payload } = await jose.jwtVerify(token, JWKS, {
-    issuer: `${SUPABASE_URL}/auth/v1`,
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) {
+    throw new Error('SUPABASE_URL environment variable is not set');
+  }
+  const { payload } = await jose.jwtVerify(token, getJwks(), {
+    issuer: `${supabaseUrl}/auth/v1`,
     clockTolerance: '15s', // Handle clock skew between servers
   });
 

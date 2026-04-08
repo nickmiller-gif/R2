@@ -1,8 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
-import { guardAuth } from '../_shared/auth.ts';
-import { createHash } from 'https://deno.land/std@0.168.0/crypto/mod.ts';
+import { guardJwt } from '../_shared/jwt.ts';
 
 /**
  * Ingest Document Edge Function
@@ -115,8 +114,11 @@ async function sha256(text: string): Promise<string> {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = guardAuth(req);
-  if (!auth.ok) return auth.response;
+  // Verify JWT signature and extract caller identity for ownership check
+  const auth = await guardJwt(req);
+  if (!auth.ok) {
+    return errorResponse(`Unauthorized: ${auth.error}`, 401);
+  }
 
   if (req.method !== 'POST') {
     return errorResponse('Method not allowed', 405);
@@ -144,6 +146,11 @@ serve(async (req) => {
 
     if (docError || !doc) {
       return errorResponse(`Document not found: ${docError?.message ?? 'no data'}`, 404);
+    }
+
+    // Authorization: the authenticated caller must own this document
+    if (doc.owner_id !== auth.payload.sub) {
+      return errorResponse('Forbidden: you do not own this document', 403);
     }
 
     if (doc.status !== 'active') {
@@ -221,7 +228,7 @@ serve(async (req) => {
     }
 
     // 6. Update document indexing lifecycle
-    await client
+    const { error: updateError } = await client
       .from('documents')
       .update({
         index_status: 'indexed',
@@ -230,6 +237,10 @@ serve(async (req) => {
         updated_at: now,
       })
       .eq('id', document_id);
+
+    if (updateError) {
+      return errorResponse(`Failed to update document status: ${updateError.message}`, 500);
+    }
 
     return jsonResponse({
       document_id,

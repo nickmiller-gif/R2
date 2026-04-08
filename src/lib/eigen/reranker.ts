@@ -47,6 +47,8 @@ export async function rerankWithExternal(
   for (const r of ranked) {
     if (results.length >= options.topN) break;
     if (options.minRelevance !== undefined && r.relevance_score < options.minRelevance) continue;
+    // Guard against out-of-range or duplicate indices from the external provider
+    if (r.index < 0 || r.index >= items.length) continue;
 
     results.push({
       ...items[r.index],

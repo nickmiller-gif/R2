@@ -88,9 +88,18 @@ describe('rerankByAuthority', () => {
     expect(result[0].id).toBe('high-auth');
   });
 
-  it('returns empty for empty input', () => {
-    const result = rerankByAuthority([], { topN: 5 });
-    expect(result).toHaveLength(0);
+  it('throws when weights sum to zero', () => {
+    const items = [makeItem()];
+    expect(() => rerankByAuthority(items, { topN: 5 }, { retrieval: 0, authority: 0, freshness: 0 })).toThrow(
+      'Authority rerank weights must sum to a positive finite value.',
+    );
+  });
+
+  it('throws when weights are all negative', () => {
+    const items = [makeItem()];
+    expect(() => rerankByAuthority(items, { topN: 5 }, { retrieval: -1, authority: -1, freshness: -1 })).toThrow(
+      'Authority rerank weights must sum to a positive finite value.',
+    );
   });
 });
 
@@ -149,5 +158,24 @@ describe('rerankWithExternal', () => {
     const mockRerankFn = async () => [];
     const result = await rerankWithExternal('test', [], { topN: 5 }, mockRerankFn);
     expect(result).toHaveLength(0);
+  });
+
+  it('skips out-of-range indices from external provider', async () => {
+    const items = [
+      makeItem({ id: 'a', excerpt: 'Doc A' }),
+      makeItem({ id: 'b', excerpt: 'Doc B' }),
+    ];
+
+    // Provider returns a valid index and two out-of-range ones
+    const mockRerankFn = async () => [
+      { index: 0, relevance_score: 0.9 },
+      { index: 99, relevance_score: 0.8 }, // out of range
+      { index: -1, relevance_score: 0.7 }, // negative index
+    ];
+
+    const result = await rerankWithExternal('test', items, { topN: 10 }, mockRerankFn);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+    expect(result[0].relevance).toBeCloseTo(0.9);
   });
 });

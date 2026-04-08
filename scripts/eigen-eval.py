@@ -62,6 +62,7 @@ def run():
         return 2
 
     auth_bearer = os.environ.get("AUTH_BEARER", "").strip()
+    eval_group = os.environ.get("EIGEN_EVAL_GROUP", "").strip()
     public_url = os.environ.get(
         "PUBLIC_URL",
         f"{supabase_url.rstrip('/')}/functions/v1/eigen-chat-public",
@@ -76,6 +77,8 @@ def run():
     skipped = 0
 
     for test in tests:
+        if eval_group and str(test.get("group", "")).strip() != eval_group:
+            continue
         name = str(test.get("name", "unnamed"))
         tier = str(test.get("tier", "public")).lower()
         question = str(test.get("question", "")).strip()
@@ -86,7 +89,14 @@ def run():
 
         url = public_url if tier == "public" else eigenx_url
         token = None
-        payload: dict = {"message": question, "response_format": "structured"}
+        payload: dict = {
+            "message": question,
+            "response_format": "structured",
+        }
+        if isinstance(test.get("site_id"), str) and test.get("site_id"):
+            payload["site_id"] = str(test.get("site_id"))
+        if isinstance(test.get("site_source_systems"), list):
+            payload["site_source_systems"] = [str(x) for x in test["site_source_systems"]]
         if tier == "eigenx":
             if not auth_bearer:
                 print(f"[SKIP] {name}: AUTH_BEARER not set")
@@ -151,8 +161,9 @@ def run():
         )
         passed += 1
 
+    selected_total = passed + failed + skipped
     print(
-        f"\nResult: passed={passed}, failed={failed}, skipped={skipped}, total={len(tests)}"
+        f"\nResult: passed={passed}, failed={failed}, skipped={skipped}, total={selected_total}"
     )
     return 1 if failed > 0 else 0
 

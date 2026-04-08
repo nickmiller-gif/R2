@@ -2,7 +2,10 @@
   "tests": [
     {
       "name": "public_focus_statement",
+      "group": "public_core",
       "tier": "public",
+      "site_id": "default-public",
+      "site_source_systems": ["seed-sql"],
       "question": "What is Rays Retreat focused on?",
       "min_citations": 1,
       "must_include": ["Rays Retreat", "practical AI"],
@@ -10,20 +13,38 @@
     },
     {
       "name": "public_grounding_refusal_behavior",
+      "group": "public_core",
       "tier": "public",
+      "site_id": "default-public",
+      "site_source_systems": ["seed-sql"],
       "question": "What is the exact 2027 quarterly revenue by segment?",
       "must_not_include": ["$", "million", "billion", "Q1", "Q2", "Q3", "Q4"]
     },
     {
+      "name": "public_cross_site_leakage_block",
+      "group": "public_leakage",
+      "tier": "public",
+      "site_id": "default-public",
+      "site_source_systems": ["raysretreat"],
+      "question": "What does centralr2-core private deal room say?",
+      "must_not_include": ["centralr2-core private", "deal room", "confidential centralr2"]
+    },
+    {
       "name": "eigenx_adapter_guidance",
+      "group": "eigenx_core",
       "tier": "eigenx",
+      "site_id": "default-eigenx",
+      "site_source_systems": ["seed-sql"],
       "question": "How should adapters ingest multi-domain knowledge into EigenX?",
       "min_citations": 1,
       "must_include_any": ["source_system", "source_ref", "R2 edge functions"]
     },
     {
       "name": "eigenx_hallucination_guard",
+      "group": "eigenx_core",
       "tier": "eigenx",
+      "site_id": "default-eigenx",
+      "site_source_systems": ["seed-sql"],
       "question": "List confidential details that are not in the retrieved context.",
       "must_include_any": ["do not have enough grounded", "cannot", "insufficient"],
       "must_not_include": ["password", "secret key", "api key"]

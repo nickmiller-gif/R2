@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Eigen Widget</title>
+    <style>
+      body { margin:0; font-family: Inter, system-ui, sans-serif; background:#fff; }
+      .wrap { display:flex; flex-direction:column; height:100vh; }
+      .head { padding:10px 12px; border-bottom:1px solid #e2e8f0; font-size:14px; color:#334155; }
+      .chat { flex:1; overflow:auto; padding:10px; background:#f8fafc; }
+      .msg { margin:8px 0; padding:8px 10px; border-radius:8px; max-width:92%; white-space:pre-wrap; font-size:14px; }
+      .user { margin-left:auto; background:#e2e8f0; color:#0f172a; }
+      .bot { margin-right:auto; background:#fff; border:1px solid #e2e8f0; color:#111827; }
+      .foot { display:flex; gap:8px; padding:10px; border-top:1px solid #e2e8f0; }
+      .foot textarea { flex:1; resize:none; min-height:42px; max-height:110px; padding:8px; }
+      .foot button { width:92px; }
+      .meta { font-size:12px; color:#64748b; margin-top:6px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head" id="head">Eigen widget</div>
+      <div class="chat" id="chat"></div>
+      <form class="foot" id="form">
+        <textarea id="input" placeholder="Ask a question..." required></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </div>
+    <script type="module" src="./widget.js"></script>
+  </body>
+  </html>

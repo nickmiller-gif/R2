@@ -10,6 +10,10 @@ export interface EigenRetrieveRequest {
   query: string;
   entity_scope?: string[];
   policy_scope?: string[];
+  site_id?: string;
+  site_source_systems?: string[];
+  site_boost?: number;
+  global_penalty?: number;
   budget_profile?: {
     max_chunks?: number;
     max_tokens?: number;
@@ -67,9 +71,54 @@ interface MatchKnowledgeChunksPayload {
   chunks: MatchChunkRow[];
 }
 
+interface SiteRegistryContext {
+  source_systems: string[];
+  default_policy_scope: string[];
+}
+
 function normalizeList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item));
+}
+
+function parseNumber(value: unknown): number | undefined {
+  if (typeof value !== 'number') return undefined;
+  if (!Number.isFinite(value)) return undefined;
+  return value;
+}
+
+function readDefaultSiteBoost(): number {
+  const raw = Deno.env.get('EIGEN_SITE_SOURCE_BOOST') ?? '0.08';
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return 0.08;
+  return Math.max(0, Math.min(parsed, 0.8));
+}
+
+function readDefaultGlobalPenalty(): number {
+  const raw = Deno.env.get('EIGEN_GLOBAL_SOURCE_PENALTY') ?? '0.0';
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(-0.8, Math.min(parsed, 0.8));
+}
+
+async function loadSiteRegistryContext(
+  client: SupabaseClient,
+  siteId: string | undefined,
+): Promise<SiteRegistryContext | null> {
+  if (!siteId || siteId.trim().length === 0) return null;
+  const q = await client
+    .from('eigen_site_registry')
+    .select('source_systems,default_policy_scope,status')
+    .eq('site_id', siteId)
+    .maybeSingle();
+  if (q.error || !q.data) return null;
+  const status = String((q.data as Record<string, unknown>).status ?? 'active');
+  if (status !== 'active') return null;
+  const row = q.data as Record<string, unknown>;
+  return {
+    source_systems: normalizeList(row.source_systems),
+    default_policy_scope: normalizeList(row.default_policy_scope),
+  };
 }
 
 export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
@@ -86,6 +135,10 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     query: payload.query.trim(),
     entity_scope: normalizeList(payload.entity_scope),
     policy_scope: normalizeList(payload.policy_scope),
+    site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
+    site_source_systems: normalizeList(payload.site_source_systems),
+    site_boost: parseNumber(payload.site_boost),
+    global_penalty: parseNumber(payload.global_penalty),
     budget_profile:
       payload.budget_profile && typeof payload.budget_profile === 'object'
         ? {
@@ -149,6 +202,14 @@ export async function executeEigenRetrieve(
   };
 
   try {
+    const siteRegistry = await loadSiteRegistryContext(client, payload.site_id);
+    const effectiveSiteSources = (payload.site_source_systems && payload.site_source_systems.length > 0)
+      ? payload.site_source_systems
+      : (siteRegistry?.source_systems ?? []);
+    const effectivePolicyScope = (payload.policy_scope && payload.policy_scope.length > 0)
+      ? payload.policy_scope
+      : (siteRegistry?.default_policy_scope ?? []);
+
     const maxChunks = Math.max(1, payload.budget_profile?.max_chunks ?? 20);
     const annLimit = Math.min(Math.max(maxChunks * 8, 100), 500);
     const queryHash = await sha256Hex(payload.query);
@@ -163,7 +224,9 @@ export async function executeEigenRetrieve(
             decomposition: {
               query: payload.query,
               entity_scope: payload.entity_scope ?? [],
-              policy_scope: payload.policy_scope ?? [],
+              policy_scope: effectivePolicyScope ?? [],
+              site_id: payload.site_id ?? null,
+              site_source_systems: effectiveSiteSources ?? [],
             },
             budget_profile: payload.budget_profile ?? {},
             status: 'running',
@@ -200,7 +263,7 @@ export async function executeEigenRetrieve(
       query_embedding: queryEmbedding,
       ann_limit: annLimit,
       filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
-      filter_policy_tags: payload.policy_scope?.length ? payload.policy_scope : null,
+      filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
       valid_at: nowIso,
     });
 
@@ -256,6 +319,17 @@ export async function executeEigenRetrieve(
       }
     }
 
+    const siteSources = new Set(
+      effectiveSiteSources.map((s) => s.trim()).filter((s) => s.length > 0),
+    );
+    const siteBoost = payload.site_boost ?? readDefaultSiteBoost();
+    const globalPenalty = payload.global_penalty ?? readDefaultGlobalPenalty();
+    if (siteSources.size > 0) {
+      droppedReasons.push(
+        `site_priority: boost=${siteBoost.toFixed(3)} penalty=${globalPenalty.toFixed(3)} site_sources=${siteSources.size}`,
+      );
+    }
+
     const scoredDescending = temporalFiltered
       .map((candidate) => ({
         ...candidate,
@@ -278,6 +352,15 @@ export async function executeEigenRetrieve(
               freshness_score: candidate.freshness_score,
               provenance_completeness: candidate.provenance_completeness,
             }),
+        site_adjustment: siteSources.size === 0
+          ? 0
+          : (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty),
+      }))
+      .map((candidate) => ({
+        ...candidate,
+        composite_score: Number(
+          Math.max(0, Math.min(1.5, candidate.composite_score + candidate.site_adjustment)).toFixed(6),
+        ),
       }))
       .sort((left, right) => right.composite_score - left.composite_score);
 

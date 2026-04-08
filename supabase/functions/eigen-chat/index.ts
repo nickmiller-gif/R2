@@ -16,6 +16,10 @@ interface ChatRequest {
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
   policy_scope?: string[];
+  site_id?: string;
+  site_source_systems?: string[];
+  site_boost?: number;
+  global_penalty?: number;
   stream?: boolean;
   budget_profile?: {
     max_chunks?: number;
@@ -103,6 +107,10 @@ function parseRequest(value: unknown): ChatRequest {
       return provided.length > 0 ? provided : readDefaultPolicyScope();
     })(),
     stream: body.stream === true,
+    site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
+    site_source_systems: toList(body.site_source_systems),
+    site_boost: typeof body.site_boost === 'number' ? body.site_boost : undefined,
+    global_penalty: typeof body.global_penalty === 'number' ? body.global_penalty : undefined,
     budget_profile,
   };
 }
@@ -292,6 +300,10 @@ serve(async (req) => {
       query: body.message,
       entity_scope: body.entity_scope ?? [],
       policy_scope: body.policy_scope ?? [],
+      site_id: body.site_id,
+      site_source_systems: body.site_source_systems ?? [],
+      site_boost: body.site_boost,
+      global_penalty: body.global_penalty,
       budget_profile: body.budget_profile ?? { max_chunks: 12, max_tokens: 4000 },
       rerank: true,
       include_provenance: true,

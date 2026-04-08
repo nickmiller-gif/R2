@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: eigen-bootstrap eigen-seed eigen-seed-sql eigen-smoke eigen-bootstrap-sql eigen-eval eigen-sources-public eigen-sources-eigenx
+.PHONY: eigen-bootstrap eigen-seed eigen-seed-sql eigen-smoke eigen-bootstrap-sql eigen-eval eigen-eval-public-core eigen-eval-public-leakage eigen-eval-eigenx-core eigen-sources-public eigen-sources-eigenx
 
 eigen-seed:
 	./scripts/eigen-seed.sh
@@ -17,6 +17,15 @@ eigen-bootstrap-sql: eigen-seed-sql eigen-smoke
 
 eigen-eval:
 	./scripts/eigen-eval.sh
+
+eigen-eval-public-core:
+	EIGEN_EVAL_GROUP=public_core ./scripts/eigen-eval.sh
+
+eigen-eval-public-leakage:
+	EIGEN_EVAL_GROUP=public_leakage ./scripts/eigen-eval.sh
+
+eigen-eval-eigenx-core:
+	EIGEN_EVAL_GROUP=eigenx_core ./scripts/eigen-eval.sh
 
 eigen-sources-public:
 	./scripts/eigen-sources.sh public

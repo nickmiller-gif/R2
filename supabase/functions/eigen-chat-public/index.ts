@@ -8,6 +8,10 @@ import { enforceEigenPublicRateLimit } from '../_shared/public-rate-limit.ts';
 interface PublicChatRequest {
   message: string;
   response_format?: 'structured' | 'freeform';
+  site_id?: string;
+  site_source_systems?: string[];
+  site_boost?: number;
+  global_penalty?: number;
   budget_profile?: {
     max_chunks?: number;
     max_tokens?: number;
@@ -56,6 +60,12 @@ function parseRequest(value: unknown): PublicChatRequest {
   return {
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
+    site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
+    site_source_systems: Array.isArray(body.site_source_systems)
+      ? body.site_source_systems.map((item) => String(item))
+      : [],
+    site_boost: typeof body.site_boost === 'number' ? body.site_boost : undefined,
+    global_penalty: typeof body.global_penalty === 'number' ? body.global_penalty : undefined,
     budget_profile,
   };
 }
@@ -171,6 +181,10 @@ serve(async (req) => {
       query: body.message,
       entity_scope: [],
       policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
+      site_id: body.site_id,
+      site_source_systems: body.site_source_systems ?? [],
+      site_boost: body.site_boost,
+      global_penalty: body.global_penalty,
       budget_profile: body.budget_profile ?? { max_chunks: 10, max_tokens: 3000 },
       rerank: true,
       include_provenance: true,

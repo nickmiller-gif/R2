@@ -171,14 +171,15 @@ serve(async (req) => {
     const ingestionRunId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    const docChunkHash = await sha256(doc.body);
+    const docChunkContent = doc.title + (doc.body.length > 500 ? '\n\n' + doc.body.slice(0, 500) + '...' : '\n\n' + doc.body);
+    const docChunkHash = await sha256(docChunkContent);
     const docChunkRow = {
       document_id,
       chunk_level: 'document',
       heading_path: [doc.title],
       entity_ids: [],
       policy_tags: [],
-      content: doc.title + (doc.body.length > 500 ? '\n\n' + doc.body.slice(0, 500) + '...' : '\n\n' + doc.body),
+      content: docChunkContent,
       content_hash: docChunkHash,
       embedding_version: null,
       ingestion_run_id: ingestionRunId,

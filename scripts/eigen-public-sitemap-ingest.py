@@ -19,6 +19,9 @@ Optional env:
 Usage:
   python3 scripts/eigen-public-sitemap-ingest.py https://example.com/sitemap.xml
   EIGEN_PUBLIC_SITEMAP_URLS=https://a.com/sitemap.xml,https://b.com/page python3 scripts/eigen-public-sitemap-ingest.py
+
+For sitemap + RSS + a public file folder in one run, see scripts/eigen-public-corpus-ingest.sh
+and docs/eigen-public-corpus.md.
 """
 
 from __future__ import annotations

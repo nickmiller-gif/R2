@@ -22,6 +22,8 @@ knowledge/
     r2app/
 ```
 
+For **public-only** ingest together with sitemap + RSS (news feeds), see `docs/eigen-public-corpus.md` and `make eigen-public-corpus`.
+
 Run incremental sync:
 
 ```bash

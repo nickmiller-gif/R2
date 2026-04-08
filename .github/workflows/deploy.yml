@@ -96,10 +96,12 @@ jobs:
 
       - name: Deploy edge functions
         run: |
+          SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
-            # skip the shared module directory
-            if [ "$fn_name" = "_shared" ]; then
+            # skip shared and known non-deployable legacy function
+            if [[ "$fn_name" =~ $SKIP_FUNCTIONS_REGEX ]]; then
+              echo "Skipping $fn_name"
               continue
             fi
             echo "::group::Deploying $fn_name"

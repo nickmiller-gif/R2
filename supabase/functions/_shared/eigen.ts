@@ -126,8 +126,12 @@ function seededEmbeddingFromHash(seedHash: string): number[] {
   return vector;
 }
 
-/** OpenAI allows large multi-input batches; keep moderate batches for latency and payload size. */
-const EMBEDDING_INPUT_BATCH_SIZE = 64;
+function readEmbeddingInputBatchSize(): number {
+  const raw = Deno.env.get('EIGEN_EMBEDDING_BATCH_SIZE') ?? '64';
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 64;
+  return Math.min(parsed, 2048);
+}
 
 function chunkStringArray(values: string[], chunkSize: number): string[][] {
   const out: string[][] = [];
@@ -160,7 +164,7 @@ export async function embedTexts(
     return { embeddings, model: `local-fallback:${selectedModel}` };
   }
 
-  const batches = chunkStringArray(texts, EMBEDDING_INPUT_BATCH_SIZE);
+  const batches = chunkStringArray(texts, readEmbeddingInputBatchSize());
   const embeddings: number[][] = [];
 
   for (const batch of batches) {

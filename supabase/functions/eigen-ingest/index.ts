@@ -87,27 +87,110 @@ serve(async (req) => {
     const requestMeta = extractRequestMeta(req);
     const client = getServiceClient();
 
-    const existingRunResult = await client
-      .from('ingestion_runs')
-      .select('*')
-      .eq('source_system', requestBody.source_system)
-      .eq('source_ref', requestBody.source_ref)
-      .limit(1)
-      .maybeSingle();
+    const effectiveEmbeddingModel =
+      typeof requestBody.embedding_model === 'string' && requestBody.embedding_model.trim().length > 0
+        ? requestBody.embedding_model.trim()
+        : 'text-embedding-3-small';
+
+    const documentHash = await sha256Hex(
+      `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}`,
+    );
+
+    const [existingRunResult, existingDocResult] = await Promise.all([
+      client
+        .from('ingestion_runs')
+        .select('*')
+        .eq('source_system', requestBody.source_system)
+        .eq('source_ref', requestBody.source_ref)
+        .limit(1)
+        .maybeSingle(),
+      client
+        .from('documents')
+        .select('id, content_hash')
+        .eq('source_system', requestBody.source_system)
+        .eq('source_ref', requestBody.source_ref)
+        .maybeSingle(),
+    ]);
 
     if (existingRunResult.error) {
       return errorResponse(existingRunResult.error.message, 400);
     }
+    if (existingDocResult.error) {
+      return errorResponse(existingDocResult.error.message, 400);
+    }
 
-    if (existingRunResult.data && existingRunResult.data.status === 'completed') {
-      return jsonResponse({
-        document_id: existingRunResult.data.document_id,
-        ingestion_run_id: existingRunResult.data.id,
-        chunks_created: existingRunResult.data.chunk_count ?? 0,
-        embedding_dimensions: 1536,
-        oracle_outbox_event_id: existingRunResult.data.metadata?.oracle_outbox_event_id ?? null,
-        idempotent_replay: true,
-      });
+    const existingDoc = existingDocResult.data;
+    if (existingDoc && existingDoc.content_hash === documentHash) {
+      const chunkHead = await client
+        .from('knowledge_chunks')
+        .select('id', { count: 'exact', head: true })
+        .eq('document_id', existingDoc.id);
+
+      if (chunkHead.error) {
+        return errorResponse(chunkHead.error.message, 400);
+      }
+
+      const chunkCount = chunkHead.count ?? 0;
+      if (chunkCount > 0) {
+        let ingestionRunId = existingRunResult.data?.id as string | undefined;
+        const nowIso = new Date().toISOString();
+
+        if (!ingestionRunId) {
+          const runInsert = await client
+            .from('ingestion_runs')
+            .insert([
+              {
+                source_system: requestBody.source_system,
+                source_ref: requestBody.source_ref,
+                chunking_mode: requestBody.chunking_mode,
+                embedding_model: effectiveEmbeddingModel,
+                status: 'completed',
+                document_id: existingDoc.id,
+                chunk_count: chunkCount,
+                completed_at: nowIso,
+                metadata: { content_unchanged_fast_path: true },
+              },
+            ])
+            .select('*')
+            .single();
+
+          if (runInsert.error) return errorResponse(runInsert.error.message, 400);
+          ingestionRunId = runInsert.data.id;
+        } else {
+          const prev = existingRunResult.data?.metadata;
+          const prevMeta =
+            prev && typeof prev === 'object' && prev !== null && !Array.isArray(prev)
+              ? (prev as Record<string, unknown>)
+              : {};
+          const runUpdate = await client
+            .from('ingestion_runs')
+            .update({
+              status: 'completed',
+              document_id: existingDoc.id,
+              chunk_count: chunkCount,
+              completed_at: nowIso,
+              embedding_model: effectiveEmbeddingModel,
+              metadata: {
+                ...prevMeta,
+                content_unchanged_fast_path: true,
+              },
+            })
+            .eq('id', ingestionRunId);
+
+          if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
+        }
+
+        const runMeta = existingRunResult.data?.metadata as Record<string, unknown> | undefined;
+        return jsonResponse({
+          document_id: existingDoc.id,
+          ingestion_run_id: ingestionRunId,
+          chunks_created: chunkCount,
+          embedding_dimensions: 1536,
+          oracle_outbox_event_id: (runMeta?.oracle_outbox_event_id as string | null | undefined) ?? null,
+          content_unchanged: true,
+          idempotent_replay: true,
+        });
+      }
     }
 
     let ingestionRunId = existingRunResult.data?.id as string | undefined;
@@ -119,7 +202,7 @@ serve(async (req) => {
             source_system: requestBody.source_system,
             source_ref: requestBody.source_ref,
             chunking_mode: requestBody.chunking_mode,
-            embedding_model: requestBody.embedding_model ?? 'text-embedding-3-small',
+            embedding_model: effectiveEmbeddingModel,
             status: 'running',
           },
         ])
@@ -141,10 +224,6 @@ serve(async (req) => {
         .eq('id', ingestionRunId);
       if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
     }
-
-    const documentHash = await sha256Hex(
-      `${requestBody.source_system}:${requestBody.source_ref}:${requestBody.document.body}`,
-    );
 
     const upsertDoc = await client
       .from('documents')
@@ -185,9 +264,9 @@ serve(async (req) => {
       requestBody.chunking_mode ?? 'hierarchical',
     );
 
-    const { embeddings, model: effectiveEmbeddingModel } = await embedTexts(
+    const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
       chunks.map((chunk) => chunk.content),
-      requestBody.embedding_model,
+      effectiveEmbeddingModel,
     );
 
     const chunkRows: Record<string, unknown>[] = [];
@@ -215,7 +294,7 @@ serve(async (req) => {
         provenance_completeness: 100,
         content: chunk.content,
         content_hash: await sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`),
-        embedding_version: effectiveEmbeddingModel,
+        embedding_version: resolvedEmbeddingModel,
         ingestion_run_id: ingestionRunId,
         embedding,
       });
@@ -278,7 +357,7 @@ serve(async (req) => {
         status: 'completed',
         document_id: documentId,
         chunk_count: chunkRows.length,
-        embedding_model: effectiveEmbeddingModel,
+        embedding_model: resolvedEmbeddingModel,
         completed_at: new Date().toISOString(),
         metadata: {
           oracle_outbox_event_id: oracleOutboxEventId,

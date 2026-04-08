@@ -10,6 +10,14 @@ interface ChatResponse {
   session_id: string;
 }
 
+interface IngestResponse {
+  document_id: string;
+  ingestion_run_id: string;
+  chunks_created: number;
+  content_unchanged?: boolean;
+  idempotent_replay?: boolean;
+}
+
 function getApiBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
   if (fromEnv && fromEnv.length > 0) {
@@ -18,11 +26,17 @@ function getApiBaseUrl(): string {
   return '/functions/v1';
 }
 
+const TEXT_UPLOAD_ACCEPT = '.txt,.md,.csv,text/plain';
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+
 export function App() {
   const [message, setMessage] = useState('');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [entityScope, setEntityScope] = useState('');
   const [policyScope, setPolicyScope] = useState('');
+  const [ingestSourceRef, setIngestSourceRef] = useState('');
+  const [ingestTitle, setIngestTitle] = useState('');
+  const [ingestLocalError, setIngestLocalError] = useState<string | null>(null);
 
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
@@ -62,6 +76,71 @@ export function App() {
     },
   });
 
+  const ingestMutation = useMutation({
+    mutationFn: async (input: { title: string; body: string; sourceRef: string }) => {
+      const response = await fetch(`${apiBaseUrl}/eigen-ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('sb-access-token') ?? ''}`,
+          'x-idempotency-key': crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          source_system: 'manual-upload',
+          source_ref: input.sourceRef,
+          document: {
+            title: input.title,
+            body: input.body,
+            content_type: 'text/plain',
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+      }
+
+      return (await response.json()) as IngestResponse;
+    },
+    onMutate: () => {
+      setIngestLocalError(null);
+    },
+    onSuccess: () => {
+      setIngestLocalError(null);
+    },
+  });
+
+  const onUploadTextFile = async (fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) return;
+
+    setIngestLocalError(null);
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setIngestLocalError(`File is too large (max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB).`);
+      return;
+    }
+
+    const text = await file.text();
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+      setIngestLocalError('File is empty.');
+      return;
+    }
+
+    const defaultTitle = ingestTitle.trim() || file.name.replace(/\.[^/.]+$/, '') || 'Uploaded document';
+    const sourceRef =
+      ingestSourceRef.trim() ||
+      `file:${file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')}:${Date.now()}`;
+
+    ingestMutation.mutate({
+      title: defaultTitle,
+      body: trimmed,
+      sourceRef,
+    });
+  };
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = message.trim();
@@ -86,6 +165,65 @@ export function App() {
       <p style={{ color: '#475569' }}>
         Grounded retrieval chat UI for <code>eigen-chat</code> and <code>eigen-retrieve</code>.
       </p>
+
+      <section
+        style={{
+          marginTop: 20,
+          padding: 16,
+          border: '1px solid #e2e8f0',
+          borderRadius: 8,
+          background: '#fafafa',
+        }}
+      >
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Ingest text file</h2>
+        <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
+          Upload a .txt, .md, or .csv file (max {(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) into the knowledge
+          index via <code>eigen-ingest</code>. Re-uploading the same <strong>source ref</strong> and unchanged content
+          skips re-embedding.
+        </p>
+        <div style={{ display: 'grid', gap: 10, maxWidth: 480 }}>
+          <input
+            value={ingestTitle}
+            onChange={(event) => setIngestTitle(event.target.value)}
+            placeholder="Document title (optional; defaults from filename)"
+            style={{ width: '100%', padding: 10 }}
+          />
+          <input
+            value={ingestSourceRef}
+            onChange={(event) => setIngestSourceRef(event.target.value)}
+            placeholder="Stable source ref (optional; auto if empty)"
+            style={{ width: '100%', padding: 10 }}
+          />
+          <label style={{ fontSize: 14, color: '#334155' }}>
+            <span style={{ display: 'block', marginBottom: 6 }}>Choose file</span>
+            <input
+              type="file"
+              accept={TEXT_UPLOAD_ACCEPT}
+              onChange={(event) => {
+                void onUploadTextFile(event.target.files);
+                event.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        {ingestMutation.isPending ? <p style={{ marginTop: 10 }}>Ingesting…</p> : null}
+        {ingestLocalError ? (
+          <pre style={{ marginTop: 10, color: '#b91c1c', whiteSpace: 'pre-wrap', fontSize: 13 }}>
+            {ingestLocalError}
+          </pre>
+        ) : null}
+        {ingestMutation.isError ? (
+          <pre style={{ marginTop: 10, color: '#b91c1c', whiteSpace: 'pre-wrap', fontSize: 13 }}>
+            {(ingestMutation.error as Error).message}
+          </pre>
+        ) : null}
+        {ingestMutation.data ? (
+          <p style={{ marginTop: 10, color: '#15803d', fontSize: 14 }}>
+            Ingested <code>{ingestMutation.data.document_id}</code> — {ingestMutation.data.chunks_created} chunk(s)
+            {ingestMutation.data.content_unchanged ? ' (content unchanged, skipped embed)' : ''}.
+          </p>
+        ) : null}
+      </section>
 
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
         <textarea

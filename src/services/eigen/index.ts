@@ -25,3 +25,9 @@ export {
   type MemoryEntryDb,
   type DbMemoryEntryRow,
 } from './memory-entry.service.js';
+
+export {
+  createVectorSearchService,
+  type VectorSearchService,
+  type VectorSearchDb,
+} from './vector-search.service.js';

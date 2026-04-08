@@ -109,7 +109,6 @@ serve(async (req) => {
     );
 
     // Check idempotency log in batch
-    const hashPairs = jobs.map((j) => `(${j.chunk_id},${j.content_hash})`);
     const { data: alreadyProcessed } = await client
       .from('embedding_job_log')
       .select('chunk_id, content_hash')

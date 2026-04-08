@@ -14,6 +14,7 @@ export interface ExtractDocumentResult {
   contentType: string;
   extractedFrom: 'text' | 'pdf' | 'docx';
   byteLength: number;
+  truncated: boolean;
 }
 
 function readMaxBytes(): number {
@@ -69,13 +70,13 @@ function inferContentType(contentType: string | undefined, fileName: string | un
   return 'application/octet-stream';
 }
 
-function clampText(value: string): string {
+function clampText(value: string): { text: string; truncated: boolean } {
   const maxChars = readMaxExtractChars();
-  if (value.length <= maxChars) return value;
-  return value.slice(0, maxChars);
+  if (value.length <= maxChars) return { text: value, truncated: false };
+  return { text: value.slice(0, maxChars), truncated: true };
 }
 
-async function extractPdf(bytes: Uint8Array): Promise<string> {
+async function extractPdf(bytes: Uint8Array): Promise<{ text: string; truncated: boolean }> {
   const task = getDocument({
     data: bytes,
     useWorkerFetch: false,
@@ -102,12 +103,12 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return clampText(normalizeWhitespace(pages.join('\n\n')));
 }
 
-async function extractDocx(bytes: Uint8Array): Promise<string> {
+async function extractDocx(bytes: Uint8Array): Promise<{ text: string; truncated: boolean }> {
   const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
   return clampText(normalizeWhitespace(result.value ?? ''));
 }
 
-function extractPlainText(bytes: Uint8Array): string {
+function extractPlainText(bytes: Uint8Array): { text: string; truncated: boolean } {
   const decoder = new TextDecoder('utf-8', { fatal: false });
   return clampText(normalizeWhitespace(decoder.decode(bytes)));
 }
@@ -129,23 +130,26 @@ export async function extractDocumentText(input: ExtractDocumentInput): Promise<
     contentType === 'text/markdown' ||
     contentType === 'text/csv'
   ) {
-    const body = extractPlainText(input.bytes);
+    const extracted = extractPlainText(input.bytes);
+    const body = extracted.text;
     if (!body) throw new Error('Extracted text is empty');
-    return { title, body, contentType, extractedFrom: 'text', byteLength };
+    return { title, body, contentType, extractedFrom: 'text', byteLength, truncated: extracted.truncated };
   }
 
   if (contentType === 'application/pdf') {
-    const body = await extractPdf(input.bytes);
+    const extracted = await extractPdf(input.bytes);
+    const body = extracted.text;
     if (!body) throw new Error('PDF extraction produced no text');
-    return { title, body, contentType, extractedFrom: 'pdf', byteLength };
+    return { title, body, contentType, extractedFrom: 'pdf', byteLength, truncated: extracted.truncated };
   }
 
   if (
     contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
-    const body = await extractDocx(input.bytes);
+    const extracted = await extractDocx(input.bytes);
+    const body = extracted.text;
     if (!body) throw new Error('DOCX extraction produced no text');
-    return { title, body, contentType, extractedFrom: 'docx', byteLength };
+    return { title, body, contentType, extractedFrom: 'docx', byteLength, truncated: extracted.truncated };
   }
 
   throw new Error(`Unsupported content type for extraction: ${contentType}`);

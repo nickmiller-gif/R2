@@ -6,6 +6,7 @@ export interface WidgetSessionClaims {
   origin: string;
   site_source_systems: string[];
   default_policy_scope: string[];
+  grants_configured?: boolean;
   user_id?: string;
   iat: number;
   exp: number;

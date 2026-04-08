@@ -3,6 +3,8 @@ import { corsHeaders, corsResponse, errorResponse, jsonResponse } from '../_shar
 import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
+import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
+import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -111,9 +113,22 @@ serve(async (req) => {
     }
 
     const client = getServiceClient();
+    let effectivePolicyScope = claims.default_policy_scope;
+    if (claims.mode === 'eigenx' && claims.user_id) {
+      const scopeResolution = await resolveEigenxPolicyScope(client, {
+        userId: claims.user_id,
+        requestedPolicyScope: claims.default_policy_scope,
+        defaultPolicyScope: [POLICY_TAG_EIGENX],
+      });
+      if (scopeResolution.grantsConfigured && scopeResolution.effectivePolicyScope.length === 0) {
+        return errorResponse('No private policy scope access for this user', 403);
+      }
+      effectivePolicyScope = scopeResolution.effectivePolicyScope;
+    }
+
     const retrieveResult = await executeEigenRetrieve(client, {
       query: body.message,
-      policy_scope: claims.default_policy_scope,
+      policy_scope: effectivePolicyScope,
       site_id: claims.site_id,
       site_source_systems: claims.site_source_systems,
       budget_profile: body.budget_profile ?? { max_chunks: 10, max_tokens: 3000 },
@@ -136,6 +151,7 @@ serve(async (req) => {
       retrieval_run_id: retrieveResult.body.retrieval_run_id,
       site_id: claims.site_id,
       mode: claims.mode,
+      effective_policy_scope: effectivePolicyScope,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

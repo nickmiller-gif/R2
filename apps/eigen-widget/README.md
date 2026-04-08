@@ -16,11 +16,11 @@ Host `apps/eigen-widget` on a static origin and embed with:
 For EigenX mode:
 
 ```html
-<iframe id="eigenx-frame" src="https://<widget-host>/index.html?api_base=https://zudslxucibosjwefojtm.supabase.co/functions/v1&site_id=<site_id>&mode=eigenx"></iframe>
+<iframe id="eigenx-frame" src="https://<widget-host>/index.html?api_base=https://zudslxucibosjwefojtm.supabase.co/functions/v1&site_id=<site_id>&mode=eigenx&parent_origin=https://<your-site-origin>"></iframe>
 <script>
   const frame = document.getElementById('eigenx-frame');
   // authBearer is your logged-in user access token from shared Supabase auth.
-  frame.contentWindow.postMessage({ type: 'eigen_widget_auth', authBearer }, '*');
+  frame.contentWindow.postMessage({ type: 'eigen_widget_auth', authBearer }, 'https://<your-site-origin>');
 </script>
 ```
 
@@ -28,3 +28,4 @@ Notes:
 
 - `mode=public` uses anonymous widget sessions and `eigen_public` policy scope.
 - `mode=eigenx` requires valid auth and site registry permission in `eigen-widget-session`.
+- Add `parent_origin` to pin which parent page origin may inject EigenX auth via `postMessage`.

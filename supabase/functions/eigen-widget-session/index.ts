@@ -5,6 +5,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-session.ts';
 import { POLICY_TAG_EIGENX, POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
+import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
 
 interface WidgetSessionRequest {
   site_id: string;
@@ -119,9 +120,18 @@ serve(async (req) => {
       const roleCheck = await requireRole(auth.claims.userId, 'member');
       if (!roleCheck.ok) return roleCheck.response;
 
-      const scope = config.default_policy_scope.length > 0
+      const requestedScope = config.default_policy_scope.length > 0
         ? config.default_policy_scope
         : [POLICY_TAG_EIGENX];
+      const scopeResolution = await resolveEigenxPolicyScope(getServiceClient(), {
+        userId: auth.claims.userId,
+        requestedPolicyScope: requestedScope,
+        defaultPolicyScope: [POLICY_TAG_EIGENX],
+      });
+      if (scopeResolution.grantsConfigured && scopeResolution.effectivePolicyScope.length === 0) {
+        return errorResponse('No private policy scope access for this user', 403);
+      }
+      const scope = scopeResolution.effectivePolicyScope;
 
       const issued = await createWidgetSessionToken({
         site_id: body.site_id,
@@ -138,6 +148,7 @@ serve(async (req) => {
         mode: 'eigenx',
         site_source_systems: config.source_systems,
         default_policy_scope: scope,
+        grants_configured: scopeResolution.grantsConfigured,
       });
     }
 

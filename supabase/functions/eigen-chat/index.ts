@@ -8,6 +8,7 @@ import {
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
 import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
+import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
 
 interface ChatRequest {
   message: string;
@@ -277,6 +278,15 @@ serve(async (req) => {
   try {
     const body = parseRequest(await req.json());
     const client = getServiceClient();
+    const resolvedScope = await resolveEigenxPolicyScope(client, {
+      userId: auth.claims.userId,
+      requestedPolicyScope: body.policy_scope ?? [],
+      defaultPolicyScope: readDefaultPolicyScope(),
+    });
+    if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
+      return errorResponse('No private policy scope access for this user', 403);
+    }
+    body.policy_scope = resolvedScope.effectivePolicyScope;
 
     let sessionId = body.session_id;
     if (!sessionId) {
@@ -287,7 +297,7 @@ serve(async (req) => {
             owner_id: auth.claims.userId,
             title: body.message.slice(0, 80),
             entity_scope: body.entity_scope ?? [],
-            policy_scope: body.policy_scope ?? [],
+            policy_scope: resolvedScope.effectivePolicyScope,
           },
         ])
         .select('id')
@@ -400,6 +410,7 @@ serve(async (req) => {
               retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
               memory_updated: true,
               session_id: sessionId,
+              effective_policy_scope: resolvedScope.effectivePolicyScope,
             });
           } catch (streamErr) {
             const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
@@ -458,6 +469,7 @@ serve(async (req) => {
       retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
       memory_updated: true,
       session_id: sessionId,
+      effective_policy_scope: resolvedScope.effectivePolicyScope,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

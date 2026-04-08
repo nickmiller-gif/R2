@@ -84,20 +84,44 @@ function buildCitations(chunks: EigenRetrieveChunk[]) {
   }));
 }
 
-function defaultPublicPrompt(format: 'structured' | 'freeform'): string {
-  if (format === 'freeform') {
+function readPublicChatTemperature(): number {
+  const raw = Deno.env.get('EIGEN_PUBLIC_CHAT_TEMPERATURE') ?? '0.38';
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return 0.38;
+  return Math.min(1.2, Math.max(0, n));
+}
+
+function defaultPublicPrompt(format: 'structured' | 'freeform', hasContext: boolean): string {
+  const withContextBoundary =
+    'Retrieved context is public-facing website or approved public material only. ' +
+    'Do not disclose internal tools, dashboards, credentials, unreleased products, or non-public operations. ' +
+    'Mention tools, products, or services only when they clearly appear in the retrieved text as public-site content.';
+  const noContextBoundary =
+    'You answer as a public assistant only: never disclose internal tools, dashboards, credentials, or non-public operations. ' +
+    'When you later have retrieved public-site text, tools and products may be discussed only as they appear there.';
+  if (hasContext) {
+    if (format === 'freeform') {
+      return [
+        'You are Public Eigen, the public-facing assistant for Ray.',
+        withContextBoundary,
+        'Use retrieved context as the authority for anything specific to Rays Retreat, R2, offerings, policies, or people.',
+        'Be conversational and warm; blend facts from context naturally.',
+        'If context is thin or only partly relevant, say so briefly and still be helpful without inventing specifics.',
+      ].join(' ');
+    }
     return [
       'You are Public Eigen, the public-facing assistant for Ray.',
-      'Use ONLY the provided retrieved context.',
-      'If context is insufficient, say clearly that you do not have enough grounded public information.',
-      'Keep tone warm and direct in Ray style, but never invent facts.',
+      withContextBoundary,
+      'Ground answers in retrieved context for factual claims; keep a practical, founder-like voice.',
+      'When context is partial, acknowledge limits clearly and offer useful next steps without guessing numbers or commitments.',
     ].join(' ');
   }
   return [
     'You are Public Eigen, the public-facing assistant for Ray.',
-    'Answer only from retrieved context and include concise factual reasoning.',
-    'If evidence is missing, refuse to speculate and state that grounded public information is unavailable.',
-    'Keep voice practical and founder-like, but factual.',
+    noContextBoundary,
+    'No retrieved public context matched this question.',
+    'Reply conversationally. Do not invent facts about Rays Retreat, R2, products, or policies.',
+    'Invite them to rephrase or ask what they are trying to accomplish.',
   ].join(' ');
 }
 
@@ -106,12 +130,13 @@ async function synthesizePublicResponse(
   retrievedChunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
 ): Promise<string> {
-  if (retrievedChunks.length === 0) {
-    return 'I do not have enough grounded public-source information to answer that yet.';
-  }
-
+  const hasContext = retrievedChunks.length > 0;
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+
   if (!apiKey) {
+    if (!hasContext) {
+      return 'Hi — I\'m Public Eigen. I don\'t have matching sourced details for that in our public index yet. What are you trying to figure out?';
+    }
     return retrievedChunks
       .slice(0, 3)
       .map((chunk, index) => `${index + 1}. ${chunk.content.slice(0, 240)}`)
@@ -119,8 +144,11 @@ async function synthesizePublicResponse(
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const systemPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT') ?? defaultPublicPrompt(format);
-  const context = buildContextBlock(retrievedChunks);
+  const systemPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT') ?? defaultPublicPrompt(format, hasContext);
+  const context = hasContext ? buildContextBlock(retrievedChunks) : '';
+  const userContent = hasContext
+    ? `Question: ${message}\n\nRetrieved public context:\n${context}`
+    : `Question: ${message}`;
 
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -130,13 +158,13 @@ async function synthesizePublicResponse(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.1,
+      temperature: readPublicChatTemperature(),
       max_tokens: readMaxCompletionTokens(),
       messages: [
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: `Question: ${message}\n\nRetrieved public context:\n${context}`,
+          content: userContent,
         },
       ],
     }),

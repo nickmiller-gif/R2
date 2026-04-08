@@ -55,29 +55,89 @@ function buildCitations(chunks: EigenRetrieveChunk[]) {
   }));
 }
 
+function readWidgetMaxTokens(format: 'structured' | 'freeform'): number {
+  const raw = Deno.env.get('EIGEN_WIDGET_CHAT_MAX_TOKENS') ?? '';
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed >= 128) return Math.min(parsed, 4000);
+  return format === 'freeform' ? 1400 : 1100;
+}
+
+function readWidgetTemperature(mode: 'public' | 'eigenx'): number {
+  const specific = mode === 'public'
+    ? Deno.env.get('EIGEN_WIDGET_PUBLIC_TEMPERATURE')
+    : Deno.env.get('EIGEN_WIDGET_EIGENX_TEMPERATURE');
+  const fallback = mode === 'public' ? '0.38' : '0.28';
+  const raw = (specific && specific.trim()) || Deno.env.get('EIGEN_WIDGET_CHAT_TEMPERATURE') || fallback;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return Number.parseFloat(fallback);
+  return Math.min(1.2, Math.max(0, n));
+}
+
+function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolean): string {
+  if (mode === 'public') {
+    if (hasContext) {
+      return [
+        'You are Public Eigen, Ray\'s public-facing assistant.',
+        'Retrieved context is public-facing material only; do not infer or disclose internal tools, dashboards, credentials, or non-public operations.',
+        'Mention tools, products, or services only when they clearly appear in the retrieved text as public-site content.',
+        'Use retrieved context as the source of truth for anything specific to Rays Retreat, R2, products, policies, people, or offerings.',
+        'Write in a natural, conversational tone (warm, direct, founder-like).',
+        'When context is strong, weave facts in smoothly; when it is thin or off-topic, still reply helpfully,',
+        'but clearly separate what comes from the materials versus general guidance, and do not invent numbers, dates, or commitments.',
+        'Brief greetings, empathy, and follow-up questions are encouraged.',
+      ].join(' ');
+    }
+    return [
+      'You are Public Eigen, Ray\'s public-facing assistant.',
+      'No retrieved documents matched this turn yet.',
+      'Reply in a warm, conversational way. Do not invent specific facts about Rays Retreat, R2, products, prices, policies, or people.',
+      'Do not describe internal tools or non-public systems; only public-site information belongs in answers once context exists.',
+      'You may offer general encouragement, clarify what they need, or suggest topics they could ask about once content is available.',
+    ].join(' ');
+  }
+  if (hasContext) {
+    return [
+      'You are EigenX, the internal assistant.',
+      'Prioritize retrieved context for factual claims about the organization and internal materials.',
+      'Be conversational and concise; explain uncertainty when context is partial.',
+      'Do not fabricate sensitive specifics; ask a clarifying question when needed.',
+    ].join(' ');
+  }
+  return [
+    'You are EigenX. No retrieved context was returned for this message.',
+    'Respond conversationally without inventing internal or confidential specifics.',
+    'Offer to help once they point you at a document, area, or clearer question.',
+  ].join(' ');
+}
+
 async function synthesize(
   mode: 'public' | 'eigenx',
   message: string,
   chunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
 ): Promise<string> {
-  if (chunks.length === 0) {
-    return mode === 'public'
-      ? 'I do not have enough grounded public-source information to answer that yet.'
-      : 'I do not have enough grounded knowledge to answer that yet.';
-  }
   const apiKey = Deno.env.get('OPENAI_API_KEY');
+  const hasContext = chunks.length > 0;
+
   if (!apiKey) {
+    if (!hasContext) {
+      return mode === 'public'
+        ? 'Hi — I\'m Eigen. I don\'t have matching sourced details for that yet, but I\'m here. What would you like to know about Rays Retreat or R2?'
+        : 'I don\'t have retrieved context for that yet. Try rephrasing or point me at a specific topic.';
+    }
     return chunks.slice(0, 3).map((c, i) => `${i + 1}. ${c.content.slice(0, 220)}`).join('\n');
   }
+
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const defaultPrompt = mode === 'public'
-    ? 'You are Public Eigen. Answer only from retrieved public context; never speculate.'
-    : 'You are EigenX. Answer only from retrieved context with concise reasoning.';
   const envPrompt = mode === 'public'
     ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
     : Deno.env.get('EIGENX_SYSTEM_PROMPT');
-  const systemPrompt = (envPrompt && envPrompt.trim()) || defaultPrompt;
+  const systemPrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(mode, hasContext);
+
+  const userContent = hasContext
+    ? `User message: ${message}\n\nRetrieved context (use for specifics; cite mentally by snippet number if helpful):\n${buildContext(chunks)}`
+    : `User message: ${message}`;
+
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -86,12 +146,12 @@ async function synthesize(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.1,
+      temperature: readWidgetTemperature(mode),
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Question: ${message}\n\nRetrieved context:\n${buildContext(chunks)}` },
+        { role: 'user', content: userContent },
       ],
-      max_tokens: format === 'freeform' ? 1200 : 900,
+      max_tokens: readWidgetMaxTokens(format),
     }),
   });
   if (!completion.ok) throw new Error(`Chat completion failed: ${completion.status}`);

@@ -3,6 +3,7 @@ import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { sha256Hex } from '../_shared/eigen.ts';
+import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 
 interface FetchIngestRequest {
   url: string;
@@ -147,6 +148,19 @@ serve(async (req) => {
       ? body.source_ref
       : targetUrl.toString();
 
+    // HTTP(S) fetch may only index the public corpus. Dual-tagging with internal tiers would still
+    // match public retrieval (policy filter is "any tag overlaps") and could expose non-public material.
+    if (body.policy_tags && body.policy_tags.length > 0) {
+      const onlyPublic = body.policy_tags.length === 1 &&
+        body.policy_tags[0].trim().toLowerCase() === POLICY_TAG_EIGEN_PUBLIC;
+      if (!onlyPublic) {
+        return errorResponse(
+          'eigen-fetch-ingest only supports public web content: omit policy_tags or use ["eigen_public"] only',
+          400,
+        );
+      }
+    }
+
     const ingestPayload = {
       source_system: sourceSystem,
       source_ref: sourceRef,
@@ -157,10 +171,11 @@ serve(async (req) => {
         metadata: {
           fetched_url: targetUrl.toString(),
           fetched_at: new Date().toISOString(),
+          public_web_ingest: true,
         },
       },
       chunking_mode: body.chunking_mode ?? 'hierarchical',
-      policy_tags: body.policy_tags && body.policy_tags.length > 0 ? body.policy_tags : ['eigen_public'],
+      policy_tags: [POLICY_TAG_EIGEN_PUBLIC],
       entity_ids: body.entity_ids ?? [],
       embedding_model: body.embedding_model,
     };

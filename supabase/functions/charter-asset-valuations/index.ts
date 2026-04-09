@@ -66,8 +66,9 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
     const pathname = url.pathname;
-    const id =
-      pathname.split('/').pop() === 'charter-asset-valuations' ? null : pathname.split('/').pop();
+    const pathSegments = pathname.split('/').filter(Boolean);
+    const lastSegment = pathSegments.at(-1);
+    const id = lastSegment && lastSegment !== 'charter-asset-valuations' ? lastSegment : null;
 
     const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
 
@@ -90,8 +91,14 @@ serve(async (req) => {
       const charterEntityId = url.searchParams.get('charter_entity_id');
       const status = url.searchParams.get('status');
       const valuationKind = url.searchParams.get('valuation_kind');
+      const limitParam = Math.min(200, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '50', 10) || 50));
+      const offsetParam = Math.max(0, Number.parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
 
-      let query = client.from('charter_asset_valuations').select('*').order('as_of', { ascending: false });
+      let query = client
+        .from('charter_asset_valuations')
+        .select('*')
+        .order('as_of', { ascending: false })
+        .range(offsetParam, offsetParam + limitParam - 1);
 
       if (megEntityId) query = query.eq('meg_entity_id', megEntityId);
       if (charterEntityId) query = query.eq('charter_entity_id', charterEntityId);

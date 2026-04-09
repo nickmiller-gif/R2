@@ -38,11 +38,16 @@ def fetch_bytes(
         method="GET",
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read()
-    if max_response_bytes is not None and len(data) > max_response_bytes:
-        raise ValueError(
-            f"response too large ({len(data)} bytes; max {max_response_bytes})",
-        )
+        if max_response_bytes is not None:
+            # Read one byte beyond the cap so we can detect oversized responses without
+            # pulling the full payload into memory first.
+            data = resp.read(max_response_bytes + 1)
+            if len(data) > max_response_bytes:
+                raise ValueError(
+                    f"response too large (exceeds {max_response_bytes} byte limit)",
+                )
+        else:
+            data = resp.read()
     return data
 
 

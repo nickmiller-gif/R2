@@ -96,22 +96,35 @@ function parseNumber(value: unknown): number | undefined {
   return value;
 }
 
+// Env reads are cached at module scope: env variables are stable per deployment
+// and reading them on every request is unnecessary overhead.
+let _defaultSiteBoost: number | undefined;
+let _defaultGlobalPenalty: number | undefined;
+let _oracleBoostCap: number | undefined;
+
 function readDefaultSiteBoost(): number {
-  const raw = Deno.env.get('EIGEN_SITE_SOURCE_BOOST') ?? '0.08';
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed)) return 0.08;
-  return Math.max(0, Math.min(parsed, 0.8));
+  if (_defaultSiteBoost === undefined) {
+    const raw = Deno.env.get('EIGEN_SITE_SOURCE_BOOST') ?? '0.08';
+    const parsed = Number.parseFloat(raw);
+    _defaultSiteBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.8)) : 0.08;
+  }
+  return _defaultSiteBoost;
 }
 
 function readDefaultGlobalPenalty(): number {
-  const raw = Deno.env.get('EIGEN_GLOBAL_SOURCE_PENALTY') ?? '0.0';
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(-0.8, Math.min(parsed, 0.8));
+  if (_defaultGlobalPenalty === undefined) {
+    const raw = Deno.env.get('EIGEN_GLOBAL_SOURCE_PENALTY') ?? '0.0';
+    const parsed = Number.parseFloat(raw);
+    _defaultGlobalPenalty = Number.isFinite(parsed) ? Math.max(-0.8, Math.min(parsed, 0.8)) : 0;
+  }
+  return _defaultGlobalPenalty;
 }
 
 function readOracleRelevanceBoostCap(): number {
-  return parseOracleRetrievalBoostCap(Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'));
+  if (_oracleBoostCap === undefined) {
+    _oracleBoostCap = parseOracleRetrievalBoostCap(Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'));
+  }
+  return _oracleBoostCap;
 }
 
 async function loadSiteRegistryContext(
@@ -353,14 +366,15 @@ export async function executeEigenRetrieve(
       );
     }
 
+    // rerank defaults to true; only skipped when caller explicitly passes rerank: false
+    const applyRerank = payload.rerank !== false;
+    const hasSiteSources = siteSources.size > 0;
     const oracleBoostCap = readOracleRelevanceBoostCap();
 
     const scoredDescending = temporalFiltered
-      .map((candidate) => ({
-        ...candidate,
-        composite_score: payload.rerank === false
-          ? candidate.similarity_score
-          : scoreCandidate({
+      .map((candidate) => {
+        const baseScore = applyRerank
+          ? scoreCandidate({
               id: candidate.chunk_id,
               content: candidate.content,
               chunk_level: candidate.chunk_level as 'document' | 'section' | 'paragraph' | 'claim',
@@ -376,31 +390,23 @@ export async function executeEigenRetrieve(
               authority_score: candidate.authority_score,
               freshness_score: candidate.freshness_score,
               provenance_completeness: candidate.provenance_completeness,
-            }),
-        site_adjustment: siteSources.size === 0
-          ? 0
-          : (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty),
-      }))
-      .map((candidate) => ({
-        ...candidate,
-        oracle_adjustment: computeOracleCompositeBoost(
+            })
+          : candidate.similarity_score;
+        const siteAdj = hasSiteSources
+          ? (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty)
+          : 0;
+        const oracleAdj = computeOracleCompositeBoost(
           candidate.oracle_signal_id,
           candidate.oracle_relevance_score,
           oracleBoostCap,
-        ),
-      }))
-      .map((candidate) => ({
-        ...candidate,
-        composite_score: Number(
-          Math.max(
-            0,
-            Math.min(
-              1.5,
-              candidate.composite_score + candidate.site_adjustment + candidate.oracle_adjustment,
-            ),
-          ).toFixed(6),
-        ),
-      }))
+        );
+        return {
+          ...candidate,
+          composite_score: Number(
+            Math.max(0, Math.min(1.5, baseScore + siteAdj + oracleAdj)).toFixed(6),
+          ),
+        };
+      })
       .sort((left, right) => right.composite_score - left.composite_score);
 
     const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(

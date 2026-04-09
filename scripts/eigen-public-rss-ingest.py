@@ -10,8 +10,11 @@ Requirements:
 Optional env:
   - EIGEN_PUBLIC_RSS_URLS: comma-separated feed URLs (if no CLI args)
   - EIGEN_FETCH_INGEST_DELAY_SEC (default 0.35)
+  - EIGEN_PUBLIC_FETCH_CONCURRENCY: parallel in-flight ingests, 1–16 (default 1)
+  - EIGEN_PUBLIC_FETCH_MAX_BYTES: max feed XML size (default 25MiB; 0 = unlimited, capped at 100MiB)
   - EIGEN_PUBLIC_RSS_MAX_ITEMS_PER_FEED (default 80, cap per feed before dedupe)
   - EIGEN_PUBLIC_RSS_MAX_URLS: global cap after dedupe (default 300)
+  - EIGEN_PUBLIC_INGEST_STRICT_EXIT: if 0/false, exit 0 when some URLs fail
 
 Usage:
   python3 scripts/eigen-public-rss-ingest.py https://example.com/feed.xml
@@ -25,12 +28,23 @@ import hashlib
 import json
 import os
 import sys
-import time
-import urllib.error
-import urllib.request
 import xml.etree.ElementTree as ET
-from typing import Iterable
+from pathlib import Path
 from urllib.parse import urlparse
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from eigen_public_ingest_http import (  # noqa: E402
+    fetch_bytes,
+    normalize_supabase_base_url,
+    read_int_env,
+    read_non_negative_float,
+    read_optional_max_fetch_bytes,
+    run_fetch_ingest_batch,
+    strict_exit_enabled,
+)
 
 
 def _local(tag: str) -> str:
@@ -39,36 +53,42 @@ def _local(tag: str) -> str:
     return tag
 
 
-def _fetch_bytes(url: str, timeout: float = 60.0) -> bytes:
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "EigenPublicRssIngest/1.0"},
-        method="GET",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
-
-
 def extract_item_links_from_feed(data: bytes) -> list[str]:
-    """Parse RSS 2.0 or Atom and return article/page URLs in order."""
+    """Parse RSS 2.0 or Atom and return article/page URLs in order.
+
+    RSS uses local tag names so default xmlns feeds (WordPress, etc.) still match.
+    """
     root = ET.fromstring(data)
     root_name = _local(root.tag)
     out: list[str] = []
 
     if root_name == "rss":
-        channel = root.find("channel")
+        channel = None
+        for child in root:
+            if _local(child.tag) == "channel":
+                channel = child
+                break
         if channel is None:
             return out
-        for item in channel.findall("item"):
-            link_el = item.find("link")
-            if link_el is not None and (link_el.text or "").strip():
-                out.append(link_el.text.strip())
+        for item in channel:
+            if _local(item.tag) != "item":
                 continue
-            guid_el = item.find("guid")
-            if guid_el is not None and (guid_el.text or "").strip():
-                t = guid_el.text.strip()
-                if t.startswith("http://") or t.startswith("https://"):
-                    out.append(t)
+            link_text: str | None = None
+            for el in item:
+                if _local(el.tag) == "link" and (el.text or "").strip():
+                    link_text = el.text.strip()
+                    break
+            if link_text:
+                out.append(link_text)
+                continue
+            for el in item:
+                if _local(el.tag) != "guid":
+                    continue
+                if (el.text or "").strip():
+                    t = el.text.strip()
+                    if t.startswith("http://") or t.startswith("https://"):
+                        out.append(t)
+                break
 
     elif root_name == "feed":
         for entry in root:
@@ -112,49 +132,22 @@ def extract_item_links_from_feed(data: bytes) -> list[str]:
     return out
 
 
-def post_fetch_ingest(
-    base_url: str,
-    bearer: str,
-    page_url: str,
-    delay_sec: float,
-    idem_prefix: str,
-) -> tuple[bool, str]:
-    time.sleep(delay_sec)
-    payload = json.dumps({"url": page_url}).encode("utf-8")
-    idem = hashlib.sha256(f"{idem_prefix}|{page_url}".encode()).hexdigest()[:48]
-    req = urllib.request.Request(
-        f"{base_url.rstrip('/')}/functions/v1/eigen-fetch-ingest",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {bearer}",
-            "Content-Type": "application/json",
-            "x-idempotency-key": f"{idem_prefix}:{idem}",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            if 200 <= resp.status < 300:
-                return True, body
-            return False, f"HTTP {resp.status} {body}"
-    except urllib.error.HTTPError as e:
-        err = e.read().decode("utf-8", errors="replace")
-        return False, f"HTTP {e.code} {err}"
-    except (urllib.error.URLError, OSError) as e:
-        return False, str(e)
-
-
 def main() -> int:
-    supabase = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
     bearer = os.environ.get("AUTH_BEARER", "").strip()
-    if not supabase or not bearer:
-        print("Set SUPABASE_URL and AUTH_BEARER (member JWT).", file=sys.stderr)
+    if not bearer:
+        print("Set AUTH_BEARER (member JWT).", file=sys.stderr)
+        return 1
+    try:
+        supabase = normalize_supabase_base_url(os.environ.get("SUPABASE_URL", ""))
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
         return 1
 
-    delay = float(os.environ.get("EIGEN_FETCH_INGEST_DELAY_SEC") or "0.35")
-    max_per_feed = int(os.environ.get("EIGEN_PUBLIC_RSS_MAX_ITEMS_PER_FEED") or "80")
-    max_urls = int(os.environ.get("EIGEN_PUBLIC_RSS_MAX_URLS") or "300")
+    delay = read_non_negative_float("EIGEN_FETCH_INGEST_DELAY_SEC", 0.35)
+    max_per_feed = read_int_env("EIGEN_PUBLIC_RSS_MAX_ITEMS_PER_FEED", 80, min_v=1, max_v=10_000)
+    max_urls = read_int_env("EIGEN_PUBLIC_RSS_MAX_URLS", 300, min_v=1, max_v=50_000)
+    concurrency = read_int_env("EIGEN_PUBLIC_FETCH_CONCURRENCY", 1, min_v=1, max_v=16)
+    max_fetch = read_optional_max_fetch_bytes()
 
     cli = [a.strip() for a in sys.argv[1:] if a.strip()]
     env_feeds = [
@@ -173,8 +166,13 @@ def main() -> int:
     all_links: list[str] = []
     for feed_url in feeds:
         try:
-            raw = _fetch_bytes(feed_url)
-        except (urllib.error.URLError, OSError) as e:
+            raw = fetch_bytes(
+                feed_url,
+                user_agent="EigenPublicRssIngest/1.1",
+                timeout=90.0,
+                max_response_bytes=max_fetch,
+            )
+        except (OSError, ValueError) as e:
             print(f"[warn] feed fetch failed {feed_url!r}: {e}", file=sys.stderr)
             continue
         try:
@@ -200,30 +198,75 @@ def main() -> int:
         print(f"[warn] truncating global list from {len(uniq)} to {max_urls}", file=sys.stderr)
         uniq = uniq[:max_urls]
 
-    ok_n = 0
-    fail_n = 0
-    feed_hash = hashlib.sha256(",".join(sorted(feeds)).encode()).hexdigest()[:16]
-    for i, url in enumerate(uniq, 1):
+    to_ingest: list[str] = []
+    for url in uniq:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             print(f"[skip] non-http(s) {url!r}", file=sys.stderr)
             continue
-        print(f"[{i}/{len(uniq)}] {url}", file=sys.stderr)
-        ok, msg = post_fetch_ingest(
-            supabase,
-            bearer,
-            url,
-            delay_sec=delay,
-            idem_prefix=f"rss:{feed_hash}",
-        )
-        if ok:
-            ok_n += 1
-        else:
-            fail_n += 1
-            print(f"  FAIL: {msg[:500]}", file=sys.stderr)
+        to_ingest.append(url)
 
-    print(json.dumps({"ok": ok_n, "failed": fail_n, "total": len(uniq), "feeds": len(feeds)}))
-    return 0 if fail_n == 0 else 2
+    if not to_ingest:
+        print(
+            json.dumps(
+                {
+                    "ok": 0,
+                    "failed": 0,
+                    "skipped_scheme": len(uniq),
+                    "total": 0,
+                    "feeds": len(feeds),
+                },
+            ),
+        )
+        return 0
+
+    feed_hash = hashlib.sha256(",".join(sorted(feeds)).encode()).hexdigest()[:16]
+    idem_fragment = f"rss:{feed_hash}"
+
+    if concurrency > 1:
+        print(
+            f"Ingesting {len(to_ingest)} URL(s), concurrency={concurrency}, "
+            f"min interval between starts={delay}s",
+            file=sys.stderr,
+        )
+
+    def on_progress(i: int, total: int, url: str) -> None:
+        print(f"[{i}/{total}] {url}", file=sys.stderr)
+
+    def on_result(url: str, success: bool, msg: str) -> None:
+        if not success:
+            print(f"  FAIL: {url}\n    {msg[:800]}", file=sys.stderr)
+
+    ok_n, fail_n = run_fetch_ingest_batch(
+        to_ingest,
+        base_url=supabase,
+        bearer=bearer,
+        idem_fragment=idem_fragment,
+        delay_sec=delay,
+        concurrency=concurrency,
+        on_progress=on_progress,
+        on_result=on_result,
+    )
+
+    skipped = len(uniq) - len(to_ingest)
+    summary = {
+        "ok": ok_n,
+        "failed": fail_n,
+        "skipped_scheme": skipped,
+        "total": len(to_ingest),
+        "feeds": len(feeds),
+        "concurrency": concurrency,
+    }
+    print(json.dumps(summary))
+    if fail_n == 0:
+        return 0
+    if strict_exit_enabled():
+        return 2
+    print(
+        f"[warn] {fail_n} failure(s); exiting 0 because EIGEN_PUBLIC_INGEST_STRICT_EXIT is off",
+        file=sys.stderr,
+    )
+    return 0
 
 
 if __name__ == "__main__":

@@ -34,19 +34,7 @@ if [ -n "$DUPES" ]; then
   EXIT=1
 fi
 
-# 3. Check ordering — timestamps must be monotonically increasing
-TIMESTAMPS=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | cut -c1-12 | sort)
-PREV_TS=""
-for ts in $TIMESTAMPS; do
-  if [ -n "$PREV_TS" ] && [ "$ts" -lt "$PREV_TS" ] 2>/dev/null; then
-    echo ""
-    echo "FAIL: Migration timestamps not monotonically increasing: $PREV_TS -> $ts"
-    EXIT=1
-  fi
-  PREV_TS=$ts
-done
-
-# 4. No destructive operations (additive-only policy)
+# 3. No destructive operations (additive-only policy)
 DESTRUCTIVE_HITS=$(grep -rln "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$MIGRATION_DIR"/ 2>/dev/null || true)
 if [ -n "$DESTRUCTIVE_HITS" ]; then
   echo ""
@@ -58,7 +46,7 @@ if [ -n "$DESTRUCTIVE_HITS" ]; then
   EXIT=1
 fi
 
-# 5. Count summary
+# 4. Count summary
 TOTAL=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | wc -l | tr -d ' ')
 echo ""
 echo "Total migrations: $TOTAL"

@@ -35,13 +35,13 @@ if [ -n "$DUPES" ]; then
 fi
 
 # 3. No destructive operations (additive-only policy)
-DESTRUCTIVE_HITS=$(grep -rln "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$MIGRATION_DIR"/ 2>/dev/null || true)
+DESTRUCTIVE_HITS=$(grep -riln "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$MIGRATION_DIR"/ 2>/dev/null || true)
 if [ -n "$DESTRUCTIVE_HITS" ]; then
   echo ""
   echo "FAIL: Migrations containing destructive operations violate the additive-only policy:"
   for f in $DESTRUCTIVE_HITS; do
     echo "  $(basename "$f"):"
-    grep -n "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$f" | head -3
+    grep -in "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$f" | head -3
   done
   EXIT=1
 fi

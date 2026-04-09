@@ -6,3 +6,8 @@ export {
   type VectorFilter,
   type VectorResult,
 } from './vector-store.js';
+
+export {
+  oracleCompositeBoost,
+  parseOracleRetrievalBoostCap,
+} from './oracle-retrieval-boost.js';

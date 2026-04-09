@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
@@ -39,6 +40,29 @@ function readMaxBodyChars(): number {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 5000) return 2_000_000;
   return Math.min(parsed, 10_000_000);
+}
+
+/** Stable domain for document rows so eigen-oracle-outbox-drain can anchor signals on public ingest. */
+const EIGEN_DOCUMENT_ASSET_DOMAIN = 'eigen_ingest';
+
+async function ensureEigenDocumentAsset(
+  client: SupabaseClient,
+  params: { documentId: string; title: string; sourceSystem: string },
+): Promise<void> {
+  const label = params.title.trim().slice(0, 500) || params.sourceSystem;
+  const { error } = await client.from('asset_registry').upsert(
+    {
+      kind: 'document',
+      ref_id: params.documentId,
+      domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
+      label,
+      metadata: { source_system: params.sourceSystem },
+    },
+    { onConflict: 'kind,ref_id,domain' },
+  );
+  if (error) {
+    console.error(`[eigen-ingest] asset_registry upsert failed: ${error.message}`);
+  }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -394,6 +418,11 @@ serve(async (req) => {
         }
 
         const runMeta = existingRunResult.data?.metadata as Record<string, unknown> | undefined;
+        await ensureEigenDocumentAsset(client, {
+          documentId: existingDoc.id as string,
+          title: requestBody.document.title,
+          sourceSystem: requestBody.source_system,
+        });
         return jsonResponse({
           document_id: existingDoc.id,
           ingestion_run_id: ingestionRunId,
@@ -461,6 +490,12 @@ serve(async (req) => {
 
     if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
     const documentId = upsertDoc.data.id as string;
+
+    await ensureEigenDocumentAsset(client, {
+      documentId,
+      title: requestBody.document.title,
+      sourceSystem: requestBody.source_system,
+    });
 
     const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
     if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);

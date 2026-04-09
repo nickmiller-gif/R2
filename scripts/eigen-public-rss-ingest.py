@@ -15,6 +15,8 @@ Optional env:
 
 Usage:
   python3 scripts/eigen-public-rss-ingest.py https://example.com/feed.xml
+
+Oracle outbox: see eigen-public-sitemap-ingest.py module docstring (drain + backfill notes).
 """
 
 from __future__ import annotations

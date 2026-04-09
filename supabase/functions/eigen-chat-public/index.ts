@@ -4,6 +4,10 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { enforceEigenPublicRateLimit } from '../_shared/public-rate-limit.ts';
+import {
+  EIGEN_RETRIEVED_CONTEXT_INTRO,
+  withEigenChatProseStyle,
+} from '../_shared/eigen-chat-answer-style.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -76,10 +80,18 @@ function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
     .join('\n\n');
 }
 
+function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
+  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}`;
+}
+
 function buildCitations(chunks: EigenRetrieveChunk[]) {
   return chunks.slice(0, 8).map((chunk) => ({
     chunk_id: chunk.chunk_id,
     source: chunk.provenance?.source_ref ?? chunk.provenance?.source_system ?? 'unknown',
+    section:
+      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
+        ? chunk.provenance.heading_path.join(' › ')
+        : undefined,
     relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
   }));
 }
@@ -137,17 +149,17 @@ async function synthesizePublicResponse(
     if (!hasContext) {
       return 'Hi — I\'m Public Eigen. I don\'t have matching sourced details for that in our public index yet. What are you trying to figure out?';
     }
-    return retrievedChunks
-      .slice(0, 3)
-      .map((chunk, index) => `${index + 1}. ${chunk.content.slice(0, 240)}`)
-      .join('\n');
+    const snippets = retrievedChunks.slice(0, 3).map((c) => c.content.slice(0, 260).trim()).filter(Boolean);
+    return snippets.map((s) => `• ${s}${s.length >= 260 ? '…' : ''}`).join('\n\n');
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const systemPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT') ?? defaultPublicPrompt(format, hasContext);
-  const context = hasContext ? buildContextBlock(retrievedChunks) : '';
+  const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
+  const systemPrompt = withEigenChatProseStyle(
+    envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
+  );
   const userContent = hasContext
-    ? `Question: ${message}\n\nRetrieved public context:\n${context}`
+    ? buildUserMessageWithContext(message, retrievedChunks)
     : `Question: ${message}`;
 
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {

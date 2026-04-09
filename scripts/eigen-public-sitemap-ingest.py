@@ -22,6 +22,11 @@ Usage:
 
 For sitemap + RSS + a public file folder in one run, see scripts/eigen-public-corpus-ingest.sh
 and docs/eigen-public-corpus.md.
+
+Oracle outbox: when the server has EIGEN_ORACLE_OUTBOX_ENABLED=true, bulk ingests enqueue
+signal_candidate rows — drain with eigen-oracle-outbox-drain (service_role JWT), e.g. via
+EIGEN_OUTBOX_DRAIN_BEARER in eigen-public-corpus-ingest.sh. Older documents may need
+scripts/backfill-eigen-document-assets.sql so document-anchored signals can resolve.
 """
 
 from __future__ import annotations

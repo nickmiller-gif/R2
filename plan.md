@@ -20,7 +20,7 @@ This plan defines the incremental import path from the old source repository int
 | Oracle domain services (profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes) | ✅ complete | services, migrations, edge functions, tests |
 | Eigen services (knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries) | ✅ complete | services, migrations, edge functions, tests |
 | Foundation (asset-registry, documents) | ✅ complete | services, edge functions, tests |
-| Security hardening: JWT auth on all 24 edge functions | ✅ complete | all endpoints require Authorization header |
+| Security hardening: JWT on operator/member surfaces | ✅ complete | public Eigen chat + rate limits are exceptions; see edge function guards |
 | CI workflow (typecheck + tests + no-alias-imports check) | ✅ complete | `.github/workflows/ci.yml` |
 
 ## Next Slices (not yet started)

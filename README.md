@@ -49,17 +49,17 @@ plan.md
 
 ## Current State
 
-All initial domain slices have been ported and verified:
+Domain slices are ported with CI verification (`npm run check`):
 
-| Domain | Services | Edge Functions | Tests |
-|--------|----------|---------------|-------|
-| **Charter** | governance-kernel, provenance, audit-read, entities, evidence, obligations, payouts, decisions, rights, roles | 10 functions | ✅ |
-| **MEG** | entities, aliases, edges | 3 functions | ✅ |
-| **Oracle** | profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes | 7 functions | ✅ |
-| **Eigen** | knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries | 4 functions | ✅ |
-| **Foundation** | asset-registry, documents | 2 functions (+ 2 shared) | ✅ |
+| Domain | Edge functions (indicative) | Tests |
+|--------|----------------------------|-------|
+| **Charter** | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations | ✅ |
+| **MEG** | entities, aliases, edges | ✅ |
+| **Oracle** | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs | ✅ |
+| **Eigen** | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain | ✅ |
+| **Foundation** | documents, asset-registry | ✅ |
 
-All 24 edge functions require JWT authentication. All 473 tests pass. No `@/` alias imports.
+There are **36** deployed function entrypoints under `supabase/functions/`. Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
 
 ## Next priorities
 

@@ -1,0 +1,37 @@
+{
+  "sites": {
+    "r2app": {
+      "display_name": "R2 App",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/r2app",
+      "fetch_allowlist": ["r2app.lovable.app"],
+      "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+    },
+    "hpseller": {
+      "display_name": "HP Seller",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/hpseller",
+      "fetch_allowlist": ["hpseller.lovable.app"],
+      "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+    },
+    "ip-insights-hub": {
+      "display_name": "IP Insights Hub",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/ip-insights-hub",
+      "fetch_allowlist": ["ip-insights-hub.lovable.app"],
+      "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+    },
+    "centralr2-core": {
+      "display_name": "Central R2 Core",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/centralr2-core",
+      "fetch_allowlist": ["centralr2-core.lovable.app"],
+      "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+    }
+  },
+  "_instructions": "To ingest content for a site: (1) Add sitemap/RSS URLs above, (2) Drop files in its knowledge/ subdirectory, (3) Add its domain to EIGEN_FETCH_ALLOWLIST in Supabase Edge Function secrets, (4) Run the ingestion workflow."
+}

@@ -89,6 +89,66 @@ export type Database = {
         }
         Relationships: []
       }
+      charter_asset_valuations: {
+        Row: {
+          amount_numeric: string
+          as_of: string
+          basis_notes: string | null
+          charter_entity_id: string | null
+          confidence: number
+          created_at: string
+          created_by: string
+          currency: string
+          id: string
+          meg_entity_id: string
+          metadata: Json
+          methodology: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["charter_valuation_status"]
+          supersedes_id: string | null
+          updated_at: string
+          valuation_kind: Database["public"]["Enums"]["charter_valuation_kind"]
+        }
+        Insert: {
+          amount_numeric: string
+          as_of: string
+          basis_notes?: string | null
+          charter_entity_id?: string | null
+          confidence?: number
+          created_at?: string
+          created_by: string
+          currency?: string
+          id?: string
+          meg_entity_id: string
+          metadata?: Json
+          methodology?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["charter_valuation_status"]
+          supersedes_id?: string | null
+          updated_at?: string
+          valuation_kind: Database["public"]["Enums"]["charter_valuation_kind"]
+        }
+        Update: {
+          amount_numeric?: string
+          as_of?: string
+          basis_notes?: string | null
+          charter_entity_id?: string | null
+          confidence?: number
+          created_at?: string
+          created_by?: string
+          currency?: string
+          id?: string
+          meg_entity_id?: string
+          metadata?: Json
+          methodology?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["charter_valuation_status"]
+          supersedes_id?: string | null
+          updated_at?: string
+          valuation_kind?: Database["public"]["Enums"]["charter_valuation_kind"]
+        }
+        Relationships: []
+      }
       charter_decisions: {
         Row: {
           confidence: number | null
@@ -1695,6 +1755,17 @@ export type Database = {
         | "project"
       charter_context_status: "unlinked" | "linked" | "stale" | "error"
       charter_role: "member" | "reviewer" | "operator" | "counsel" | "admin"
+      charter_valuation_kind:
+        | "market"
+        | "book"
+        | "insurance"
+        | "replacement"
+        | "liquidation"
+        | "income_approach"
+        | "charter_basis"
+        | "tax_assessment"
+        | "custom"
+      charter_valuation_status: "draft" | "active" | "superseded"
       chunk_level: "document" | "section" | "paragraph" | "claim"
       confidence_band: "high" | "medium" | "low"
       decision_linked_table:
@@ -1704,12 +1775,20 @@ export type Database = {
         | "payouts"
         | "evidence"
         | "ip_matters"
+        | "asset_valuations"
       decision_status: "pending" | "final" | "appealed"
       decision_type: "approval" | "rejection" | "escalation" | "override"
       document_status: "draft" | "active" | "archived" | "deleted"
       embedding_status: "pending" | "embedded" | "failed" | "stale"
       entity_status: "draft" | "active" | "archived"
-      entity_type: "person" | "org" | "property" | "product"
+      entity_type:
+        | "person"
+        | "org"
+        | "property"
+        | "product"
+        | "concept"
+        | "location"
+        | "ip"
       evidence_link_kind:
         | "supports"
         | "contradicts"
@@ -1724,6 +1803,7 @@ export type Database = {
         | "payouts"
         | "decisions"
         | "ip_matters"
+        | "asset_valuations"
       evidence_status: "submitted" | "verified" | "challenged"
       evidence_type: "document" | "photo" | "filing" | "testimony"
       extracted_text_status:
@@ -1759,6 +1839,7 @@ export type Database = {
         | "product"
         | "concept"
         | "location"
+        | "ip"
       memory_scope: "session" | "user" | "workspace"
       obligation_status: "pending" | "fulfilled" | "overdue" | "waived"
       obligation_type: "payment" | "filing" | "compliance" | "delivery"
@@ -1954,6 +2035,18 @@ export const Constants = {
       ],
       charter_context_status: ["unlinked", "linked", "stale", "error"],
       charter_role: ["member", "reviewer", "operator", "counsel", "admin"],
+      charter_valuation_kind: [
+        "market",
+        "book",
+        "insurance",
+        "replacement",
+        "liquidation",
+        "income_approach",
+        "charter_basis",
+        "tax_assessment",
+        "custom",
+      ],
+      charter_valuation_status: ["draft", "active", "superseded"],
       chunk_level: ["document", "section", "paragraph", "claim"],
       confidence_band: ["high", "medium", "low"],
       decision_linked_table: [
@@ -1963,13 +2056,14 @@ export const Constants = {
         "payouts",
         "evidence",
         "ip_matters",
+        "asset_valuations",
       ],
       decision_status: ["pending", "final", "appealed"],
       decision_type: ["approval", "rejection", "escalation", "override"],
       document_status: ["draft", "active", "archived", "deleted"],
       embedding_status: ["pending", "embedded", "failed", "stale"],
       entity_status: ["draft", "active", "archived"],
-      entity_type: ["person", "org", "property", "product"],
+      entity_type: ["person", "org", "property", "product", "concept", "location", "ip"],
       evidence_link_kind: [
         "supports",
         "contradicts",
@@ -1985,6 +2079,7 @@ export const Constants = {
         "payouts",
         "decisions",
         "ip_matters",
+        "asset_valuations",
       ],
       evidence_status: ["submitted", "verified", "challenged"],
       evidence_type: ["document", "photo", "filing", "testimony"],
@@ -2024,6 +2119,7 @@ export const Constants = {
         "product",
         "concept",
         "location",
+        "ip",
       ],
       memory_scope: ["session", "user", "workspace"],
       obligation_status: ["pending", "fulfilled", "overdue", "waived"],

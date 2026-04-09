@@ -1,7 +1,7 @@
 const params = new URLSearchParams(window.location.search);
 const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
 const siteId = params.get('site_id') || '';
-const mode = params.get('mode') === 'eigenx' ? 'eigenx' : 'public';
+const initialMode = params.get('mode') || 'public'; // 'public' | 'eigenx' | 'mixed'
 const theme = params.get('theme') || 'light';
 const parentOriginParam = (params.get('parent_origin') || '').replace(/\/+$/, '');
 
@@ -49,20 +49,62 @@ if (!apiBase || !siteId) {
   throw new Error('Missing widget params');
 }
 
-headTitle.textContent = mode === 'public' ? 'Public Eigen' : 'EigenX';
-headSub.textContent = siteId;
-
+// --- Mixed mode state ---
+// activeMode tracks the current operating mode; starts as public for mixed.
+let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
 const allowedParentOrigin = parentOriginParam.toLowerCase();
+
+function updateModeUI() {
+  headTitle.textContent = activeMode === 'eigenx' ? 'EigenX' : 'Public Eigen';
+  headSub.textContent = siteId;
+}
+updateModeUI();
+
+/**
+ * Upgrade from public → eigenx when the parent app sends an auth token.
+ * Invalidates the current widget session so the next message fetches an
+ * eigenx-scoped session token.
+ */
+function upgradeToEigenx(bearer) {
+  if (activeMode === 'eigenx') return; // already upgraded
+  authBearer = bearer;
+  activeMode = 'eigenx';
+  widgetToken = ''; // force new session with eigenx scope
+  updateModeUI();
+  append('Signed in — switched to EigenX mode.', 'bot');
+}
+
+/**
+ * Downgrade from eigenx → public when the parent app signals sign-out.
+ */
+function downgradeToPublic() {
+  if (activeMode === 'public') return;
+  authBearer = '';
+  activeMode = 'public';
+  widgetToken = ''; // force new public session
+  updateModeUI();
+  append('Signed out — switched to public mode.', 'bot');
+}
 
 window.addEventListener('message', (event) => {
   if (allowedParentOrigin && event.origin.toLowerCase() !== allowedParentOrigin) {
     return;
   }
   const data = event.data || {};
-  if (data && data.type === 'eigen_widget_auth' && typeof data.authBearer === 'string') {
-    authBearer = data.authBearer;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'eigen_widget_auth' && typeof data.authBearer === 'string') {
+    if (data.authBearer) {
+      upgradeToEigenx(data.authBearer);
+    } else {
+      downgradeToPublic();
+    }
+  }
+
+  if (data.type === 'eigen_widget_signout') {
+    downgradeToPublic();
   }
 });
 
@@ -83,13 +125,13 @@ function append(text, role, meta = '') {
 async function ensureWidgetSession() {
   if (widgetToken) return widgetToken;
   const headers = { 'Content-Type': 'application/json' };
-  if (mode === 'eigenx' && authBearer) {
+  if (activeMode === 'eigenx' && authBearer) {
     headers.Authorization = `Bearer ${authBearer}`;
   }
   const resp = await fetch(`${apiBase}/eigen-widget-session`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ site_id: siteId, mode }),
+    body: JSON.stringify({ site_id: siteId, mode: activeMode }),
   });
   if (!resp.ok) throw new Error(await resp.text());
   const payload = await resp.json();
@@ -129,9 +171,9 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-append(
-  mode === 'public'
-    ? 'Ask me about Rays Retreat or R2 — answers use your public corpus when it’s indexed.'
-    : 'EigenX is ready. Your site can postMessage an auth token if this session needs sign-in.',
-  'bot',
-);
+const greetings = {
+  public: 'Ask me anything — answers are grounded in publicly available content.',
+  eigenx: 'EigenX is ready. Your site can postMessage an auth token if this session needs sign-in.',
+  mixed: 'Ask me anything — sign in for access to internal knowledge.',
+};
+append(greetings[initialMode] || greetings.public, 'bot');

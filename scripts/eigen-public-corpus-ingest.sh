@@ -17,6 +17,13 @@
 #   EIGEN_PUBLIC_FILES_POLICY_TAGS        (default: eigen_public)
 #   MANIFEST_PATH                         (optional; default under that dir)
 #
+# Optional Oracle outbox (after ingest; requires service_role JWT):
+#   EIGEN_OUTBOX_DRAIN_BEARER — if set, POSTs eigen-oracle-outbox-drain (limit 50) when ingest finishes
+#
+# Resilience (optional):
+#   EIGEN_PUBLIC_CORPUS_CONTINUE_ON_ERROR=1 — sitemap/RSS stages that hit partial 403/5xx do not abort
+#     the rest of this script (file sync + outbox drain still run). Default: strict (fail fast).
+#
 # From repo root:
 #   ./scripts/eigen-public-corpus-ingest.sh
 #
@@ -43,16 +50,27 @@ fi
 
 echo "=== Eigen public corpus ingest ==="
 
+_continue() {
+  if [[ "${EIGEN_PUBLIC_CORPUS_CONTINUE_ON_ERROR:-}" == "1" ]]; then
+    "$@" || {
+      echo "[warn] stage exited non-zero (continuing because EIGEN_PUBLIC_CORPUS_CONTINUE_ON_ERROR=1)" >&2
+      return 0
+    }
+  else
+    "$@"
+  fi
+}
+
 if [[ -n "$SITEMAP" ]]; then
   echo "--- Sitemap ---"
-  python3 scripts/eigen-public-sitemap-ingest.py
+  _continue python3 scripts/eigen-public-sitemap-ingest.py
 else
   echo "--- Sitemap (skipped) ---"
 fi
 
 if [[ -n "$RSS" ]]; then
   echo "--- RSS / Atom (news) ---"
-  python3 scripts/eigen-public-rss-ingest.py
+  _continue python3 scripts/eigen-public-rss-ingest.py
 else
   echo "--- RSS (skipped) ---"
 fi
@@ -74,6 +92,26 @@ if [[ -n "$FILES_DIR" ]]; then
   fi
 else
   echo "--- Public files (skipped) ---"
+fi
+
+if [[ -n "${EIGEN_OUTBOX_DRAIN_BEARER:-}" ]]; then
+  echo "--- eigen-oracle-outbox-drain ---"
+  base="${SUPABASE_URL%/}"
+  _drain_tmp="$(mktemp)"
+  _drain_code="$(curl -sS -o "${_drain_tmp}" -w '%{http_code}' -X POST "${base}/functions/v1/eigen-oracle-outbox-drain?limit=50" \
+    -H "Authorization: Bearer ${EIGEN_OUTBOX_DRAIN_BEARER}" \
+    -H "Content-Type: application/json" \
+    -d '{}' )" || _drain_code="000"
+  if [[ "${_drain_code}" != 2* ]]; then
+    echo "eigen-oracle-outbox-drain HTTP ${_drain_code} (non-fatal):" >&2
+    cat "${_drain_tmp}" >&2
+  else
+    cat "${_drain_tmp}"
+  fi
+  rm -f "${_drain_tmp}"
+  echo ""
+else
+  echo "--- eigen-oracle-outbox-drain (skipped; set EIGEN_OUTBOX_DRAIN_BEARER to run) ---"
 fi
 
 echo "=== Done ==="

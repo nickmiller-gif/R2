@@ -6,6 +6,7 @@ import {
   assertNonEmpty,
   assertConfidence,
   assertPositiveAmount,
+  assertNonNegativeAmountNumeric,
 } from '../../src/lib/charter/validate.js';
 
 describe('assertNonEmpty', () => {
@@ -71,5 +72,19 @@ describe('assertPositiveAmount', () => {
   it('throws for a negative value', () => {
     expect(() => assertPositiveAmount(-1)).toThrow('amount must be positive');
     expect(() => assertPositiveAmount(-0.01)).toThrow('amount must be positive');
+  });
+});
+
+describe('assertNonNegativeAmountNumeric', () => {
+  it('accepts zero and positive decimals as strings', () => {
+    expect(() => assertNonNegativeAmountNumeric('0')).not.toThrow();
+    expect(() => assertNonNegativeAmountNumeric(' 1250000.50 ')).not.toThrow();
+  });
+
+  it('rejects empty, negative, non-finite', () => {
+    expect(() => assertNonNegativeAmountNumeric('')).toThrow(/empty/);
+    expect(() => assertNonNegativeAmountNumeric('-0.01')).toThrow(/non-negative/);
+    expect(() => assertNonNegativeAmountNumeric('NaN')).toThrow(/non-negative/);
+    expect(() => assertNonNegativeAmountNumeric('Infinity')).toThrow(/non-negative/);
   });
 });

@@ -12,21 +12,19 @@ export function CitationsPanel({
   if (!citations.length && !confidence) return null;
 
   return (
-    <details className="group mt-3 rounded-card border border-border bg-elevated/80 px-3 py-2 text-sm">
-      <summary className="cursor-pointer list-none font-medium text-fg outline-none transition marker:content-none [&::-webkit-details-marker]:hidden">
-        <span className="flex items-center justify-between gap-2">
-          <span>
-            Sources
-            {citations.length > 0 ? (
-              <span className="ml-2 rounded-pill bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
-                {citations.length}
-              </span>
-            ) : null}
-          </span>
+    <details className="group mt-2 text-sm">
+      <summary className="cursor-pointer list-none text-muted outline-none transition marker:content-none hover:text-fg [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-1.5">
+          <span>Where this came from</span>
+          {citations.length > 0 ? (
+            <span className="rounded-pill bg-border/40 px-2 py-0.5 text-[0.7rem] font-medium text-fg">
+              {citations.length}
+            </span>
+          ) : null}
           <span className="text-muted transition group-open:rotate-180">▼</span>
         </span>
       </summary>
-      <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <div className="mt-2 space-y-2 rounded-card border border-border bg-elevated/80 px-3 py-2">
         {confidence ? (
           <p className="text-xs text-muted">
             Confidence: <strong className="text-fg">{confidence}</strong>
@@ -39,22 +37,23 @@ export function CitationsPanel({
           </p>
         ) : null}
         {citations.length > 0 ? (
-          <ul className="flex flex-wrap gap-2">
+          <ul className="space-y-2">
             {citations.map((c) => (
               <li
                 key={c.chunk_id}
-                className="max-w-full rounded-lg border border-border bg-surface px-2.5 py-1 text-xs shadow-soft"
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs leading-snug shadow-soft"
                 title={c.chunk_id}
               >
-                <span className="font-mono text-[0.7rem] text-muted">{c.chunk_id.slice(0, 8)}…</span>
-                <span className="mx-1 text-border">|</span>
-                <span className="text-fg">{c.source}</span>
-                <span className="ml-1 text-muted">{(c.relevance * 100).toFixed(0)}%</span>
+                {c.section ? (
+                  <p className="font-medium text-fg">{c.section}</p>
+                ) : null}
+                <p className={c.section ? 'mt-0.5 text-muted' : 'text-fg'}>{c.source}</p>
+                <p className="mt-0.5 text-[0.7rem] text-muted">Match strength {(c.relevance * 100).toFixed(0)}%</p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-muted">No citation chunks for this reply.</p>
+          <p className="text-xs text-muted">No indexed passages were attached to this reply.</p>
         )}
       </div>
     </details>

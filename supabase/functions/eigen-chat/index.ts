@@ -13,6 +13,10 @@ import {
   defaultEigenxRetrievePolicyScope,
   readEigenxEnvDefaultPolicyScope,
 } from '../_shared/eigenx-scope.ts';
+import {
+  EIGEN_RETRIEVED_CONTEXT_INTRO,
+  withEigenChatProseStyle,
+} from '../_shared/eigen-chat-answer-style.ts';
 
 interface ChatRequest {
   message: string;
@@ -58,10 +62,13 @@ function readNoContextResponse(): string {
 
 function readSystemPrompt(format: 'structured' | 'freeform'): string {
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
-  if (fromEnv && fromEnv.length > 0) return fromEnv;
-  return format === 'structured'
-    ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
-    : 'You are EigenX. Provide a concise grounded answer using only provided context.';
+  const base =
+    fromEnv && fromEnv.length > 0
+      ? fromEnv
+      : format === 'structured'
+        ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
+        : 'You are EigenX. Provide a concise grounded answer using only provided context.';
+  return withEigenChatProseStyle(base);
 }
 
 function toList(value: unknown): string[] {
@@ -116,14 +123,22 @@ function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
   return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
 }
 
+function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
+  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}`;
+}
+
 function buildFallbackAnswer(message: string, retrievedChunks: EigenRetrieveChunk[]): string {
-  const top = retrievedChunks.slice(0, 3).map((chunk, index) => {
-    return `${index + 1}. ${chunk.content.slice(0, 240)}`;
-  });
-  if (top.length === 0) {
+  const snippets = retrievedChunks.slice(0, 3).map((chunk) => chunk.content.slice(0, 280).trim()).filter(
+    Boolean,
+  );
+  if (snippets.length === 0) {
     return 'No grounded knowledge was retrieved for this query.';
   }
-  return `Grounded answer for "${message}":\n${top.join('\n')}`;
+  const body = snippets
+    .map((s) => `• ${s}${s.length >= 280 ? '…' : ''}`)
+    .join('\n\n');
+  const shortQ = message.length > 120 ? `${message.slice(0, 117)}…` : message;
+  return `From the indexed materials for “${shortQ}”:\n\n${body}`;
 }
 
 function buildCitations(chunks: EigenRetrieveChunk[]) {
@@ -133,6 +148,10 @@ function buildCitations(chunks: EigenRetrieveChunk[]) {
       chunk.provenance?.source_ref ??
       chunk.provenance?.source_system ??
       'unknown',
+    section:
+      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
+        ? chunk.provenance.heading_path.join(' › ')
+        : undefined,
     relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
   }));
 }
@@ -151,7 +170,7 @@ async function synthesizeResponse(
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const context = buildContextBlock(retrievedChunks);
+  const userContent = buildUserMessageWithContext(message, retrievedChunks);
   const systemPrompt = readSystemPrompt(format);
 
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -168,7 +187,7 @@ async function synthesizeResponse(
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: `Question: ${message}\n\nRetrieved context:\n${context}`,
+          content: userContent,
         },
       ],
     }),
@@ -188,8 +207,7 @@ async function synthesizeResponse(
 }
 
 async function* streamOpenAiChatDeltas(
-  message: string,
-  context: string,
+  userContent: string,
   format: 'structured' | 'freeform',
 ): AsyncGenerator<string, void, void> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
@@ -215,7 +233,7 @@ async function* streamOpenAiChatDeltas(
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: `Question: ${message}\n\nRetrieved context:\n${context}`,
+          content: userContent,
         },
       ],
     }),
@@ -329,7 +347,7 @@ serve(async (req) => {
 
     if (body.stream) {
       const encoder = new TextEncoder();
-      const context = buildContextBlock(retrievedChunks);
+      const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks);
       const sseHeaders = {
         ...corsHeaders,
         'Content-Type': 'text/event-stream; charset=utf-8',
@@ -354,8 +372,7 @@ serve(async (req) => {
               send({ text: fullText });
             } else {
               for await (const delta of streamOpenAiChatDeltas(
-                body.message,
-                context,
+                streamUserContent,
                 body.response_format ?? 'structured',
               )) {
                 fullText += delta;

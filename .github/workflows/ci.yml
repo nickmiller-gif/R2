@@ -30,17 +30,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test
-
-      - name: Check banned imports
-        run: bash scripts/check-banned-imports.sh
-
-      - name: Check migration sanity
-        run: bash scripts/check-migrations.sh
+      - name: Quality gate (typecheck · tests · import guard · migrations)
+        run: npm run check
 
   dependency-review:
     name: Dependency Review

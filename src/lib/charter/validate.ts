@@ -20,3 +20,13 @@ export function assertPositiveAmount(amount: number): void {
     throw new Error('amount must be positive');
   }
 }
+
+/** Charter asset valuations: non-negative decimal string (NUMERIC) accepted from clients. */
+export function assertNonNegativeAmountNumeric(s: string): void {
+  const t = s.trim();
+  if (!t) throw new Error('amountNumeric must not be empty');
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error('amountNumeric must be a non-negative finite number');
+  }
+}

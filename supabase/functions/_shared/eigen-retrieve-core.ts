@@ -5,6 +5,10 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { embedText, scoreCandidate, sha256Hex } from './eigen.ts';
 import { selectChunksWithinBudget } from './retrieval-budget.ts';
+import {
+  oracleCompositeBoost as computeOracleCompositeBoost,
+  parseOracleRetrievalBoostCap,
+} from '../../../src/lib/eigen/oracle-retrieval-boost.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
@@ -31,6 +35,9 @@ export interface EigenRetrieveChunk {
   authority_score: number;
   freshness_score: number;
   composite_score: number;
+  /** Set when this chunk is linked to an Oracle signal (ingest / outbox pipeline). */
+  oracle_signal_id?: string | null;
+  oracle_relevance_score?: number | null;
   provenance?: {
     document_id: string;
     source_system: string;
@@ -61,6 +68,8 @@ interface MatchChunkRow {
   provenance_completeness: number;
   content: string;
   ingestion_run_id: string | null;
+  oracle_signal_id?: string | null;
+  oracle_relevance_score?: number | null;
   source_system: string;
   similarity: number;
 }
@@ -87,18 +96,35 @@ function parseNumber(value: unknown): number | undefined {
   return value;
 }
 
+// Env reads are cached at module scope: env variables are stable per deployment
+// and reading them on every request is unnecessary overhead.
+let _defaultSiteBoost: number | undefined;
+let _defaultGlobalPenalty: number | undefined;
+let _oracleBoostCap: number | undefined;
+
 function readDefaultSiteBoost(): number {
-  const raw = Deno.env.get('EIGEN_SITE_SOURCE_BOOST') ?? '0.08';
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed)) return 0.08;
-  return Math.max(0, Math.min(parsed, 0.8));
+  if (_defaultSiteBoost === undefined) {
+    const raw = Deno.env.get('EIGEN_SITE_SOURCE_BOOST') ?? '0.08';
+    const parsed = Number.parseFloat(raw);
+    _defaultSiteBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.8)) : 0.08;
+  }
+  return _defaultSiteBoost;
 }
 
 function readDefaultGlobalPenalty(): number {
-  const raw = Deno.env.get('EIGEN_GLOBAL_SOURCE_PENALTY') ?? '0.0';
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(-0.8, Math.min(parsed, 0.8));
+  if (_defaultGlobalPenalty === undefined) {
+    const raw = Deno.env.get('EIGEN_GLOBAL_SOURCE_PENALTY') ?? '0.0';
+    const parsed = Number.parseFloat(raw);
+    _defaultGlobalPenalty = Number.isFinite(parsed) ? Math.max(-0.8, Math.min(parsed, 0.8)) : 0;
+  }
+  return _defaultGlobalPenalty;
+}
+
+function readOracleRelevanceBoostCap(): number {
+  if (_oracleBoostCap === undefined) {
+    _oracleBoostCap = parseOracleRetrievalBoostCap(Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'));
+  }
+  return _oracleBoostCap;
 }
 
 async function loadSiteRegistryContext(
@@ -284,6 +310,14 @@ export async function executeEigenRetrieve(
     const temporalFiltered = envelope.chunks.map((row) => {
       const entityIds = Array.isArray(row.entity_ids) ? row.entity_ids.map(String) : [];
       const policyTags = Array.isArray(row.policy_tags) ? row.policy_tags.map(String) : [];
+      const oracleSignalId =
+        typeof row.oracle_signal_id === 'string' && row.oracle_signal_id.length > 0
+          ? row.oracle_signal_id
+          : null;
+      const oracleRel =
+        typeof row.oracle_relevance_score === 'number' && Number.isFinite(row.oracle_relevance_score)
+          ? row.oracle_relevance_score
+          : null;
       return {
         chunk_id: row.id,
         content: row.content,
@@ -300,6 +334,8 @@ export async function executeEigenRetrieve(
         freshness_score: Number(row.freshness_score ?? 100),
         provenance_completeness: Number(row.provenance_completeness ?? 0),
         similarity_score: Number(row.similarity ?? 0),
+        oracle_signal_id: oracleSignalId,
+        oracle_relevance_score: oracleRel,
       };
     });
 
@@ -330,12 +366,15 @@ export async function executeEigenRetrieve(
       );
     }
 
+    // rerank defaults to true; only skipped when caller explicitly passes rerank: false
+    const applyRerank = payload.rerank !== false;
+    const hasSiteSources = siteSources.size > 0;
+    const oracleBoostCap = readOracleRelevanceBoostCap();
+
     const scoredDescending = temporalFiltered
-      .map((candidate) => ({
-        ...candidate,
-        composite_score: payload.rerank === false
-          ? candidate.similarity_score
-          : scoreCandidate({
+      .map((candidate) => {
+        const baseScore = applyRerank
+          ? scoreCandidate({
               id: candidate.chunk_id,
               content: candidate.content,
               chunk_level: candidate.chunk_level as 'document' | 'section' | 'paragraph' | 'claim',
@@ -351,17 +390,23 @@ export async function executeEigenRetrieve(
               authority_score: candidate.authority_score,
               freshness_score: candidate.freshness_score,
               provenance_completeness: candidate.provenance_completeness,
-            }),
-        site_adjustment: siteSources.size === 0
-          ? 0
-          : (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty),
-      }))
-      .map((candidate) => ({
-        ...candidate,
-        composite_score: Number(
-          Math.max(0, Math.min(1.5, candidate.composite_score + candidate.site_adjustment)).toFixed(6),
-        ),
-      }))
+            })
+          : candidate.similarity_score;
+        const siteAdj = hasSiteSources
+          ? (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty)
+          : 0;
+        const oracleAdj = computeOracleCompositeBoost(
+          candidate.oracle_signal_id,
+          candidate.oracle_relevance_score,
+          oracleBoostCap,
+        );
+        return {
+          ...candidate,
+          composite_score: Number(
+            Math.max(0, Math.min(1.5, baseScore + siteAdj + oracleAdj)).toFixed(6),
+          ),
+        };
+      })
       .sort((left, right) => right.composite_score - left.composite_score);
 
     const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(
@@ -403,6 +448,8 @@ export async function executeEigenRetrieve(
       authority_score: candidate.authority_score,
       freshness_score: candidate.freshness_score,
       composite_score: Number(candidate.composite_score.toFixed(6)),
+      oracle_signal_id: candidate.oracle_signal_id,
+      oracle_relevance_score: candidate.oracle_relevance_score,
       provenance: payload.include_provenance === false
         ? undefined
         : {

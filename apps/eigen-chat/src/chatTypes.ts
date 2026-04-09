@@ -1,6 +1,6 @@
 export interface ChatResponse {
   response: string;
-  citations: Array<{ chunk_id: string; source: string; relevance: number }>;
+  citations: Array<{ chunk_id: string; source: string; section?: string; relevance: number }>;
   confidence: 'low' | 'medium' | 'high';
   retrieval_run_id: string | null;
   memory_updated: boolean;

@@ -7,7 +7,29 @@
 
 export type CharterRole = 'member' | 'reviewer' | 'operator' | 'counsel' | 'admin';
 
-export type EntityType = 'person' | 'org' | 'property' | 'product';
+/** Aligned with MEG meg_entity_type (including IP and abstract nodes). */
+export type EntityType =
+  | 'person'
+  | 'org'
+  | 'property'
+  | 'product'
+  | 'concept'
+  | 'location'
+  | 'ip';
+
+/** Valuation basis for a MEG-classified asset (Charter economic / governance layer). */
+export type CharterValuationKind =
+  | 'market'
+  | 'book'
+  | 'insurance'
+  | 'replacement'
+  | 'liquidation'
+  | 'income_approach'
+  | 'charter_basis'
+  | 'tax_assessment'
+  | 'custom';
+
+export type CharterValuationStatus = 'draft' | 'active' | 'superseded';
 export type EntityStatus = 'draft' | 'active' | 'archived';
 export type CharterContextStatus = 'unlinked' | 'linked' | 'stale' | 'error';
 
@@ -19,13 +41,27 @@ export type ObligationStatus = 'pending' | 'fulfilled' | 'overdue' | 'waived';
 
 export type EvidenceType = 'document' | 'photo' | 'filing' | 'testimony';
 export type EvidenceStatus = 'submitted' | 'verified' | 'challenged';
-export type EvidenceLinkedTable = 'entities' | 'rights' | 'obligations' | 'payouts' | 'decisions' | 'ip_matters';
+export type EvidenceLinkedTable =
+  | 'entities'
+  | 'rights'
+  | 'obligations'
+  | 'payouts'
+  | 'decisions'
+  | 'ip_matters'
+  | 'asset_valuations';
 
 export type PayoutStatus = 'pending' | 'approved' | 'disbursed' | 'rejected';
 
 export type DecisionType = 'approval' | 'rejection' | 'escalation' | 'override';
 export type DecisionStatus = 'pending' | 'final' | 'appealed';
-export type DecisionLinkedTable = 'entities' | 'rights' | 'obligations' | 'payouts' | 'evidence' | 'ip_matters';
+export type DecisionLinkedTable =
+  | 'entities'
+  | 'rights'
+  | 'obligations'
+  | 'payouts'
+  | 'evidence'
+  | 'ip_matters'
+  | 'asset_valuations';
 
 export type AuditAction = 'create' | 'update' | 'delete' | 'status_change';
 
@@ -132,6 +168,67 @@ export interface CharterDecision {
   reviewedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Recorded value of an asset; megEntityId is the canonical subject (MEG classification). */
+export interface CharterAssetValuation {
+  id: string;
+  megEntityId: string;
+  charterEntityId: string | null;
+  valuationKind: CharterValuationKind;
+  amountNumeric: string;
+  currency: string;
+  asOf: Date;
+  confidence: number;
+  methodology: string | null;
+  basisNotes: string | null;
+  metadata: Record<string, unknown>;
+  status: CharterValuationStatus;
+  supersedesId: string | null;
+  createdBy: string;
+  reviewedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateCharterAssetValuationInput {
+  megEntityId: string;
+  charterEntityId?: string | null;
+  valuationKind: CharterValuationKind;
+  amountNumeric: string;
+  currency?: string;
+  asOf: string;
+  methodology?: string | null;
+  basisNotes?: string | null;
+  metadata?: Record<string, unknown>;
+  status?: CharterValuationStatus;
+  supersedesId?: string | null;
+  confidence?: number;
+  /** Required when status is active (governance review). */
+  reviewedBy?: string | null;
+  createdBy: string;
+}
+
+export interface UpdateCharterAssetValuationInput {
+  charterEntityId?: string | null;
+  valuationKind?: CharterValuationKind;
+  amountNumeric?: string;
+  currency?: string;
+  asOf?: string;
+  methodology?: string | null;
+  basisNotes?: string | null;
+  metadata?: Record<string, unknown>;
+  status?: CharterValuationStatus;
+  supersedesId?: string | null;
+  confidence?: number;
+  reviewedBy?: string | null;
+}
+
+export interface CharterAssetValuationFilter {
+  megEntityId?: string;
+  charterEntityId?: string;
+  valuationKind?: CharterValuationKind;
+  status?: CharterValuationStatus;
 }
 
 export interface CharterAuditEntry {

@@ -31,6 +31,13 @@ export {
 } from './entity-context.service.js';
 
 export {
+  createCharterAssetValuationService,
+  type CharterAssetValuationService,
+  type CharterAssetValuationDb,
+  type DbCharterAssetValuationRow,
+} from './charter-asset-valuation.service.js';
+
+export {
   createCharterRightService,
   type CharterRightService,
   type CharterRightDb,

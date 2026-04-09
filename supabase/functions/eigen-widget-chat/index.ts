@@ -5,6 +5,10 @@ import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
 import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
 import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
+import {
+  EIGEN_RETRIEVED_CONTEXT_INTRO,
+  withEigenChatProseStyle,
+} from '../_shared/eigen-chat-answer-style.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -51,6 +55,10 @@ function buildCitations(chunks: EigenRetrieveChunk[]) {
   return chunks.slice(0, 8).map((chunk) => ({
     chunk_id: chunk.chunk_id,
     source: chunk.provenance?.source_ref ?? chunk.provenance?.source_system ?? 'unknown',
+    section:
+      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
+        ? chunk.provenance.heading_path.join(' › ')
+        : undefined,
     relevance: Number(chunk.composite_score?.toFixed(4) ?? 0),
   }));
 }
@@ -125,17 +133,25 @@ async function synthesize(
         ? 'Hi — I\'m Eigen. I don\'t have matching sourced details for that yet, but I\'m here. What would you like to know about Rays Retreat or R2?'
         : 'I don\'t have retrieved context for that yet. Try rephrasing or point me at a specific topic.';
     }
-    return chunks.slice(0, 3).map((c, i) => `${i + 1}. ${c.content.slice(0, 220)}`).join('\n');
+    return chunks
+      .slice(0, 3)
+      .map((c) => {
+        const s = c.content.slice(0, 240).trim();
+        return `• ${s}${s.length >= 240 ? '…' : ''}`;
+      })
+      .join('\n\n');
   }
 
   const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
   const envPrompt = mode === 'public'
     ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
     : Deno.env.get('EIGENX_SYSTEM_PROMPT');
-  const systemPrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(mode, hasContext);
+  const basePrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(mode, hasContext);
+  const systemPrompt = withEigenChatProseStyle(basePrompt);
 
+  const labeled = buildContext(chunks);
   const userContent = hasContext
-    ? `User message: ${message}\n\nRetrieved context (use for specifics; cite mentally by snippet number if helpful):\n${buildContext(chunks)}`
+    ? `User message: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
     : `User message: ${message}`;
 
   const completion = await fetch('https://api.openai.com/v1/chat/completions', {

@@ -35,13 +35,6 @@ if [ -n "$DUPES" ]; then
 fi
 
 # 3. Check ordering — timestamps must be monotonically increasing
-PREV=""
-SORTED_FILES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | sort)
-ACTUAL_FILES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {})
-if [ "$SORTED_FILES" != "$ACTUAL_FILES" ]; then
-  :
-fi
-
 TIMESTAMPS=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | cut -c1-12 | sort)
 PREV_TS=""
 for ts in $TIMESTAMPS; do
@@ -57,11 +50,12 @@ done
 DESTRUCTIVE_HITS=$(grep -rln "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$MIGRATION_DIR"/ 2>/dev/null || true)
 if [ -n "$DESTRUCTIVE_HITS" ]; then
   echo ""
-  echo "WARNING: Migrations containing potentially destructive operations (additive-only policy):"
+  echo "FAIL: Migrations containing destructive operations violate the additive-only policy:"
   for f in $DESTRUCTIVE_HITS; do
     echo "  $(basename "$f"):"
     grep -n "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$f" | head -3
   done
+  EXIT=1
 fi
 
 # 5. Count summary

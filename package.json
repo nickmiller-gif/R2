@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "lint:imports": "bash scripts/check-banned-imports.sh",
     "lint:migrations": "bash scripts/check-migrations.sh",
-    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations"
+    "lint:supabase:drift": "bash scripts/check-supabase-migration-drift.sh",
+    "lint:supabase:types": "bash scripts/check-supabase-generated-types.sh",
+    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types"
   },
   "repository": {
     "type": "git",

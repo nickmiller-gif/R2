@@ -8,6 +8,8 @@ export * from './profile-run.js';
 export * from './thesis-knowledge-link.js';
 export * from './outcome.js';
 export * from './whitespace-core.js';
+export * from './publication.js';
+export * from './read-models.js';
 
 export * from './service-layer.js';
 export * from './run-outcome.js';

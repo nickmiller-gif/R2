@@ -5,6 +5,7 @@
  * with explicit scoring, confidence, and reason traces.
  * Any product domain can request and consume signals.
  */
+import type { OraclePublicationState } from './shared.js';
 
 export type SignalStatus = 'pending' | 'scored' | 'expired' | 'superseded';
 
@@ -31,6 +32,10 @@ export interface OracleSignal {
   producerRef: string;
   /** Version — Oracle can re-score, creating new versions. */
   version: number;
+  publicationState: OraclePublicationState;
+  publishedAt: Date | null;
+  publishedBy: string | null;
+  publicationNotes: string | null;
   scoredAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +58,8 @@ export interface UpdateOracleSignalInput {
   reasons?: string[];
   tags?: string[];
   status?: SignalStatus;
+  publicationState?: OraclePublicationState;
+  publicationNotes?: string | null;
 }
 
 export interface OracleSignalFilter {
@@ -63,4 +70,5 @@ export interface OracleSignalFilter {
   maxScore?: number;
   producerRef?: string;
   tags?: string[];
+  publicationState?: OraclePublicationState;
 }

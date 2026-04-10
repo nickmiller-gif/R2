@@ -1,4 +1,20 @@
 export {
+  createOraclePublicationService,
+  type OraclePublicationService,
+  type OraclePublicationDb,
+  type DbOraclePublicationEventRow,
+} from './oracle-publication.service.js';
+
+export {
+  createOracleReadModelService,
+  type OracleReadModelService,
+  type OracleReadModelDb,
+  type DbOracleBriefingRow,
+  type DbOracleThemeMapRow,
+  type DbOracleFeedHistoryRow,
+} from './oracle-read-model.service.js';
+
+export {
   createOracleSignalService,
   type OracleSignalService,
   type OracleSignalDb,

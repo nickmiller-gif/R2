@@ -64,8 +64,10 @@ There are **36** deployed function entrypoints under `supabase/functions/`. Most
 ## Next priorities
 
 1. Oracle publication + governance boundary (internal vs operator-facing objects)
-2. MEG identity handshake contracts across domains
-3. Supabase client DI factory pattern
-4. Supabase migration drift CI check
+2. Supabase client injection pattern (DI-friendly client factory)
+3. Oracle briefing + theme map + feed history read models
+4. Eigen policy engine + capability registry (EigenX/KOS upgrade)
+5. Supabase migration drift CI check
+6. Type generation check in CI
 
 See [`plan.md`](./plan.md) for the full slice roadmap.

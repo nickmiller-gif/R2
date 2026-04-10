@@ -37,6 +37,10 @@ export interface DbOracleSignalRow {
   source_asset_id: string | null;
   producer_ref: string;
   version: number;
+  publication_state: string;
+  published_at: string | null;
+  published_by: string | null;
+  publication_notes: string | null;
   scored_at: string;
   created_at: string;
   updated_at: string;
@@ -63,6 +67,10 @@ function rowToSignal(row: DbOracleSignalRow): OracleSignal {
     sourceAssetId: row.source_asset_id,
     producerRef: row.producer_ref,
     version: row.version,
+    publicationState: row.publication_state as OracleSignal['publicationState'],
+    publishedAt: row.published_at ? new Date(row.published_at) : null,
+    publishedBy: row.published_by,
+    publicationNotes: row.publication_notes,
     scoredAt: new Date(row.scored_at),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -85,6 +93,10 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
         source_asset_id: input.sourceAssetId ?? null,
         producer_ref: input.producerRef,
         version: 1,
+        publication_state: 'pending_review',
+        published_at: null,
+        published_by: null,
+        publication_notes: null,
         scored_at: now,
         created_at: now,
         updated_at: now,
@@ -116,6 +128,8 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
       if (input.reasons !== undefined) patch.reasons = input.reasons;
       if (input.tags !== undefined) patch.tags = input.tags;
       if (input.status !== undefined) patch.status = input.status;
+      if (input.publicationState !== undefined) patch.publication_state = input.publicationState;
+      if (input.publicationNotes !== undefined) patch.publication_notes = input.publicationNotes;
 
       const row = await db.updateSignal(id, patch);
       return rowToSignal(row);
@@ -146,6 +160,10 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
         source_asset_id: input.sourceAssetId ?? null,
         producer_ref: input.producerRef,
         version: previous.version + 1,
+        publication_state: 'pending_review',
+        published_at: null,
+        published_by: null,
+        publication_notes: null,
         scored_at: now,
         created_at: now,
         updated_at: now,

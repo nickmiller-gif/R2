@@ -20,6 +20,13 @@ export {
 } from './tool-capability.service.js';
 
 export {
+  createEigenPolicyEngineService,
+  type EigenPolicyEngineService,
+  type EigenPolicyEngineDb,
+  type DbEigenPolicyRuleRow,
+} from './policy-engine.service.js';
+
+export {
   createMemoryEntryService,
   type MemoryEntryService,
   type MemoryEntryDb,

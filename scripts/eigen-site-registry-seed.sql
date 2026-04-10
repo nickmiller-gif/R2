@@ -86,6 +86,26 @@ INSERT INTO public.eigen_site_registry (
     '["eigen_public"]'::jsonb,
     'active',
     '{"domains":["rsquaredip.com","www.rsquaredip.com"]}'::jsonb
+  ),
+  (
+    'health-supplement-tr',
+    'Health Supplement TR',
+    'mixed',
+    '["https://health-supplement-tr.lovable.app","http://localhost:5173","http://localhost:8080"]'::jsonb,
+    '["health-supplement-tr"]'::jsonb,
+    '["eigen_public","eigenx"]'::jsonb,
+    'active',
+    '{"domains":["health-supplement-tr.lovable.app"]}'::jsonb
+  ),
+  (
+    'project-darling',
+    'Project Darling',
+    'public',
+    '["https://project-darling.lovable.app","http://localhost:5173","http://localhost:8080"]'::jsonb,
+    '["project-darling"]'::jsonb,
+    '["eigen_public"]'::jsonb,
+    'active',
+    '{"domains":["project-darling.lovable.app"]}'::jsonb
   )
 ON CONFLICT (site_id) DO UPDATE SET
   display_name = EXCLUDED.display_name,

@@ -34,6 +34,12 @@ export {
 } from './r2app/eigen-r2app-adapter.js';
 
 export {
+  createHealthSupplementEigenAdapter,
+  mapHealthSupplementTrendToEigen,
+  type HealthSupplementTrendEvent,
+} from './health-supplement-tr/eigen-health-supplement-adapter.js';
+
+export {
   visibilityPolicyTags,
   type AdapterVisibility,
   type AdapterIngestMetadata,

@@ -157,6 +157,12 @@ The existing `eigen-public-corpus.yml` workflow runs weekly. Update its variable
 | Public mode works but EigenX fails | User doesn't have `member` role in R2's `charter_user_roles` |
 | Low confidence / no citations | No content ingested yet for this site's policy scope |
 
+## Safe rollout
+
+For staged production enablement (per-repo env toggles, rollout order, and rollback switches), use:
+
+- `docs/eigen-safe-rollout-checklist.md`
+
 ## Files created/modified
 
 ```

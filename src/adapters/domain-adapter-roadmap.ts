@@ -28,7 +28,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     corpus_tier: 'eigenx',
     status: 'in_progress',
     notes:
-      'Adapter exists. Next: add retry queue + backfill script and include thesis/asset IDs in metadata.',
+      'Adapter and server-side ingest wiring are live with retries and thesis/asset metadata; next: add backfill script.',
   },
   {
     repo: 'oracle-operator',
@@ -53,45 +53,45 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p1',
     target_source_system: 'health-supplement-tr',
     corpus_tier: 'mixed',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Move client-side ingestion to server adapter and route all content through R2 eigen-ingest.',
+      'Server adapter and trend export script now route data through R2 eigen-ingest; next: schedule automated export.',
   },
   {
     repo: 'project-darling',
     priority: 'p2',
     target_source_system: 'project-darling',
     corpus_tier: 'mixed',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Confirm whether this remains UI-only; if yes, adapter pulls from its backing Supabase tables.',
+      'Confirmed UI-only today; widget + site registration added. Use file/sitemap ingest unless a backing data model is introduced.',
   },
   {
     repo: 'centralr2-core',
     priority: 'p0',
     target_source_system: 'centralr2-core',
     corpus_tier: 'eigenx',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Map governance/asset snapshots into eigenx with strong provenance metadata per record.',
+      'Property and rental analysis edge functions now emit knowledge snapshots into eigen-ingest with provenance metadata.',
   },
   {
     repo: 'hpseller',
     priority: 'p1',
     target_source_system: 'hpseller',
     corpus_tier: 'eigenx',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Ingest seller workflow docs, checklists, and transaction notes with access-scoped policy tags.',
+      'db-write server events now ingest seller files/checklists/notes with access-scoped policy tags.',
   },
   {
     repo: 'r2app',
     priority: 'p0',
     target_source_system: 'r2app',
     corpus_tier: 'mixed',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Ingest approved public Q&A into eigen_public and internal notes into eigenx; preserve event timestamps.',
+      'Runtime chat now defaults to shared Eigen widget path; next: wire conversation capture into adapter ingest path.',
   },
   {
     repo: 'chartr2-assets',

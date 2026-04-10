@@ -9,6 +9,7 @@ import type {
   OracleFeedHistoryFilter,
   OracleFeedHistoryItem,
 } from '../../types/oracle/read-models.js';
+import { parseJsonbField } from './oracle-db-utils.js';
 
 export interface DbOracleBriefingRow {
   thesis_id: string;
@@ -34,7 +35,7 @@ export interface DbOracleFeedHistoryRow {
   published_at: string;
   title: string;
   summary: string | null;
-  metadata: string;
+  metadata: unknown;
 }
 
 export interface OracleReadModelDb {
@@ -78,7 +79,7 @@ function rowToFeedHistory(row: DbOracleFeedHistoryRow): OracleFeedHistoryItem {
     publishedAt: new Date(row.published_at),
     title: row.title,
     summary: row.summary,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
   };
 }
 

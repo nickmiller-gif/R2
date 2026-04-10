@@ -140,7 +140,8 @@ WITH themed_theses AS (
 SELECT
   theme,
   count(*)::int AS thesis_count,
-  avg(confidence)::numeric(6,2) AS avg_confidence,
+  -- Cast to double precision so DB drivers return a number, not a string (numeric/decimal driver coercion).
+  round(avg(confidence)::numeric, 2)::double precision AS avg_confidence,
   max(published_at) AS latest_published_at
 FROM themed_theses
 GROUP BY theme;

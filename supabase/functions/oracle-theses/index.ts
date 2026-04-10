@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
@@ -142,7 +142,7 @@ serve(async (req) => {
           return errorResponse(error.message, 400);
         }
 
-        await client.from('oracle_publication_events').insert({
+        const { error: auditError } = await client.from('oracle_publication_events').insert({
           target_type: 'thesis',
           target_id: thesisId,
           from_state: beforeUpdate.publication_state,
@@ -154,6 +154,10 @@ serve(async (req) => {
             action,
           },
         });
+
+        if (auditError) {
+          return errorResponse(`Publication state updated but audit event failed: ${auditError.message}`, 500);
+        }
 
         return jsonResponse(data);
       } else if (action === 'challenge') {

@@ -9,6 +9,7 @@ import type {
   CreateOraclePublicationEventInput,
   OraclePublicationRecord,
 } from '../../types/oracle/publication.js';
+import { parseJsonbField } from './oracle-db-utils.js';
 
 export interface DbOraclePublicationEventRow {
   id: string;
@@ -19,7 +20,7 @@ export interface DbOraclePublicationEventRow {
   decided_by: string;
   decided_at: string;
   notes: string | null;
-  metadata: string;
+  metadata: unknown;
 }
 
 export interface OraclePublicationDb {
@@ -77,7 +78,7 @@ function rowToEvent(row: DbOraclePublicationEventRow): OraclePublicationRecord {
     decidedBy: row.decided_by,
     decidedAt: new Date(row.decided_at),
     notes: row.notes,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
   };
 }
 
@@ -91,7 +92,7 @@ function toDbEventRow(input: CreateOraclePublicationEventInput): DbOraclePublica
     decided_by: input.decidedBy,
     decided_at: nowUtc().toISOString(),
     notes: input.notes ?? null,
-    metadata: JSON.stringify(input.metadata ?? {}),
+    metadata: input.metadata ?? {},
   };
 }
 

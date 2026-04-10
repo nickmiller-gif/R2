@@ -15,21 +15,23 @@ fi
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT
 
-if ! npx --yes supabase@latest link --project-ref "$PROJECT_REF" 2>&1; then
+SUPABASE_CLI_VERSION="2.89.0"
+
+if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" link --project-ref "$PROJECT_REF" 2>&1; then
   echo "FAIL: Unable to link Supabase project $PROJECT_REF"
   exit 1
 fi
 
-if ! npx --yes supabase@latest migration list --linked >"$OUTPUT_FILE" 2>&1; then
+if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" migration list --linked >"$OUTPUT_FILE" 2>&1; then
   echo "FAIL: Unable to list Supabase migrations for project $PROJECT_REF"
   cat "$OUTPUT_FILE"
   exit 1
 fi
 
 # Migration list should not include rows where local and remote are out of sync.
-if rg -n "^\s*[0-9]{12}\s+\|\s+[^|]+\s+\|\s+[^|]+\s*$" "$OUTPUT_FILE" >/dev/null; then
+if grep -E -q "^\s*[0-9]{12}\s+\|\s+[^|]+\s+\|\s+[^|]+\s*$" "$OUTPUT_FILE"; then
   # Human-readable table emitted. Flag obvious mismatches where either side is missing.
-  if rg -n "\|\s*$|\|\s*-\s*\|" "$OUTPUT_FILE" >/dev/null; then
+  if grep -E -q "\|\s*$|\|\s*-\s*\|" "$OUTPUT_FILE"; then
     echo "FAIL: Local and remote migration histories appear out of sync."
     cat "$OUTPUT_FILE"
     exit 1

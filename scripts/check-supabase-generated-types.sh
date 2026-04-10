@@ -18,15 +18,17 @@ if [ ! -f "$TYPES_FILE" ]; then
   exit 1
 fi
 
+SUPABASE_CLI_VERSION="2.89.0"
+
 GENERATED_FILE="$(mktemp)"
 trap 'rm -f "$GENERATED_FILE"' EXIT
 
-npx --yes supabase@latest gen types typescript --project-id "$PROJECT_REF" --schema public > "$GENERATED_FILE"
+npx --yes "supabase@${SUPABASE_CLI_VERSION}" gen types typescript --project-id "$PROJECT_REF" --schema public > "$GENERATED_FILE"
 
 if ! cmp -s "$TYPES_FILE" "$GENERATED_FILE"; then
   echo "FAIL: $TYPES_FILE is out of date with Supabase schema."
   echo "Run:"
-  echo "  npx supabase gen types typescript --project-id \"$PROJECT_REF\" --schema public > $TYPES_FILE"
+  echo "  npx supabase@${SUPABASE_CLI_VERSION} gen types typescript --project-id \"$PROJECT_REF\" --schema public > $TYPES_FILE"
   exit 1
 fi
 

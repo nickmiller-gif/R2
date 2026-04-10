@@ -15,7 +15,12 @@ fi
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT
 
-if ! npx --yes supabase@latest migration list --project-ref "$PROJECT_REF" >"$OUTPUT_FILE" 2>&1; then
+if ! npx --yes supabase@latest link --project-ref "$PROJECT_REF" 2>&1; then
+  echo "FAIL: Unable to link Supabase project $PROJECT_REF"
+  exit 1
+fi
+
+if ! npx --yes supabase@latest migration list --linked >"$OUTPUT_FILE" 2>&1; then
   echo "FAIL: Unable to list Supabase migrations for project $PROJECT_REF"
   cat "$OUTPUT_FILE"
   exit 1

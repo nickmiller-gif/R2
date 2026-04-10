@@ -71,3 +71,5 @@ There are **36** deployed function entrypoints under `supabase/functions/`. Most
 6. Type generation check in CI
 
 See [`plan.md`](./plan.md) for the full slice roadmap.
+
+For multi-repo Eigen rollout safety, see [`docs/eigen-safe-rollout-checklist.md`](./docs/eigen-safe-rollout-checklist.md).

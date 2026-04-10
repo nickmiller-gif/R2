@@ -31,6 +31,22 @@
       "files_dir": "knowledge/centralr2-core",
       "fetch_allowlist": ["centralr2-core.lovable.app"],
       "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+    },
+    "health-supplement-tr": {
+      "display_name": "Health Supplement TR",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/health-supplement-tr",
+      "fetch_allowlist": ["health-supplement-tr.lovable.app"],
+      "notes": "Server-side trend exports should ingest through R2 eigen-ingest; add public sitemap URLs if exposed."
+    },
+    "project-darling": {
+      "display_name": "Project Darling",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/project-darling",
+      "fetch_allowlist": ["project-darling.lovable.app"],
+      "notes": "Current app is UI-only; use file and sitemap ingest unless a backing data model is added."
     }
   },
   "_instructions": "To ingest content for a site: (1) Add sitemap/RSS URLs above, (2) Drop files in its knowledge/ subdirectory, (3) Add its domain to EIGEN_FETCH_ALLOWLIST in Supabase Edge Function secrets, (4) Run the ingestion workflow."

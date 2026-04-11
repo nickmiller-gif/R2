@@ -6,8 +6,13 @@ echo "=== Supabase Migration Drift Check ==="
 
 PROJECT_REF="${SUPABASE_PROJECT_REF:-}"
 ACCESS_TOKEN="${SUPABASE_ACCESS_TOKEN:-}"
+REQUIRE_REMOTE_CHECKS="${REQUIRE_SUPABASE_REMOTE_CHECKS:-false}"
 
 if [ -z "$PROJECT_REF" ] || [ -z "$ACCESS_TOKEN" ]; then
+  if [ "$REQUIRE_REMOTE_CHECKS" = "true" ]; then
+    echo "FAIL: SUPABASE_PROJECT_REF and SUPABASE_ACCESS_TOKEN are required for this check."
+    exit 1
+  fi
   echo "Skipping drift check: SUPABASE_PROJECT_REF and/or SUPABASE_ACCESS_TOKEN not set."
   exit 0
 fi

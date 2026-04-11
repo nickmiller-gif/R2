@@ -21,6 +21,7 @@ jobs:
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REQUIRE_SUPABASE_REMOTE_CHECKS: "true"
 
     steps:
       - uses: actions/checkout@v6

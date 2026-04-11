@@ -19,6 +19,7 @@ export interface DbEigenPolicyRuleRow {
   effect: 'allow' | 'deny';
   required_role: string | null;
   rationale: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +47,7 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
     effect: row.effect,
     requiredRole: row.required_role,
     rationale: row.rationale,
+    metadata: row.metadata ?? {},
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -80,6 +82,7 @@ export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPo
         effect: input.effect,
         required_role: input.requiredRole ?? null,
         rationale: input.rationale ?? null,
+        metadata: input.metadata ?? {},
         created_at: now,
         updated_at: now,
       });
@@ -107,6 +110,7 @@ export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPo
       if (input.effect !== undefined) patch.effect = input.effect;
       if (input.requiredRole !== undefined) patch.required_role = input.requiredRole;
       if (input.rationale !== undefined) patch.rationale = input.rationale;
+      if (input.metadata !== undefined) patch.metadata = input.metadata;
       const row = await db.updateRule(id, patch);
       return rowToRule(row);
     },

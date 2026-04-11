@@ -27,6 +27,7 @@ export interface DbKnowledgeChunkRow {
   chunk_level: string;
   heading_path: string;
   entity_ids: string;
+  meg_entity_id: string | null;
   policy_tags: string;
   valid_from: string | null;
   valid_to: string | null;
@@ -56,6 +57,7 @@ function rowToChunk(row: DbKnowledgeChunkRow): KnowledgeChunk {
     chunkLevel: row.chunk_level as KnowledgeChunk['chunkLevel'],
     headingPath: JSON.parse(row.heading_path),
     entityIds: JSON.parse(row.entity_ids),
+    megEntityId: row.meg_entity_id,
     policyTags: JSON.parse(row.policy_tags),
     validFrom: row.valid_from ? new Date(row.valid_from) : null,
     validTo: row.valid_to ? new Date(row.valid_to) : null,
@@ -82,6 +84,7 @@ export function createKnowledgeChunkService(db: KnowledgeChunkDb): KnowledgeChun
         chunk_level: input.chunkLevel,
         heading_path: JSON.stringify(input.headingPath ?? []),
         entity_ids: JSON.stringify(input.entityIds ?? []),
+        meg_entity_id: input.megEntityId ?? null,
         policy_tags: JSON.stringify(input.policyTags ?? []),
         valid_from: null,
         valid_to: null,
@@ -122,6 +125,7 @@ export function createKnowledgeChunkService(db: KnowledgeChunkDb): KnowledgeChun
       if (input.validTo !== undefined)
         patch.valid_to = input.validTo ? new Date(input.validTo).toISOString() : null;
       if (input.embeddingVersion !== undefined) patch.embedding_version = input.embeddingVersion;
+      if (input.megEntityId !== undefined) patch.meg_entity_id = input.megEntityId;
 
       const row = await db.updateChunk(id, patch);
       return rowToChunk(row);

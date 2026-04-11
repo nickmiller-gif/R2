@@ -11,6 +11,7 @@ export interface EigenPolicyRule {
   effect: EigenPolicyEffect;
   requiredRole: string | null;
   rationale: string | null;
+  metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ export interface CreateEigenPolicyRuleInput {
   effect: EigenPolicyEffect;
   requiredRole?: string | null;
   rationale?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface EigenPolicyRuleFilter {

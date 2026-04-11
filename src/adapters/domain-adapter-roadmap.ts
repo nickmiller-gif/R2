@@ -55,7 +55,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     corpus_tier: 'mixed',
     status: 'in_progress',
     notes:
-      'Server adapter and trend export script now route data through R2 eigen-ingest; next: schedule automated export.',
+      'Export script + adapter default to eigen_public for visitor-facing trends; pass visibility eigenx for operator-only. Next: schedule automated export.',
   },
   {
     repo: 'project-darling',

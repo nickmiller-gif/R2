@@ -9,7 +9,10 @@ export interface KnowledgeChunk {
   parentChunkId: string | null;
   chunkLevel: ChunkLevel;
   headingPath: string[];
+  /** MEG entity UUIDs mentioned in this chunk. */
   entityIds: string[];
+  /** Optional FK to the primary MEG entity this chunk is about. */
+  megEntityId: string | null;
   policyTags: string[];
   validFrom: Date | null;
   validTo: Date | null;
@@ -30,6 +33,8 @@ export interface CreateKnowledgeChunkInput {
   chunkLevel: ChunkLevel;
   headingPath?: string[];
   entityIds?: string[];
+  /** Optional primary MEG entity this chunk is about. */
+  megEntityId?: string | null;
   policyTags?: string[];
   content: string;
   authorityScore?: number;
@@ -45,6 +50,7 @@ export interface UpdateKnowledgeChunkInput {
   validFrom?: string | null;
   validTo?: string | null;
   embeddingVersion?: string | null;
+  megEntityId?: string | null;
 }
 
 export interface KnowledgeChunkFilter {
@@ -52,5 +58,8 @@ export interface KnowledgeChunkFilter {
   chunkLevel?: ChunkLevel;
   parentChunkId?: string;
   minAuthority?: number;
+  /** Filter by a MEG entity UUID appearing in the entityIds array. */
   entityId?: string;
+  /** Filter by the primary MEG entity FK. */
+  megEntityId?: string;
 }

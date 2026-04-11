@@ -11,6 +11,8 @@ import type {
 export interface OracleThesis {
   id: string;
   profileId: string | null;
+  /** Optional FK to MEG canonical identity — the real-world subject this thesis is about. */
+  megEntityId: string | null;
   title: string;
   thesisStatement: string;
   status: OracleThesisStatus;
@@ -48,6 +50,8 @@ export interface OracleThesis {
 
 export interface CreateOracleThesisInput {
   profileId?: string | null;
+  /** Optional MEG entity this thesis is about. */
+  megEntityId?: string | null;
   title: string;
   thesisStatement: string;
   status?: OracleThesisStatus;
@@ -62,6 +66,7 @@ export interface CreateOracleThesisInput {
 export interface UpdateOracleThesisInput {
   title?: string;
   thesisStatement?: string;
+  megEntityId?: string | null;
   status?: OracleThesisStatus;
   noveltyStatus?: OracleNoveltyStatus;
   confidence?: number;
@@ -73,6 +78,8 @@ export interface UpdateOracleThesisInput {
 
 export interface OracleThesisFilter {
   profileId?: string;
+  /** Filter theses by the MEG entity they are about. */
+  megEntityId?: string;
   status?: OracleThesisStatus;
   noveltyStatus?: OracleNoveltyStatus;
   publicationState?: OraclePublicationState;

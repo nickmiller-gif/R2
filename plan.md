@@ -22,16 +22,19 @@ This plan defines the incremental import path from the old source repository int
 | Foundation (asset-registry, documents) | ✅ complete | services, edge functions, tests |
 | Security hardening: JWT on operator/member surfaces | ✅ complete | public Eigen chat + rate limits are exceptions; see edge function guards |
 | CI workflow (typecheck + tests + no-alias-imports check) | ✅ complete | `.github/workflows/ci.yml` |
+| MEG identity handshake contracts with Charter/Oracle/Eigen | ✅ complete | Oracle + Eigen meg_entity_id FKs, MegEntityLookup port, MegCrossDomainResolver, domain ports, GIN index on entity_ids |
 
 ## Next Slices (not yet started)
 
-- Oracle publication + governance boundary (internal vs operator-facing objects, publication state)
-- MEG identity handshake contracts with Charter/Oracle/Eigen
 - Supabase client injection pattern (DI-friendly client factory)
-- Oracle briefing + theme map + feed history read models
 - Eigen policy engine + capability registry (EigenX/KOS upgrade)
 - Supabase migration drift CI check
 - Type generation check in CI
+
+## Recently landed (still iterate in follow-ups)
+
+- Oracle publication + governance boundary (signals + theses publication workflow, `oracle_publication_events`, RLS for published vs operator roles) — see `202604090004_oracle_publication_boundary_and_read_models.sql`
+- Oracle briefing / theme map / feed history read models — DB views + `oracle-read-models` edge function + `202604100003_oracle_read_model_view_grants.sql`
 
 ## Active Slice Specification
 

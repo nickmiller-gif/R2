@@ -72,5 +72,52 @@ describe('EigenPolicyEngineService', () => {
     expect(result.allowed).toBe(false);
     expect(result.denyReasons[0]).toContain('write access disabled');
   });
+
+  it('respects requiredRole when evaluating matching rules', async () => {
+    const db = makeMockDb();
+    const service = createEigenPolicyEngineService(db);
+
+    await service.createRule({
+      policyTag: 'eigenx',
+      capabilityTagPattern: 'retrieve:*',
+      effect: 'allow',
+      requiredRole: 'operator',
+      rationale: 'operators can retrieve private context',
+    });
+
+    const withoutRole = await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['retrieve:query'],
+      callerRoles: ['member'],
+    });
+    expect(withoutRole.allowed).toBe(false);
+    expect(withoutRole.denyReasons).toEqual(['No matching allow rule']);
+
+    const withRole = await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['retrieve:query'],
+      callerRoles: ['member', 'operator'],
+    });
+    expect(withRole.allowed).toBe(true);
+    expect(withRole.denyReasons).toEqual([]);
+  });
+
+  it('persists metadata on create and update', async () => {
+    const db = makeMockDb();
+    const service = createEigenPolicyEngineService(db);
+
+    const created = await service.createRule({
+      policyTag: 'eigen_public',
+      capabilityTagPattern: 'chat:*',
+      effect: 'allow',
+      metadata: { source: 'seed', version: 1 },
+    });
+    expect(created.metadata).toEqual({ source: 'seed', version: 1 });
+
+    const updated = await service.updateRule(created.id, {
+      metadata: { source: 'runtime', rollout: 'phase-c3' },
+    });
+    expect(updated.metadata).toEqual({ source: 'runtime', rollout: 'phase-c3' });
+  });
 });
 

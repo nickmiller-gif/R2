@@ -24,7 +24,8 @@ export interface HealthSupplementTrendEvent {
 export function mapHealthSupplementTrendToEigen(
   event: HealthSupplementTrendEvent,
 ): EigenIngestRequest {
-  const visibility = event.visibility ?? "eigenx";
+  // Default public: TrendPulse / HST surface is visitor-facing; pass visibility: 'eigenx' for operator-only exports.
+  const visibility = event.visibility ?? "public";
   return {
     source_system: "health-supplement-tr",
     source_ref: event.trend_id,

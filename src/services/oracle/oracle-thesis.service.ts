@@ -28,6 +28,7 @@ export interface OracleThesisService {
 export interface DbOracleThesisRow {
   id: string;
   profile_id: string | null;
+  meg_entity_id: string | null;
   title: string;
   thesis_statement: string;
   status: string;
@@ -64,6 +65,7 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
   return {
     id: row.id,
     profileId: row.profile_id,
+    megEntityId: row.meg_entity_id,
     title: row.title,
     thesisStatement: row.thesis_statement,
     status: row.status as OracleThesis['status'],
@@ -97,6 +99,7 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
       const row = await db.insertThesis({
         id: crypto.randomUUID(),
         profile_id: input.profileId ?? null,
+        meg_entity_id: input.megEntityId ?? null,
         title: input.title,
         thesis_statement: input.thesisStatement,
         status: input.status ?? 'draft',
@@ -141,6 +144,7 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
       };
       if (input.title !== undefined) patch.title = input.title;
       if (input.thesisStatement !== undefined) patch.thesis_statement = input.thesisStatement;
+      if (input.megEntityId !== undefined) patch.meg_entity_id = input.megEntityId;
       if (input.status !== undefined) patch.status = input.status;
       if (input.noveltyStatus !== undefined) patch.novelty_status = input.noveltyStatus;
       if (input.confidence !== undefined) patch.confidence = input.confidence;

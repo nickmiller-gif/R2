@@ -55,21 +55,31 @@ Domain slices are ported with CI verification (`npm run check`):
 |--------|----------------------------|-------|
 | **Charter** | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations | ✅ |
 | **MEG** | entities, aliases, edges | ✅ |
-| **Oracle** | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs | ✅ |
+| **Oracle** | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models | ✅ |
 | **Eigen** | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain | ✅ |
 | **Foundation** | documents, asset-registry | ✅ |
 
-There are **36** deployed function entrypoints under `supabase/functions/`. Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
+There are **37** deployed function entrypoints under `supabase/functions/`. Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
 
 ## Next priorities
 
-1. Oracle publication + governance boundary (internal vs operator-facing objects)
-2. Supabase client injection pattern (DI-friendly client factory)
-3. Oracle briefing + theme map + feed history read models
-4. Eigen policy engine + capability registry (EigenX/KOS upgrade)
-5. Supabase migration drift CI check
-6. Type generation check in CI
+1. Supabase client injection pattern (DI-friendly client factory)
+2. Eigen policy engine + capability registry (EigenX/KOS upgrade)
+3. Supabase migration drift CI check (wire `SUPABASE_PROJECT_REF` + token in CI)
+4. Type generation check in CI (wire Supabase typegen in CI)
+5. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+
+## CI Secrets For Remote Supabase Checks
+
+The `quality` CI job requires these GitHub Actions repository secrets so migration drift and generated type checks run against the linked Supabase project:
+
+- `SUPABASE_PROJECT_REF` (for this repo: `zudslxucibosjwefojtm`)
+- `SUPABASE_ACCESS_TOKEN` (personal token from Supabase account settings)
+
+Without these secrets, local `npm run check` still skips remote Supabase checks by design, but CI now fails fast when they are missing.
 
 See [`plan.md`](./plan.md) for the full slice roadmap.
 
 For multi-repo Eigen rollout safety, see [`docs/eigen-safe-rollout-checklist.md`](./docs/eigen-safe-rollout-checklist.md).
+
+For which repos tag **`eigen_public`** (anonymous retrieval) vs internal **`eigenx`**, see [`docs/eigen-ingest-producers.md`](./docs/eigen-ingest-producers.md).

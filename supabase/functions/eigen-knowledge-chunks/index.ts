@@ -1,9 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+
+const supabaseClients = createSupabaseClientFactory();
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,7 +19,7 @@ serve(async (req) => {
     const url = new URL(req.url);
     const chunkId = url.searchParams.get('id');
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
+    const client = req.method === 'GET' ? supabaseClients.user(req) : supabaseClients.service();
 
     if (req.method === 'GET') {
       if (chunkId) {

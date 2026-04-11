@@ -26,6 +26,7 @@ function makeMockDb(): OracleThesisDb & { rows: DbOracleThesisRow[] } {
         if (filter.status && r.status !== filter.status) return false;
         if (filter.profileId && r.profile_id !== filter.profileId) return false;
         if (filter.noveltyStatus && r.novelty_status !== filter.noveltyStatus) return false;
+        if (filter.megEntityId && r.meg_entity_id !== filter.megEntityId) return false;
         return true;
       });
     },
@@ -210,5 +211,70 @@ describe('OracleThesisService', () => {
 
     const all = await service.list();
     expect(all).toHaveLength(2);
+  });
+
+  it('creates thesis linked to a MEG entity', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    const megId = crypto.randomUUID();
+    const thesis = await service.create({
+      title: 'Entity-scoped thesis',
+      thesisStatement: 'Thesis about a specific MEG entity',
+      megEntityId: megId,
+    });
+
+    expect(thesis.megEntityId).toBe(megId);
+  });
+
+  it('creates thesis without MEG entity (null by default)', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    const thesis = await service.create({
+      title: 'Abstract thesis',
+      thesisStatement: 'No specific entity subject',
+    });
+
+    expect(thesis.megEntityId).toBeNull();
+  });
+
+  it('filters theses by megEntityId', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    const megId = crypto.randomUUID();
+    await service.create({
+      title: 'Entity thesis',
+      thesisStatement: 'About entity',
+      megEntityId: megId,
+    });
+
+    await service.create({
+      title: 'Unlinked thesis',
+      thesisStatement: 'No entity',
+    });
+
+    const filtered = await service.list({ megEntityId: megId });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].title).toBe('Entity thesis');
+    expect(filtered[0].megEntityId).toBe(megId);
+  });
+
+  it('updates megEntityId on an existing thesis', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    const thesis = await service.create({
+      title: 'Thesis to link',
+      thesisStatement: 'Will be linked later',
+    });
+
+    expect(thesis.megEntityId).toBeNull();
+
+    const megId = crypto.randomUUID();
+    const updated = await service.update(thesis.id, { megEntityId: megId });
+
+    expect(updated.megEntityId).toBe(megId);
   });
 });

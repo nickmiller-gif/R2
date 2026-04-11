@@ -70,6 +70,8 @@ Required for script `npm run eigen:export`:
 - Optional: `R2_EIGEN_INGEST_ENDPOINT`
 - Optional: `HST_EXPORT_LIMIT` (default `100`)
 
+Exports include **`eigen_public`** in `policy_tags` so the same corpus is eligible for **`eigen-chat-public`** (anonymous widget). Re-run export after upgrading from older script versions so existing chunks pick up the new tags (or accept that only new ingests carry `eigen_public`).
+
 ## Staged enablement sequence
 
 ### Stage 0 — Baseline (no production behavior change)

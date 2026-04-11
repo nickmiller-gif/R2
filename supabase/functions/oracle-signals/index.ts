@@ -13,6 +13,28 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   return null;
 }
 
+const PATCH_ALLOWLIST = new Set([
+  'score',
+  'confidence',
+  'reasons',
+  'tags',
+  'status',
+  'analysis_document_id',
+  'source_asset_id',
+  'producer_ref',
+  'publication_notes',
+]);
+
+function buildSafeSignalPatch(body: Record<string, unknown>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  for (const [key, value] of Object.entries(body)) {
+    if (PATCH_ALLOWLIST.has(key)) patch[key] = value;
+  }
+  return patch;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
@@ -152,18 +174,27 @@ serve(async (req) => {
         }
         return jsonResponse(data);
       } else if (action === 'rescore') {
-        // RESCORE signal
+        // RESCORE signal (in-place score refresh; supersede/version path lives in TS service)
         const signalId = body.id;
         if (!signalId) {
           return errorResponse('id required in body', 400);
         }
+        if (body.score === undefined || body.score === null) {
+          return errorResponse('score required for rescore', 400);
+        }
+
+        const now = new Date().toISOString();
+        const patch: Record<string, unknown> = {
+          score: body.score,
+          updated_at: now,
+        };
+        if (body.confidence !== undefined) patch.confidence = body.confidence;
+        if (body.reasons !== undefined) patch.reasons = body.reasons;
+        if (body.tags !== undefined) patch.tags = body.tags;
 
         const { data, error } = await client
           .from('oracle_signals')
-          .update({
-            score: body.score,
-            rescored_at: new Date().toISOString(),
-          })
+          .update(patch)
           .eq('id', signalId)
           .select()
           .single();
@@ -201,9 +232,17 @@ serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
+      const patch = buildSafeSignalPatch(body as Record<string, unknown>);
+      if (Object.keys(patch).length === 1) {
+        return errorResponse(
+          'No patchable fields provided. Allowed fields: score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+          400,
+        );
+      }
+
       const { data, error } = await client
         .from('oracle_signals')
-        .update(body)
+        .update(patch)
         .eq('id', signalId)
         .select()
         .single();

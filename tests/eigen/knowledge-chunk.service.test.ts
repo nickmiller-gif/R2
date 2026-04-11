@@ -26,6 +26,11 @@ function makeMockDb(): KnowledgeChunkDb & { rows: DbKnowledgeChunkRow[] } {
         if (filter.documentId && r.document_id !== filter.documentId) return false;
         if (filter.chunkLevel && r.chunk_level !== filter.chunkLevel) return false;
         if (filter.parentChunkId && r.parent_chunk_id !== filter.parentChunkId) return false;
+        if (filter.megEntityId && r.meg_entity_id !== filter.megEntityId) return false;
+        if (filter.entityId) {
+          const ids: string[] = JSON.parse(r.entity_ids);
+          if (!ids.includes(filter.entityId)) return false;
+        }
         return true;
       });
     },
@@ -221,5 +226,103 @@ describe('KnowledgeChunkService', () => {
     expect(retrieved!.freshnessScore).toBe(80);
     expect(retrieved!.createdAt).toBeInstanceOf(Date);
     expect(retrieved!.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it('creates chunk with megEntityId (primary subject)', async () => {
+    const db = makeMockDb();
+    const service = createKnowledgeChunkService(db);
+
+    const megId = crypto.randomUUID();
+    const chunk = await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'section',
+      content: 'About a specific entity.',
+      megEntityId: megId,
+    });
+
+    expect(chunk.megEntityId).toBe(megId);
+  });
+
+  it('creates chunk without megEntityId (null by default)', async () => {
+    const db = makeMockDb();
+    const service = createKnowledgeChunkService(db);
+
+    const chunk = await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'section',
+      content: 'Generic content.',
+    });
+
+    expect(chunk.megEntityId).toBeNull();
+  });
+
+  it('filters chunks by megEntityId', async () => {
+    const db = makeMockDb();
+    const service = createKnowledgeChunkService(db);
+
+    const megId = crypto.randomUUID();
+    await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'section',
+      content: 'Entity chunk',
+      megEntityId: megId,
+    });
+
+    await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'section',
+      content: 'Unlinked chunk',
+    });
+
+    const filtered = await service.list({ megEntityId: megId });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].megEntityId).toBe(megId);
+  });
+
+  it('filters chunks by entityId in entityIds array', async () => {
+    const db = makeMockDb();
+    const service = createKnowledgeChunkService(db);
+
+    const entityA = crypto.randomUUID();
+    const entityB = crypto.randomUUID();
+
+    await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'paragraph',
+      content: 'Mentions A and B',
+      entityIds: [entityA, entityB],
+    });
+
+    await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'paragraph',
+      content: 'Mentions only B',
+      entityIds: [entityB],
+    });
+
+    const withA = await service.list({ entityId: entityA });
+    expect(withA).toHaveLength(1);
+    expect(withA[0].content).toBe('Mentions A and B');
+
+    const withB = await service.list({ entityId: entityB });
+    expect(withB).toHaveLength(2);
+  });
+
+  it('updates megEntityId on an existing chunk', async () => {
+    const db = makeMockDb();
+    const service = createKnowledgeChunkService(db);
+
+    const chunk = await service.create({
+      documentId: 'doc-1',
+      chunkLevel: 'claim',
+      content: 'Will be linked.',
+    });
+
+    expect(chunk.megEntityId).toBeNull();
+
+    const megId = crypto.randomUUID();
+    const updated = await service.update(chunk.id, { megEntityId: megId });
+
+    expect(updated.megEntityId).toBe(megId);
   });
 });

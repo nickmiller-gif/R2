@@ -170,12 +170,16 @@ export type Database = {
           canonical_ecosystem_id: string | null
           charter_entity_id: string | null
           created_at: string
+          domain: string | null
           governance_status: Database["public"]["Enums"]["asset_governance_status"]
           id: string
+          kind: string | null
+          label: string | null
           lifecycle_status: Database["public"]["Enums"]["asset_lifecycle_status"]
           local_record_id: string
           local_table: string
           manager_entity_id: string | null
+          metadata: Json | null
           owner_entity_id: string | null
           provenance_captured_at: string | null
           provenance_source_system: string | null
@@ -184,6 +188,7 @@ export type Database = {
             | null
           provenance_source_url: string | null
           r2chart_governed_asset_id: string | null
+          ref_id: string | null
           review_notes: string | null
           review_status: string | null
           reviewed_at: string | null
@@ -197,12 +202,16 @@ export type Database = {
           canonical_ecosystem_id?: string | null
           charter_entity_id?: string | null
           created_at?: string
+          domain?: string | null
           governance_status?: Database["public"]["Enums"]["asset_governance_status"]
           id?: string
+          kind?: string | null
+          label?: string | null
           lifecycle_status?: Database["public"]["Enums"]["asset_lifecycle_status"]
           local_record_id: string
           local_table: string
           manager_entity_id?: string | null
+          metadata?: Json | null
           owner_entity_id?: string | null
           provenance_captured_at?: string | null
           provenance_source_system?: string | null
@@ -211,6 +220,7 @@ export type Database = {
             | null
           provenance_source_url?: string | null
           r2chart_governed_asset_id?: string | null
+          ref_id?: string | null
           review_notes?: string | null
           review_status?: string | null
           reviewed_at?: string | null
@@ -224,12 +234,16 @@ export type Database = {
           canonical_ecosystem_id?: string | null
           charter_entity_id?: string | null
           created_at?: string
+          domain?: string | null
           governance_status?: Database["public"]["Enums"]["asset_governance_status"]
           id?: string
+          kind?: string | null
+          label?: string | null
           lifecycle_status?: Database["public"]["Enums"]["asset_lifecycle_status"]
           local_record_id?: string
           local_table?: string
           manager_entity_id?: string | null
+          metadata?: Json | null
           owner_entity_id?: string | null
           provenance_captured_at?: string | null
           provenance_source_system?: string | null
@@ -238,6 +252,7 @@ export type Database = {
             | null
           provenance_source_url?: string | null
           r2chart_governed_asset_id?: string | null
+          ref_id?: string | null
           review_notes?: string | null
           review_status?: string | null
           reviewed_at?: string | null

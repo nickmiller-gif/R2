@@ -28,8 +28,6 @@ This plan defines the incremental import path from the old source repository int
 
 - Supabase client injection pattern (DI-friendly client factory)
 - Eigen policy engine + capability registry (EigenX/KOS upgrade)
-- Supabase migration drift CI check
-- Type generation check in CI
 
 ## Recently landed (still iterate in follow-ups)
 

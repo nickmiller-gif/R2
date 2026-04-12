@@ -26,6 +26,7 @@ export function mapSmartplrxTrendToEigen(
 ): EigenIngestRequest {
   const visibility = event.visibility ?? "public";
   const baseTags = ["smartplrx", "trend-intelligence"];
+  const policyTags = [...baseTags, ...(event.tags ?? [])];
   return {
     source_system: "smartplrx",
     source_ref: event.trend_id,
@@ -43,7 +44,7 @@ export function mapSmartplrxTrendToEigen(
       },
     },
     chunking_mode: "hierarchical",
-    policy_tags: visibilityPolicyTags(visibility, [...baseTags, ...(event.tags ?? [])]),
+    policy_tags: visibilityPolicyTags(visibility, policyTags),
     entity_ids: event.entity_ids ?? [],
   };
 }

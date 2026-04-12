@@ -11,6 +11,7 @@ import type {
   KnowledgeChunkFilter,
 } from '../../types/eigen/knowledge-chunk.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface KnowledgeChunkService {
   create(input: CreateKnowledgeChunkInput): Promise<KnowledgeChunk>;
@@ -55,10 +56,10 @@ function rowToChunk(row: DbKnowledgeChunkRow): KnowledgeChunk {
     documentId: row.document_id,
     parentChunkId: row.parent_chunk_id,
     chunkLevel: row.chunk_level as KnowledgeChunk['chunkLevel'],
-    headingPath: JSON.parse(row.heading_path),
-    entityIds: JSON.parse(row.entity_ids),
+    headingPath: parseJsonbArray(row.heading_path) as string[],
+    entityIds: parseJsonbArray(row.entity_ids) as string[],
     megEntityId: row.meg_entity_id,
-    policyTags: JSON.parse(row.policy_tags),
+    policyTags: parseJsonbArray(row.policy_tags) as string[],
     validFrom: row.valid_from ? new Date(row.valid_from) : null,
     validTo: row.valid_to ? new Date(row.valid_to) : null,
     authorityScore: row.authority_score,

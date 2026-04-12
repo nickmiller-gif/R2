@@ -14,6 +14,7 @@ import type {
   OracleSignalFilter,
 } from '../../types/oracle/signal.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { assertScore } from '../../lib/charter/validate.js';
 
 export interface OracleSignalService {
   create(input: CreateOracleSignalInput): Promise<OracleSignal>;
@@ -80,6 +81,7 @@ function rowToSignal(row: DbOracleSignalRow): OracleSignal {
 export function createOracleSignalService(db: OracleSignalDb): OracleSignalService {
   return {
     async create(input) {
+      assertScore(input.score);
       const now = nowUtc().toISOString();
       const row = await db.insertSignal({
         id: crypto.randomUUID(),
@@ -115,11 +117,14 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
     },
 
     async list(filter) {
-      const rows = await db.querySignals(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.querySignals({ ...filter, limit, offset });
       return rows.map(rowToSignal);
     },
 
     async update(id, input) {
+      if (input.score !== undefined) assertScore(input.score);
       const patch: Partial<DbOracleSignalRow> = {
         updated_at: nowUtc().toISOString(),
       };

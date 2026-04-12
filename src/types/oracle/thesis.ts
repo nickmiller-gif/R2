@@ -85,4 +85,6 @@ export interface OracleThesisFilter {
   publicationState?: OraclePublicationState;
   minConfidence?: number;
   maxConfidence?: number;
+  limit?: number;
+  offset?: number;
 }

@@ -91,7 +91,9 @@ export function createCharterPayoutService(db: CharterPayoutDb): CharterPayoutSe
     },
 
     async list(filter) {
-      const rows = await db.queryPayouts(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryPayouts({ ...filter, limit, offset });
       return rows.map(rowToPayout);
     },
 

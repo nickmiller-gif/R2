@@ -46,7 +46,7 @@ export interface EigenMultipartIngestInput {
 }
 
 export function buildIdempotencyKey(sourceSystem: string, sourceRef: string): string {
-  return `${sourceSystem}:${sourceRef}`;
+  return `${encodeURIComponent(sourceSystem)}:${encodeURIComponent(sourceRef)}`;
 }
 
 export function createEigenIngestClient(config: EigenIngestClientConfig) {

@@ -14,6 +14,7 @@ import type {
   OracleEvidenceItemFilter,
 } from '../../types/oracle/evidence-item.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from './oracle-db-utils.js';
 
 export interface OracleEvidenceItemService {
   create(input: CreateOracleEvidenceItemInput): Promise<OracleEvidenceItem>;
@@ -61,8 +62,8 @@ function rowToEvidenceItem(row: DbOracleEvidenceItemRow): OracleEvidenceItem {
     confidence: row.confidence,
     evidenceStrength: row.evidence_strength,
     uncertaintySummary: row.uncertainty_summary,
-    metadata: JSON.parse(row.metadata),
-    governance: JSON.parse(row.governance),
+    metadata: parseJsonbField(row.metadata),
+    governance: parseJsonbField(row.governance),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

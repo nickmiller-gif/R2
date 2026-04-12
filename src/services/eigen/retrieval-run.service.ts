@@ -10,6 +10,7 @@ import type {
   RetrievalRunFilter,
 } from '../../types/eigen/retrieval-run.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField, parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface RetrievalRunService {
   create(input: CreateRetrievalRunInput): Promise<RetrievalRun>;
@@ -50,15 +51,15 @@ function rowToRun(row: DbRetrievalRunRow): RetrievalRun {
   return {
     id: row.id,
     queryHash: row.query_hash,
-    decomposition: JSON.parse(row.decomposition),
+    decomposition: parseJsonbField(row.decomposition),
     candidateCount: row.candidate_count,
     filteredCount: row.filtered_count,
     finalCount: row.final_count,
-    budgetProfile: JSON.parse(row.budget_profile),
-    droppedContextReasons: JSON.parse(row.dropped_context_reasons),
+    budgetProfile: parseJsonbField(row.budget_profile),
+    droppedContextReasons: parseJsonbArray(row.dropped_context_reasons) as string[],
     latencyMs: row.latency_ms,
     status: row.status as RetrievalRun['status'],
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
   };
 }

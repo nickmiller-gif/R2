@@ -16,6 +16,13 @@ import type {
 import { hashPayload } from '../../lib/provenance/hash.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 
+const DOCUMENT_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ['active', 'archived', 'deleted'],
+  active: ['archived', 'deleted'],
+  archived: ['deleted'],
+  deleted: [],
+};
+
 export interface DocumentsService {
   create(input: CreateDocumentInput): Promise<Document>;
   getById(id: string): Promise<Document | null>;
@@ -119,11 +126,23 @@ export function createDocumentsService(db: DocumentsDb): DocumentsService {
     },
 
     async list(filter) {
-      const rows = await db.queryDocuments(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryDocuments({ ...filter, limit, offset });
       return rows.map(rowToDocument);
     },
 
     async update(id, input) {
+      if (input.status !== undefined) {
+        const current = await db.findDocumentById(id);
+        if (!current) throw new Error(`Document not found: ${id}`);
+        const allowed = DOCUMENT_STATUS_TRANSITIONS[current.status] ?? [];
+        if (!allowed.includes(input.status)) {
+          throw new Error(
+            `Invalid status transition: '${current.status}' → '${input.status}'`,
+          );
+        }
+      }
       const patch: Partial<DbDocumentRow> = {
         updated_at: nowUtc().toISOString(),
       };

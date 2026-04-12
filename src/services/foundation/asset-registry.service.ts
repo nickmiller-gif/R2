@@ -17,6 +17,8 @@ import type {
   EvidenceLinkKind,
 } from '../../types/shared/asset-registry.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from '../oracle/oracle-db-utils.js';
+import { assertConfidence01 } from '../../lib/charter/validate.js';
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -24,12 +26,16 @@ export interface AssetRegistryFilter {
   kind?: AssetKind;
   domain?: string;
   refId?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export interface EvidenceLinkFilter {
   fromAssetId?: string;
   toAssetId?: string;
   linkKind?: EvidenceLinkKind;
+  limit?: number;
+  offset?: number;
 }
 
 // ── Service interface ────────────────────────────────────────────────
@@ -98,7 +104,7 @@ function rowToAsset(row: DbAssetRegistryRow): AssetRegistryEntry {
     refId: row.ref_id,
     domain: row.domain,
     label: row.label,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
   };
 }
@@ -110,7 +116,7 @@ function rowToLink(row: DbEvidenceLinkRow): AssetEvidenceLink {
     toAssetId: row.to_asset_id,
     linkKind: row.link_kind as AssetEvidenceLink['linkKind'],
     confidence: row.confidence,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
   };
 }
@@ -144,11 +150,16 @@ export function createAssetRegistryService(db: AssetRegistryDb): AssetRegistrySe
     },
 
     async listAssets(filter) {
-      const rows = await db.queryAssets(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryAssets({ ...filter, limit, offset });
       return rows.map(rowToAsset);
     },
 
     async linkAssets(input) {
+      if (input.confidence !== undefined && input.confidence !== null) {
+        assertConfidence01(input.confidence, 'confidence');
+      }
       const now = nowUtc().toISOString();
       const row = await db.insertLink({
         id: crypto.randomUUID(),
@@ -173,7 +184,9 @@ export function createAssetRegistryService(db: AssetRegistryDb): AssetRegistrySe
     },
 
     async listLinks(filter) {
-      const rows = await db.queryLinks(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryLinks({ ...filter, limit, offset });
       return rows.map(rowToLink);
     },
 

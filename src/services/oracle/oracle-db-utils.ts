@@ -18,3 +18,20 @@ export function parseJsonbField(value: unknown): Record<string, unknown> {
   }
   return (value ?? {}) as Record<string, unknown>;
 }
+
+/**
+ * Normalizes a jsonb array field. Returns the parsed array, or [] on failure.
+ * Handles both string-encoded JSON (test adapters) and already-parsed arrays
+ * (Supabase/PostgREST in production).
+ */
+export function parseJsonbArray(value: unknown): unknown[] {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(value) ? value : [];
+}

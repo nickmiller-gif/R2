@@ -157,10 +157,19 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     throw new Error('query is required');
   }
 
+  const entityScope = normalizeList(payload.entity_scope);
+  const policyScope = normalizeList(payload.policy_scope);
+  if (entityScope && entityScope.length > 100) {
+    throw new Error('entity_scope must not exceed 100 entries');
+  }
+  if (policyScope && policyScope.length > 100) {
+    throw new Error('policy_scope must not exceed 100 entries');
+  }
+
   return {
     query: payload.query.trim(),
-    entity_scope: normalizeList(payload.entity_scope),
-    policy_scope: normalizeList(payload.policy_scope),
+    entity_scope: entityScope,
+    policy_scope: policyScope,
     site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
     site_source_systems: normalizeList(payload.site_source_systems),
     site_boost: parseNumber(payload.site_boost),

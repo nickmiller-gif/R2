@@ -95,7 +95,7 @@ describe('GovernanceKernelService', () => {
     const svc = createGovernanceKernelService(db);
     const entities = await svc.list({ kind: 'policy' });
 
-    expect(db.queryEntities).toHaveBeenCalledWith({ kind: 'policy' });
+    expect(db.queryEntities).toHaveBeenCalledWith({ kind: 'policy', limit: 50, offset: 0 });
     expect(entities).toHaveLength(1);
   });
 

@@ -12,6 +12,7 @@ import type {
   MemoryEntryFilter,
 } from '../../types/eigen/memory-entry.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface MemoryEntryService {
   create(input: CreateMemoryEntryInput): Promise<MemoryEntry>;
@@ -49,7 +50,7 @@ function rowToEntry(row: DbMemoryEntryRow): MemoryEntry {
     id: row.id,
     scope: row.scope as MemoryEntry['scope'],
     key: row.key,
-    value: JSON.parse(row.value),
+    value: parseJsonbField(row.value),
     retentionClass: row.retention_class as MemoryEntry['retentionClass'],
     expiresAt: row.expires_at ? new Date(row.expires_at) : null,
     confidenceBand: row.confidence_band,

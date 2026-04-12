@@ -37,6 +37,9 @@ jobs:
       - name: Quality gate (typecheck · tests · imports · migrations · drift · typegen)
         run: npm run check
 
+      - name: Coverage report
+        run: npm run coverage
+
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest

@@ -80,19 +80,13 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.84.2
 
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
       - name: Deploy migrations
-        run: |
-          if ! supabase db push --password "$SUPABASE_DB_PASSWORD"; then
-            echo "db push failed; applying targeted fallback migration for known drift."
-            if ! supabase db query --linked --file "supabase/migrations/202604080009_eigen_policy_access_grants.sql"; then
-              echo "fallback migration already applied or non-critical; continuing deploy."
-            fi
-          fi
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
 
       - name: Deploy edge functions
         run: |

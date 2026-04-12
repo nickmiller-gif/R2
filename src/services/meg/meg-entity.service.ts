@@ -47,6 +47,16 @@ export interface MegEntityDb {
   updateEntity(id: string, patch: Partial<DbMegEntityRow>): Promise<DbMegEntityRow>;
 }
 
+/** JSONB map stored as string values in MEG (external system ids). */
+function parseExternalIdsJson(json: string): Record<string, string> {
+  const raw = parseJsonbField(json);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    out[k] = typeof v === 'string' ? v : v == null ? '' : String(v);
+  }
+  return out;
+}
+
 function rowToEntity(row: DbMegEntityRow): MegEntity {
   return {
     id: row.id,
@@ -55,7 +65,7 @@ function rowToEntity(row: DbMegEntityRow): MegEntity {
     canonicalName: row.canonical_name,
     status: row.status as MegEntity['status'],
     mergedIntoId: row.merged_into_id,
-    externalIds: parseJsonbField(row.external_ids),
+    externalIds: parseExternalIdsJson(row.external_ids),
     attributes: parseJsonbField(row.attributes),
     metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),

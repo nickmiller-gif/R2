@@ -3,7 +3,7 @@ export interface AdapterRoadmapItem {
   priority: 'p0' | 'p1' | 'p2';
   target_source_system: string;
   corpus_tier: 'public' | 'eigenx' | 'mixed';
-  status: 'planned' | 'in_progress' | 'blocked';
+  status: 'planned' | 'in_progress' | 'blocked' | 'completed' | 'deferred';
   notes: string;
 }
 
@@ -17,18 +17,18 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p0',
     target_source_system: 'raysretreat',
     corpus_tier: 'mixed',
-    status: 'planned',
+    status: 'deferred',
     notes:
-      'Ingest public pages/news into eigen_public; ingest internal ops docs into eigenx. Add scheduled export job to R2 eigen-ingest.',
+      'Deferred for current production wave. Site can ship without scheduled R2 export; revisit after retreat content pipeline freeze. Planned scope remains public pages/news to eigen_public and internal ops docs to eigenx.',
   },
   {
     repo: 'ip-insights-hub',
     priority: 'p0',
     target_source_system: 'ip-insights-hub',
     corpus_tier: 'eigenx',
-    status: 'in_progress',
+    status: 'completed',
     notes:
-      'Adapter + ip-router live. Backfill: `ip-insights-hub/scripts/backfill-eigen-ingest.mjs` + workflow `eigen-backfill.yml` (manual).',
+      'Production baseline closed: adapter + ip-router live, with backfill path via `ip-insights-hub/scripts/backfill-eigen-ingest.mjs` and workflow `eigen-backfill.yml`.',
   },
   {
     repo: 'oracle-operator',
@@ -71,9 +71,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p0',
     target_source_system: 'centralr2-core',
     corpus_tier: 'eigenx',
-    status: 'in_progress',
+    status: 'completed',
     notes:
-      'Property and rental analysis edge functions now emit knowledge snapshots into eigen-ingest with provenance metadata.',
+      'Production baseline closed: property/rental analysis edge functions emit snapshots into eigen-ingest with provenance metadata; secrets and validation checklist documented in centralr2-core runbook.',
   },
   {
     repo: 'hpseller',
@@ -89,9 +89,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p0',
     target_source_system: 'r2app',
     corpus_tier: 'mixed',
-    status: 'in_progress',
+    status: 'deferred',
     notes:
-      'Runtime chat now defaults to shared Eigen widget path; next: wire conversation capture into adapter ingest path.',
+      'Deferred for current production wave: runtime chat already uses shared Eigen widget path; conversation-capture ingest will be wired in a dedicated follow-up release.',
   },
   {
     repo: 'chartr2-assets',

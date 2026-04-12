@@ -81,3 +81,5 @@ See [`plan.md`](./plan.md) for the full slice roadmap.
 For multi-repo Eigen rollout safety, see [`docs/eigen-safe-rollout-checklist.md`](./docs/eigen-safe-rollout-checklist.md).
 
 For which repos tag **`eigen_public`** (anonymous retrieval) vs internal **`eigenx`**, see [`docs/eigen-ingest-producers.md`](./docs/eigen-ingest-producers.md).
+
+For production release procedure and preflight, see [`docs/production-deploy-checklist.md`](./docs/production-deploy-checklist.md).

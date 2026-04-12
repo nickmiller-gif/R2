@@ -3451,70 +3451,50 @@ export type Database = {
           },
         ]
       }
-      retreat_attendance: {
-        Row: {
-          attendee_id: string | null
-          attendee_name: string | null
-          created_at: string
-          id: string
-          year: number
-        }
-        Insert: {
-          attendee_id?: string | null
-          attendee_name?: string | null
-          created_at?: string
-          id?: string
-          year: number
-        }
-        Update: {
-          attendee_id?: string | null
-          attendee_name?: string | null
-          created_at?: string
-          id?: string
-          year?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "retreat_attendance_attendee_id_fkey"
-            columns: ["attendee_id"]
-            isOneToOne: false
-            referencedRelation: "retreat_attendees"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       retreat_attendees: {
         Row: {
+          attendance_count: number | null
+          attendance_years: number[] | null
           avatar_url: string | null
           bio: string | null
           company: string | null
           created_at: string
           email: string | null
+          first_attended_year: number | null
           id: string
+          last_attended_year: number | null
           linkedin_url: string | null
           name: string
           title: string | null
           topics_of_interest: string | null
         }
         Insert: {
+          attendance_count?: number | null
+          attendance_years?: number[] | null
           avatar_url?: string | null
           bio?: string | null
           company?: string | null
           created_at?: string
           email?: string | null
+          first_attended_year?: number | null
           id?: string
+          last_attended_year?: number | null
           linkedin_url?: string | null
           name: string
           title?: string | null
           topics_of_interest?: string | null
         }
         Update: {
+          attendance_count?: number | null
+          attendance_years?: number[] | null
           avatar_url?: string | null
           bio?: string | null
           company?: string | null
           created_at?: string
           email?: string | null
+          first_attended_year?: number | null
           id?: string
+          last_attended_year?: number | null
           linkedin_url?: string | null
           name?: string
           title?: string | null

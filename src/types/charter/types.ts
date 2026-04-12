@@ -229,6 +229,8 @@ export interface CharterAssetValuationFilter {
   charterEntityId?: string;
   valuationKind?: CharterValuationKind;
   status?: CharterValuationStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterAuditEntry {
@@ -382,6 +384,8 @@ export interface CharterRightFilter {
   entityId?: string;
   rightType?: RightType;
   status?: RightStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterObligationFilter {
@@ -389,6 +393,8 @@ export interface CharterObligationFilter {
   rightId?: string;
   obligationType?: ObligationType;
   status?: ObligationStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterEvidenceFilter {
@@ -396,6 +402,8 @@ export interface CharterEvidenceFilter {
   linkedId?: string;
   evidenceType?: EvidenceType;
   status?: EvidenceStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterPayoutFilter {
@@ -403,6 +411,8 @@ export interface CharterPayoutFilter {
   rightId?: string;
   obligationId?: string;
   status?: PayoutStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterDecisionFilter {
@@ -410,9 +420,13 @@ export interface CharterDecisionFilter {
   linkedId?: string;
   decisionType?: DecisionType;
   status?: DecisionStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CharterUserRoleFilter {
   userId?: string;
   role?: CharterRole;
+  limit?: number;
+  offset?: number;
 }

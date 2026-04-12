@@ -15,6 +15,7 @@ import type {
   OracleOutcomeFilter,
 } from '../../types/oracle/outcome.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.js';
 
 export interface OracleOutcomeService {
   create(input: CreateOracleOutcomeInput): Promise<OracleOutcome>;
@@ -56,10 +57,10 @@ function rowToOutcome(row: DbOracleOutcomeRow): OracleOutcome {
     outcomeSource: row.outcome_source as OracleOutcome['outcomeSource'],
     observedAt: new Date(row.observed_at),
     summary: row.summary,
-    evidenceRefs: JSON.parse(row.evidence_refs),
+    evidenceRefs: parseJsonbArray(row.evidence_refs) as string[],
     accuracyScore: row.accuracy_score,
     confidenceDelta: row.confidence_delta,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

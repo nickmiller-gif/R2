@@ -13,6 +13,7 @@ import type {
   OracleSourcePackFilter,
 } from '../../types/oracle/source-pack.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.js';
 
 export interface OracleSourcePackService {
   create(input: CreateOracleSourcePackInput): Promise<OracleSourcePack>;
@@ -48,9 +49,9 @@ function rowToSourcePack(row: DbOracleSourcePackRow): OracleSourcePack {
     sourceLane: row.source_lane as OracleSourcePack['sourceLane'],
     sourceClass: row.source_class as OracleSourcePack['sourceClass'],
     sourceScope: row.source_scope,
-    sourceIds: JSON.parse(row.source_ids),
+    sourceIds: parseJsonbArray(row.source_ids) as string[],
     notes: row.notes,
-    governance: JSON.parse(row.governance),
+    governance: parseJsonbField(row.governance),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

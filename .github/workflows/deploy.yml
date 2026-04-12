@@ -105,7 +105,7 @@ jobs:
               continue
             fi
             echo "::group::Deploying $fn_name"
-            supabase functions deploy "$fn_name" --no-verify-jwt
+            supabase functions deploy "$fn_name"
             echo "::endgroup::"
           done
 

@@ -9,6 +9,7 @@ import type {
 import { nowUtc } from '../../lib/provenance/clock.js';
 import {
   assertConfidence,
+  assertIso8601Date,
   assertNonEmpty,
   assertNonNegativeAmountNumeric,
 } from '../../lib/charter/validate.js';
@@ -93,6 +94,7 @@ export function createCharterAssetValuationService(db: CharterAssetValuationDb):
   return {
     async create(input) {
       assertNonNegativeAmountNumeric(input.amountNumeric);
+      assertIso8601Date(input.asOf, 'asOf');
       if (input.confidence !== undefined) assertConfidence(input.confidence);
       const initialStatus = input.status ?? 'draft';
       const reviewer = input.reviewedBy ?? null;
@@ -127,7 +129,9 @@ export function createCharterAssetValuationService(db: CharterAssetValuationDb):
     },
 
     async list(filter) {
-      const rows = await db.query(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.query({ ...filter, limit, offset });
       return rows.map(rowToValuation);
     },
 
@@ -136,6 +140,7 @@ export function createCharterAssetValuationService(db: CharterAssetValuationDb):
       if (!current) throw new Error(`Valuation not found: ${id}`);
 
       if (input.amountNumeric !== undefined) assertNonNegativeAmountNumeric(input.amountNumeric);
+      if (input.asOf !== undefined) assertIso8601Date(input.asOf, 'asOf');
       if (input.confidence !== undefined) assertConfidence(input.confidence);
       if (input.reviewedBy !== undefined && input.reviewedBy !== null) {
         assertNonEmpty(input.reviewedBy, 'reviewedBy');

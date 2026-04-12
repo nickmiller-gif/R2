@@ -87,4 +87,6 @@ export interface DocumentFilter {
   contentType?: string;
   indexStatus?: IndexStatus;
   embeddingStatus?: EmbeddingStatus;
+  limit?: number;
+  offset?: number;
 }

@@ -16,6 +16,7 @@ import type {
   ThesisKnowledgeLinkFilter,
 } from '../../types/oracle/thesis-knowledge-link.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from './oracle-db-utils.js';
 
 export interface OracleThesisKnowledgeLinkService {
   create(input: CreateThesisKnowledgeLinkInput): Promise<ThesisKnowledgeLink>;
@@ -56,7 +57,7 @@ function rowToLink(row: DbOracleThesisKnowledgeLinkRow): ThesisKnowledgeLink {
     status: row.status as ThesisKnowledgeLink['status'],
     confidence: row.confidence,
     distillationNotes: row.distillation_notes,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

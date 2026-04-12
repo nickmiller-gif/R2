@@ -55,4 +55,6 @@ export interface MegEntityFilter {
   entityType?: MegEntityType;
   status?: MegEntityStatus;
   canonicalNameLike?: string;
+  limit?: number;
+  offset?: number;
 }

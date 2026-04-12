@@ -14,6 +14,7 @@ import type {
   MegEntityEdgeFilter,
 } from '../../types/meg/entity-edge.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface MegEntityEdgeService {
   create(input: CreateMegEntityEdgeInput): Promise<MegEntityEdge>;
@@ -55,7 +56,7 @@ function rowToEdge(row: DbMegEntityEdgeRow): MegEntityEdge {
     validFrom: row.valid_from ? new Date(row.valid_from) : null,
     validTo: row.valid_to ? new Date(row.valid_to) : null,
     source: row.source,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

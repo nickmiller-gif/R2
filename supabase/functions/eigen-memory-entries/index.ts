@@ -148,6 +148,7 @@ serve(async (req) => {
           .from('memory_entries')
           .update({ superseded_by: newId })
           .eq('id', id)
+          .eq('owner_id', auth.claims.userId)
           .select()
           .single();
 
@@ -198,6 +199,7 @@ serve(async (req) => {
         .from('memory_entries')
         .update(body)
         .eq('id', id)
+        .eq('owner_id', auth.claims.userId)
         .select()
         .single();
 

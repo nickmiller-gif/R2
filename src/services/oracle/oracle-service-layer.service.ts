@@ -6,6 +6,7 @@
  */
 
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from './oracle-db-utils.js';
 import type {
   ExecuteOracleServiceLayerRunInput,
   OracleServiceLayerRun,
@@ -78,9 +79,9 @@ function rowToEntity(row: DbOracleServiceLayerRow): OracleServiceLayerRun {
     profileRunId: row.profile_run_id,
     whitespaceRunId: row.whitespace_run_id,
     status: row.status as OracleServiceLayerRun['status'],
-    analysis: row.analysis_json ? (JSON.parse(row.analysis_json) as OracleWhitespaceAnalysis) : null,
+    analysis: row.analysis_json ? (parseJsonbField(row.analysis_json) as unknown as OracleWhitespaceAnalysis) : null,
     errorMessage: row.error_message,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };

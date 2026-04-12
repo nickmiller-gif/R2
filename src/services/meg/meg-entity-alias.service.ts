@@ -13,6 +13,7 @@ import type {
   MegEntityAliasFilter,
 } from '../../types/meg/entity-alias.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface MegEntityAliasService {
   create(input: CreateMegEntityAliasInput): Promise<MegEntityAlias>;
@@ -49,7 +50,7 @@ function rowToAlias(row: DbMegEntityAliasRow): MegEntityAlias {
     aliasValue: row.alias_value,
     source: row.source,
     confidence: row.confidence,
-    metadata: JSON.parse(row.metadata),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
   };
 }

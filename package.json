@@ -10,6 +10,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint:imports": "bash scripts/check-banned-imports.sh",
     "lint:migrations": "bash scripts/check-migrations.sh",
@@ -31,7 +32,12 @@
   "homepage": "https://github.com/nickmiller-gif/R2#readme",
   "devDependencies": {
     "@types/node": "^25.5.2",
+    "@vitest/coverage-v8": "^4.1.2",
     "typescript": "^6.0.2",
+    "vite": "^8.0.7",
     "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "@rolldown/pluginutils": "^1.0.0-rc.15"
   }
 }

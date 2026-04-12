@@ -10,6 +10,7 @@ import type {
   ToolCapabilityFilter,
 } from '../../types/eigen/tool-capability.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface ToolCapabilityService {
   register(input: CreateToolCapabilityInput): Promise<ToolCapability>;
@@ -46,12 +47,12 @@ function rowToCapability(row: DbToolCapabilityRow): ToolCapability {
     id: row.id,
     toolId: row.tool_id,
     name: row.name,
-    capabilityTags: JSON.parse(row.capability_tags),
+    capabilityTags: parseJsonbArray(row.capability_tags) as string[],
     ioSchemaRef: row.io_schema_ref,
     mode: row.mode as ToolCapability['mode'],
     approvalPolicy: row.approval_policy as ToolCapability['approvalPolicy'],
-    roleRequirements: JSON.parse(row.role_requirements),
-    connectorDependencies: JSON.parse(row.connector_dependencies),
+    roleRequirements: parseJsonbArray(row.role_requirements) as string[],
+    connectorDependencies: parseJsonbArray(row.connector_dependencies) as string[],
     blastRadius: row.blast_radius,
     fallbackMode: row.fallback_mode,
     createdAt: new Date(row.created_at),

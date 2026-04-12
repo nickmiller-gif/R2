@@ -56,4 +56,6 @@ export interface GovernanceEntityFilter {
   status?: GovernanceStatus;
   refCode?: string;
   createdBy?: string;
+  limit?: number;
+  offset?: number;
 }

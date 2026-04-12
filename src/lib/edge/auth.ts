@@ -1,8 +1,19 @@
 /**
- * Auth-guard helpers for edge functions.
+ * Auth-guard helpers for edge functions — NODE/TEST ENVIRONMENT ONLY.
  *
- * Pure utilities that operate on the standard `Headers` object so they are
- * testable in any environment (Node.js, Deno, browser).
+ * These are pure header-extraction utilities that operate on the standard
+ * `Headers` object so they are testable in Node.js without a Deno runtime.
+ *
+ * ⚠️  SECURITY BOUNDARY: These helpers only check that a Bearer token is
+ * present in the Authorization header. They do NOT verify the JWT signature,
+ * expiry, issuer, or any other cryptographic claim.
+ *
+ * The real auth guard (supabase/functions/_shared/auth.ts) performs full
+ * offline JWKS verification via `jose`. Edge functions MUST import from
+ * `../_shared/auth.ts`, never from this file.
+ *
+ * This file exists solely to allow unit testing of header-parsing logic
+ * in the Node.js test environment where Deno globals are unavailable.
  */
 
 /** Discriminated-union result returned by {@link guardAuth}. */

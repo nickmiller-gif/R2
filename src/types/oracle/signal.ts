@@ -71,4 +71,6 @@ export interface OracleSignalFilter {
   producerRef?: string;
   tags?: string[];
   publicationState?: OraclePublicationState;
+  limit?: number;
+  offset?: number;
 }

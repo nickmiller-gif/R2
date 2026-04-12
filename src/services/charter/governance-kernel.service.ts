@@ -7,7 +7,7 @@ import type {
   GovernanceEntityFilter,
 } from '../../types/charter/governance.js';
 import type { CharterEventEmitter } from './charter-event-emitter.js';
-import { assertNonEmpty } from '../../lib/charter/validate.js';
+import { assertNonEmpty, assertMaxLength } from '../../lib/charter/validate.js';
 
 export interface GovernanceKernelService {
   create(input: CreateGovernanceEntityInput): Promise<GovernanceEntity>;
@@ -86,7 +86,10 @@ export function createGovernanceKernelService(
   return {
     async create(input) {
       assertNonEmpty(input.refCode, 'refCode');
+      assertMaxLength(input.refCode, 'refCode', 100);
       assertNonEmpty(input.title, 'title');
+      assertMaxLength(input.title, 'title', 255);
+      assertMaxLength(input.body, 'body', 100_000);
       assertNonEmpty(input.createdBy, 'createdBy');
 
       const now = new Date().toISOString();
@@ -128,7 +131,9 @@ export function createGovernanceKernelService(
     },
 
     async list(filter) {
-      const rows = await db.queryEntities(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryEntities({ ...filter, limit, offset });
       return rows.map(rowToEntity);
     },
 

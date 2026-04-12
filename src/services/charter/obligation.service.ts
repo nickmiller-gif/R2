@@ -86,7 +86,9 @@ export function createCharterObligationService(db: CharterObligationDb): Charter
     },
 
     async list(filter) {
-      const rows = await db.queryObligations(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryObligations({ ...filter, limit, offset });
       return rows.map(rowToObligation);
     },
 

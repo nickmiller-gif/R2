@@ -15,6 +15,7 @@ import type {
   MegEntityFilter,
 } from '../../types/meg/entity.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface MegEntityService {
   create(input: CreateMegEntityInput): Promise<MegEntity>;
@@ -46,6 +47,16 @@ export interface MegEntityDb {
   updateEntity(id: string, patch: Partial<DbMegEntityRow>): Promise<DbMegEntityRow>;
 }
 
+/** JSONB map stored as string values in MEG (external system ids). */
+function parseExternalIdsJson(json: string): Record<string, string> {
+  const raw = parseJsonbField(json);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    out[k] = typeof v === 'string' ? v : v == null ? '' : String(v);
+  }
+  return out;
+}
+
 function rowToEntity(row: DbMegEntityRow): MegEntity {
   return {
     id: row.id,
@@ -54,9 +65,9 @@ function rowToEntity(row: DbMegEntityRow): MegEntity {
     canonicalName: row.canonical_name,
     status: row.status as MegEntity['status'],
     mergedIntoId: row.merged_into_id,
-    externalIds: JSON.parse(row.external_ids),
-    attributes: JSON.parse(row.attributes),
-    metadata: JSON.parse(row.metadata),
+    externalIds: parseExternalIdsJson(row.external_ids),
+    attributes: parseJsonbField(row.attributes),
+    metadata: parseJsonbField(row.metadata),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -88,7 +99,9 @@ export function createMegEntityService(db: MegEntityDb): MegEntityService {
     },
 
     async list(filter) {
-      const rows = await db.queryEntities(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryEntities({ ...filter, limit, offset });
       return rows.map(rowToEntity);
     },
 

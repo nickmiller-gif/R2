@@ -13,7 +13,18 @@ import type {
   UpdateOracleThesisInput,
   OracleThesisFilter,
 } from '../../types/oracle/thesis.js';
+import type { OracleGovernanceMetadata } from '../../types/oracle/shared.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { parseJsonbField } from './oracle-db-utils.js';
+import { assertConfidence } from '../../lib/charter/validate.js';
+
+const THESIS_STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ['active', 'retired'],
+  active: ['challenged', 'superseded', 'retired'],
+  challenged: ['active', 'superseded', 'retired'],
+  superseded: [],
+  retired: [],
+};
 
 export interface OracleThesisService {
   create(input: CreateOracleThesisInput): Promise<OracleThesis>;
@@ -72,10 +83,10 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
     noveltyStatus: row.novelty_status as OracleThesis['noveltyStatus'],
     duplicateOfThesisId: row.duplicate_of_thesis_id,
     supersededByThesisId: row.superseded_by_thesis_id,
-    inspirationSignalIds: JSON.parse(row.inspiration_signal_ids),
-    inspirationEvidenceItemIds: JSON.parse(row.inspiration_evidence_item_ids),
-    validationEvidenceItemIds: JSON.parse(row.validation_evidence_item_ids),
-    contradictionEvidenceItemIds: JSON.parse(row.contradiction_evidence_item_ids),
+    inspirationSignalIds: parseJsonbField(row.inspiration_signal_ids) as unknown as string[],
+    inspirationEvidenceItemIds: parseJsonbField(row.inspiration_evidence_item_ids) as unknown as string[],
+    validationEvidenceItemIds: parseJsonbField(row.validation_evidence_item_ids) as unknown as string[],
+    contradictionEvidenceItemIds: parseJsonbField(row.contradiction_evidence_item_ids) as unknown as string[],
     confidence: row.confidence,
     evidenceStrength: row.evidence_strength,
     uncertaintySummary: row.uncertainty_summary,
@@ -84,9 +95,9 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
     publishedBy: row.published_by,
     lastDecisionAt: row.last_decision_at ? new Date(row.last_decision_at) : null,
     lastDecisionBy: row.last_decision_by,
-    decisionMetadata: JSON.parse(row.decision_metadata),
-    metadata: JSON.parse(row.metadata),
-    governance: JSON.parse(row.governance),
+    decisionMetadata: parseJsonbField(row.decision_metadata),
+    metadata: parseJsonbField(row.metadata),
+    governance: parseJsonbField(row.governance) as OracleGovernanceMetadata,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -95,6 +106,7 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
 export function createOracleThesisService(db: OracleThesisDb): OracleThesisService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertThesis({
         id: crypto.randomUUID(),
@@ -133,11 +145,24 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
     },
 
     async list(filter) {
-      const rows = await db.queryTheses(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryTheses({ ...filter, limit, offset });
       return rows.map(rowToThesis);
     },
 
     async update(id, input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
+      if (input.status !== undefined) {
+        const current = await db.findThesisById(id);
+        if (!current) throw new Error(`OracleThesis not found: ${id}`);
+        const allowed = THESIS_STATUS_TRANSITIONS[current.status] ?? [];
+        if (!allowed.includes(input.status)) {
+          throw new Error(
+            `Invalid status transition: '${current.status}' → '${input.status}'`,
+          );
+        }
+      }
       const now = nowUtc().toISOString();
       const patch: Partial<DbOracleThesisRow> = {
         updated_at: now,

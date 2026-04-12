@@ -61,7 +61,9 @@ export function createCharterRoleService(db: CharterRoleDb): CharterRoleService 
     },
 
     async list(filter) {
-      const rows = await db.queryRoles(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryRoles({ ...filter, limit, offset });
       return rows.map(rowToUserRole);
     },
 

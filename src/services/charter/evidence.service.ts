@@ -92,7 +92,9 @@ export function createCharterEvidenceService(db: CharterEvidenceDb): CharterEvid
     },
 
     async list(filter) {
-      const rows = await db.queryEvidence(filter);
+      const limit = Math.min(filter?.limit ?? 50, 1000);
+      const offset = filter?.offset ?? 0;
+      const rows = await db.queryEvidence({ ...filter, limit, offset });
       return rows.map(rowToEvidence);
     },
 

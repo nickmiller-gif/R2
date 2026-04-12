@@ -65,18 +65,16 @@ There are **37** deployed function entrypoints under `supabase/functions/`. Most
 
 1. Supabase client injection pattern (DI-friendly client factory)
 2. Eigen policy engine + capability registry (EigenX/KOS upgrade)
-3. Supabase migration drift CI check (wire `SUPABASE_PROJECT_REF` + token in CI)
-4. Type generation check in CI (wire Supabase typegen in CI)
-5. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+3. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
 
 ## CI Secrets For Remote Supabase Checks
 
-The `quality` CI job requires these GitHub Actions repository secrets so migration drift and generated type checks run against the linked Supabase project:
+When both of these GitHub Actions repository secrets are set, `npm run check` also runs migration drift and generated-types verification against the linked Supabase project:
 
 - `SUPABASE_PROJECT_REF` (for this repo: `zudslxucibosjwefojtm`)
 - `SUPABASE_ACCESS_TOKEN` (personal token from Supabase account settings)
 
-Without these secrets, local `npm run check` still skips remote Supabase checks by design, but CI now fails fast when they are missing.
+If either secret is missing (for example on a fork pull request), CI still runs typecheck, tests, and local guards, but **skips** remote drift and typegen the same way as a local machine without credentials.
 
 See [`plan.md`](./plan.md) for the full slice roadmap.
 

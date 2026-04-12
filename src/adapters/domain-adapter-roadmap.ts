@@ -28,7 +28,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     corpus_tier: 'eigenx',
     status: 'in_progress',
     notes:
-      'Adapter and server-side ingest wiring are live with retries and thesis/asset metadata; next: add backfill script.',
+      'Adapter + ip-router live. Backfill: `ip-insights-hub/scripts/backfill-eigen-ingest.mjs` + workflow `eigen-backfill.yml` (manual).',
   },
   {
     repo: 'oracle-operator',
@@ -44,9 +44,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p1',
     target_source_system: 'smartplrx',
     corpus_tier: 'mixed',
-    status: 'planned',
+    status: 'in_progress',
     notes:
-      'Ingest external trend briefs to eigen_public where safe; private analysis versions to eigenx.',
+      'Export `scripts/export-trends-to-r2.mjs` + daily `eigen-export.yml`; R2 adapter `eigen-smartplrx-adapter.ts`. Use SPLX_EIGEN_VISIBILITY=eigenx for operator-only.',
   },
   {
     repo: 'health-supplement-tr',
@@ -55,7 +55,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     corpus_tier: 'mixed',
     status: 'in_progress',
     notes:
-      'Export script + adapter default to eigen_public for visitor-facing trends; pass visibility eigenx for operator-only. Next: schedule automated export.',
+      'Export `scripts/export-trends-to-r2.mjs` includes eigen_public; scheduled `eigen-export.yml` (daily) + manual dispatch.',
   },
   {
     repo: 'project-darling',

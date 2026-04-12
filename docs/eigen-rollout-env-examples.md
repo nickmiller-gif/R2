@@ -77,6 +77,20 @@ Enable ingest:
 ENABLE_R2_EIGEN_INGEST=true
 ```
 
+## `smartplrx-trend-tracker` export runner
+
+Same shape as health supplement export; uses the **smartplrx** `source_system` and optional internal tier:
+
+```bash
+SPLX_SUPABASE_URL=<trendpulse-project-url>
+SPLX_SUPABASE_SERVICE_ROLE_KEY=<trendpulse-service-role>
+R2_EIGEN_INGEST_BEARER_TOKEN=<member-or-service-jwt-for-r2>
+ENABLE_R2_EIGEN_INGEST=true
+# Optional: force internal corpus only
+# SPLX_EIGEN_VISIBILITY=eigenx
+npm run eigen:export
+```
+
 ## `health-supplement-tr` export runner
 
 ```env

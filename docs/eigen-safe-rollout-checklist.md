@@ -72,6 +72,24 @@ Required for script `npm run eigen:export`:
 
 Exports include **`eigen_public`** in `policy_tags` so the same corpus is eligible for **`eigen-chat-public`** (anonymous widget). Re-run export after upgrading from older script versions so existing chunks pick up the new tags (or accept that only new ingests carry `eigen_public`).
 
+### `smartplrx-trend-tracker` (export script)
+
+Required for `npm run eigen:export`:
+
+- `SPLX_SUPABASE_URL` (or `SUPABASE_URL`)
+- `SPLX_SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)
+- `R2_EIGEN_INGEST_BEARER_TOKEN`
+- Optional: `R2_EIGEN_INGEST_ENDPOINT`, `SPLX_EXPORT_LIMIT`, `SPLX_EIGEN_VISIBILITY` (`eigenx` for operator-only)
+
+### `ip-insights-hub` (Eigen backfill)
+
+For `npm run eigen:backfill` (replay completed `analysis_jobs`):
+
+- `IPH_SUPABASE_URL` / `IPH_SUPABASE_SERVICE_ROLE_KEY` (service role required to read all rows)
+- `R2_EIGEN_INGEST_BEARER_TOKEN`
+- `ENABLE_IPH_EIGEN_BACKFILL=true`
+- Optional: `IPH_EIGEN_DRY_RUN=true`, `IPH_BACKFILL_LIMIT`, `R2_EIGEN_DEFAULT_POLICY_TAGS`
+
 ## Staged enablement sequence
 
 ### Stage 0 — Baseline (no production behavior change)
@@ -85,7 +103,7 @@ Exports include **`eigen_public`** in `policy_tags` so the same corpus is eligib
 ### Stage 1 — R2 config + registry
 
 1. Apply R2 migrations and confirm `eigen_site_registry` rows exist.
-2. Confirm `config/eigen-sites.json` contains `health-supplement-tr` and `project-darling`.
+2. Confirm `config/eigen-sites.json` contains `health-supplement-tr`, `smartplrx-trend-tracker`, and `project-darling`.
 3. Confirm allowlists include new domains where needed.
 
 ### Stage 2 — Ingest producers one by one
@@ -95,7 +113,9 @@ Enable and verify in this order:
 1. `ip-insights-hub` (`ENABLE_R2_EIGEN_INGEST=true`)
 2. `centralr2-core` (`ENABLE_R2_EIGEN_INGEST=true`)
 3. `hpseller` (`ENABLE_R2_EIGEN_INGEST=true`)
-4. `health-supplement-tr` run `npm run eigen:export` manually, then schedule automation
+4. `health-supplement-tr`: run `npm run eigen:export` manually once, then rely on `.github/workflows/eigen-export.yml` (daily + manual dispatch) after GitHub secrets are set (`HST_SUPABASE_URL`, `HST_SUPABASE_SERVICE_ROLE_KEY`, `R2_EIGEN_INGEST_BEARER_TOKEN`).
+5. `smartplrx-trend-tracker`: same with `npm run eigen:export` and `.github/workflows/eigen-export.yml` (`SPLX_SUPABASE_URL`, `SPLX_SUPABASE_SERVICE_ROLE_KEY`, `R2_EIGEN_INGEST_BEARER_TOKEN`).
+6. `ip-insights-hub` (optional backfill): `npm run eigen:backfill` with service role + `ENABLE_IPH_EIGEN_BACKFILL=true`, or workflow `eigen-backfill.yml` for historical `analysis_jobs`.
 
 Verification for each repo:
 

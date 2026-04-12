@@ -106,6 +106,16 @@ INSERT INTO public.eigen_site_registry (
     '["eigen_public"]'::jsonb,
     'active',
     '{"domains":["project-darling.lovable.app"]}'::jsonb
+  ),
+  (
+    'smartplrx-trend-tracker',
+    'TrendPulse (Smartplrx)',
+    'mixed',
+    '["https://smartplrx-trend-tracker.lovable.app","http://localhost:5173","http://localhost:8080"]'::jsonb,
+    '["smartplrx"]'::jsonb,
+    '["eigen_public","eigenx"]'::jsonb,
+    'active',
+    '{"domains":["smartplrx-trend-tracker.lovable.app"]}'::jsonb
   )
 ON CONFLICT (site_id) DO UPDATE SET
   display_name = EXCLUDED.display_name,

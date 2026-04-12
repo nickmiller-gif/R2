@@ -55,11 +55,11 @@ All initial domain slices have been ported and verified:
 |--------|----------|---------------|-------|
 | **Charter** | governance-kernel, provenance, audit-read, entities, evidence, obligations, payouts, decisions, rights, roles | 10 functions | ✅ |
 | **MEG** | entities, aliases, edges | 3 functions | ✅ |
-| **Oracle** | profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes | 7 functions | ✅ |
+| **Oracle** | profile-run, signals, theses, evidence-items, source-packs, thesis-links, outcomes | 5 functions | ✅ |
 | **Eigen** | knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries | 4 functions | ✅ |
 | **Foundation** | asset-registry, documents | 2 functions (+ 2 shared) | ✅ |
 
-All 24 edge functions require JWT authentication. All 473 tests pass. No `@/` alias imports.
+All 24 edge functions require JWT authentication. All 481 tests pass. No `@/` alias imports.
 
 ## Next priorities
 

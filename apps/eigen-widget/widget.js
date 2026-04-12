@@ -54,7 +54,25 @@ if (!apiBase || !siteId) {
 let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
-const allowedParentOrigin = parentOriginParam.toLowerCase();
+let allowedParentOrigin = '';
+if (parentOriginParam) {
+  try {
+    allowedParentOrigin = new URL(parentOriginParam).origin.toLowerCase();
+  } catch {
+    allowedParentOrigin = '';
+  }
+}
+
+const requiresTrustedParentOrigin = initialMode === 'mixed' || initialMode === 'eigenx';
+if (requiresTrustedParentOrigin && !allowedParentOrigin) {
+  headTitle.textContent = 'Setup required';
+  headSub.textContent = 'Missing or invalid parent_origin';
+  chat.innerHTML = '<div class="msg bot">Mixed/EigenX mode requires a valid parent_origin query param.</div>';
+  form.remove();
+  launcher.remove();
+  backdrop.remove();
+  throw new Error('Missing or invalid parent_origin for mixed/eigenx mode');
+}
 
 function updateModeUI() {
   headTitle.textContent = activeMode === 'eigenx' ? 'EigenX' : 'Public Eigen';
@@ -89,7 +107,7 @@ function downgradeToPublic() {
 }
 
 window.addEventListener('message', (event) => {
-  if (allowedParentOrigin && event.origin.toLowerCase() !== allowedParentOrigin) {
+  if (event.origin.toLowerCase() !== allowedParentOrigin) {
     return;
   }
   const data = event.data || {};

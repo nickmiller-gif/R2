@@ -34,24 +34,19 @@ if [ -n "$DUPES" ]; then
   EXIT=1
 fi
 
-# 3. Check ordering — timestamps must be monotonically increasing
-PREV=""
-SORTED_FILES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | sort)
+# 3. Check ordering — filenames must already be lexicographically ordered
 ACTUAL_FILES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {})
+SORTED_FILES=$(printf '%s\n' "$ACTUAL_FILES" | sort)
 if [ "$SORTED_FILES" != "$ACTUAL_FILES" ]; then
-  :
+  echo ""
+  echo "FAIL: Migration filenames are out of order."
+  echo "Expected order:"
+  printf '%s\n' "$SORTED_FILES"
+  echo ""
+  echo "Actual order:"
+  printf '%s\n' "$ACTUAL_FILES"
+  EXIT=1
 fi
-
-TIMESTAMPS=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | cut -c1-12 | sort)
-PREV_TS=""
-for ts in $TIMESTAMPS; do
-  if [ -n "$PREV_TS" ] && [ "$ts" -lt "$PREV_TS" ] 2>/dev/null; then
-    echo ""
-    echo "FAIL: Migration timestamps not monotonically increasing: $PREV_TS -> $ts"
-    EXIT=1
-  fi
-  PREV_TS=$ts
-done
 
 # 4. No destructive operations (additive-only policy)
 DESTRUCTIVE_HITS=$(grep -rln "DROP TABLE\|DROP COLUMN\|DROP SCHEMA\|TRUNCATE\|DELETE FROM" "$MIGRATION_DIR"/ 2>/dev/null || true)

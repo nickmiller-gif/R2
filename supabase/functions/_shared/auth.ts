@@ -121,7 +121,8 @@ export async function guardAuth(req: Request): Promise<AuthGuardResult> {
       },
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Token verification failed';
-    return { ok: false, response: authError(message) };
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('[auth] jwt verification failed', { error: errorMessage });
+    return { ok: false, response: authError('Invalid or expired token') };
   }
 }

@@ -107,7 +107,7 @@ function downgradeToPublic() {
 }
 
 window.addEventListener('message', (event) => {
-  if (event.origin.toLowerCase() !== allowedParentOrigin) {
+  if (allowedParentOrigin && event.origin.toLowerCase() !== allowedParentOrigin) {
     return;
   }
   const data = event.data || {};

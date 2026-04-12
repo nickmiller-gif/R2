@@ -40,6 +40,12 @@ export {
 } from './health-supplement-tr/eigen-health-supplement-adapter.js';
 
 export {
+  createSmartplrxEigenAdapter,
+  mapSmartplrxTrendToEigen,
+  type SmartplrxTrendEvent,
+} from './smartplrx-trend-tracker/eigen-smartplrx-adapter.js';
+
+export {
   visibilityPolicyTags,
   type AdapterVisibility,
   type AdapterIngestMetadata,

@@ -47,6 +47,14 @@
       "files_dir": "knowledge/project-darling",
       "fetch_allowlist": ["project-darling.lovable.app"],
       "notes": "Current app is UI-only; use file and sitemap ingest unless a backing data model is added."
+    },
+    "smartplrx-trend-tracker": {
+      "display_name": "TrendPulse (Smartplrx)",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/smartplrx-trend-tracker",
+      "fetch_allowlist": ["smartplrx-trend-tracker.lovable.app"],
+      "notes": "Centralized trends export via scripts/export-trends-to-r2.mjs; source_system smartplrx."
     }
   },
   "_instructions": "To ingest content for a site: (1) Add sitemap/RSS URLs above, (2) Drop files in its knowledge/ subdirectory, (3) Add its domain to EIGEN_FETCH_ALLOWLIST in Supabase Edge Function secrets, (4) Run the ingestion workflow."

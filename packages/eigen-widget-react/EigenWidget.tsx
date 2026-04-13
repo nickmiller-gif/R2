@@ -33,8 +33,8 @@ interface EigenWidgetProps {
   apiBase?: string;
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
-  /** 'light' | 'dark' — defaults to 'light' */
-  theme?: 'light' | 'dark';
+  /** 'dark' — Eigen design system is dark-only */
+  theme?: 'dark';
   /** Extra CSS class on the wrapper div */
   className?: string;
   /** Inline style on the wrapper div */
@@ -49,7 +49,7 @@ export default function EigenWidget({
   accessToken = null,
   apiBase = DEFAULT_API_BASE,
   widgetHost = DEFAULT_WIDGET_HOST,
-  theme = 'light',
+  theme = 'dark',
   className,
   style,
 }: EigenWidgetProps) {

@@ -16,14 +16,14 @@ interface EigenWidgetConnectedProps {
   siteId: string;
   widgetHost?: string;
   apiBase?: string;
-  theme?: 'light' | 'dark';
+  theme?: 'dark';
   className?: string;
   style?: React.CSSProperties;
 }
 
 export default function EigenWidgetConnected({
   siteId,
-  theme = 'light',
+  theme = 'dark',
   ...rest
 }: EigenWidgetConnectedProps) {
   const { session } = useAuth();

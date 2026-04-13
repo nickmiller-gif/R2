@@ -33,9 +33,9 @@ export function IngestPanel({
   lastResult,
 }: IngestPanelProps) {
   return (
-    <section className="rounded-card border border-border bg-surface p-6 shadow-soft">
-      <h2 className="font-display text-lg font-semibold text-fg">Ingest document</h2>
-      <p className="mt-1 text-sm text-muted">
+    <section className="rounded-card border border-border bg-surface p-6">
+      <h2 className="text-label uppercase tracking-label text-accent">Ingest document</h2>
+      <p className="mt-2 text-body text-muted">
         Upload .txt, .md, .csv, .pdf, or .docx (max {maxMb} MB). PDF/DOCX are extracted server-side before
         chunking. Choose <code className="text-fg">eigen_public</code> or internal{' '}
         <code className="text-fg">eigenx</code>.
@@ -45,24 +45,24 @@ export function IngestPanel({
           value={ingestTitle}
           onChange={(e) => onIngestTitleChange(e.target.value)}
           placeholder="Document title (optional)"
-          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-sm"
+          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-body text-fg placeholder:text-hint transition focus:border-accent/50"
         />
         <input
           value={ingestSourceRef}
           onChange={(e) => onIngestSourceRefChange(e.target.value)}
           placeholder="Stable source ref (optional)"
-          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-sm"
+          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-body text-fg placeholder:text-hint transition focus:border-accent/50"
         />
         <select
           value={ingestTier}
           onChange={(e) => onIngestTierChange(e.target.value as IngestCorpusTier)}
-          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-sm"
+          className="rounded-lg border border-border bg-elevated px-3 py-2.5 text-body text-fg transition hover:border-border-hover"
         >
           <option value="eigenx">EigenX (internal)</option>
           <option value="public">Public Eigen</option>
         </select>
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-fg">File</span>
+          <span className="mb-2 block text-label uppercase tracking-label text-accent">File</span>
           <input
             type="file"
             accept={INGEST_UPLOAD_ACCEPT}
@@ -70,23 +70,23 @@ export function IngestPanel({
               onFileChange(e.target.files);
               e.target.value = '';
             }}
-            className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-accent-hover"
+            className="block w-full text-body text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2 file:text-body file:font-medium file:text-[#07080A] hover:file:bg-accent-hover"
           />
         </label>
       </div>
-      {isPending ? <p className="mt-4 text-sm text-muted">Ingesting…</p> : null}
+      {isPending ? <p className="mt-4 text-body text-muted animate-pulse">Ingesting...</p> : null}
       {localError ? (
-        <pre className="mt-4 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <pre className="mt-4 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger/10 p-3 text-body text-danger">
           {localError}
         </pre>
       ) : null}
       {mutationError ? (
-        <pre className="mt-4 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <pre className="mt-4 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger/10 p-3 text-body text-danger">
           {mutationError}
         </pre>
       ) : null}
       {lastResult ? (
-        <p className="mt-4 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+        <p className="mt-4 rounded-lg border border-success/30 bg-success/10 p-3 text-body text-success">
           Ingested <code className="text-fg">{lastResult.document_id}</code> — {lastResult.chunks_created} chunk(s)
           {lastResult.content_unchanged ? ' (unchanged, skipped embed)' : ''}.
         </p>

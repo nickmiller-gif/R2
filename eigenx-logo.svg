@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="eigenx-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="rgba(239,159,39,0.08)"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="200" height="200" fill="#0A0A0D"/>
+
+  <!-- Ambient glow -->
+  <circle cx="100" cy="100" r="85" fill="url(#eigenx-glow)"/>
+
+  <!-- Outer faint ring -->
+  <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(239,159,39,0.06)" stroke-width="0.5"/>
+
+  <!-- Primary circle -->
+  <circle cx="100" cy="100" r="60" fill="none" stroke="#EF9F27" stroke-width="1.5"/>
+
+  <!-- Tick marks — compass points -->
+  <line x1="100" y1="40" x2="100" y2="32" stroke="rgba(239,159,39,0.3)" stroke-width="0.8"/>
+  <line x1="100" y1="160" x2="100" y2="168" stroke="rgba(239,159,39,0.3)" stroke-width="0.8"/>
+  <line x1="40" y1="100" x2="32" y2="100" stroke="rgba(239,159,39,0.3)" stroke-width="0.8"/>
+  <line x1="160" y1="100" x2="168" y2="100" stroke="rgba(239,159,39,0.3)" stroke-width="0.8"/>
+
+  <!-- X vectors -->
+  <line x1="62" y1="62" x2="138" y2="138" stroke="#EF9F27" stroke-width="2" stroke-linecap="square"/>
+  <line x1="138" y1="62" x2="62" y2="138" stroke="#EF9F27" stroke-width="2" stroke-linecap="square"/>
+
+  <!-- Chevrons — all four ends -->
+  <polyline points="130,60 138,62 132,70" fill="none" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="square"/>
+  <polyline points="70,130 62,138 68,140" fill="none" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="square"/>
+  <polyline points="70,60 62,62 68,70" fill="none" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="square"/>
+  <polyline points="130,140 138,138 132,130" fill="none" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="square"/>
+
+  <!-- Center dot + ring -->
+  <circle cx="100" cy="100" r="4" fill="#EF9F27"/>
+  <circle cx="100" cy="100" r="8" fill="none" stroke="rgba(239,159,39,0.2)" stroke-width="0.8"/>
+</svg>

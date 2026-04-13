@@ -11,9 +11,9 @@ import type {
 } from './chatTypes';
 import { consumeEigenChatSse } from './chatSse';
 import { ChatView } from './components/ChatView';
+import { EigenXLogo } from './components/EigenXLogo';
 import { IngestPanel } from './components/IngestPanel';
 import { SourcesPanel } from './components/SourcesPanel';
-import { ThemeToggle } from './components/ThemeToggle';
 import { WorkspaceTabs, type TabId } from './components/WorkspaceTabs';
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
@@ -276,13 +276,17 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <header className="border-b border-border bg-surface/80 shadow-soft backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Eigen</h1>
-            <p className="text-sm text-muted">Retrieval-grounded chat · ingest · corpus health</p>
+      <header className="border-b border-border">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          <EigenXLogo size={24} />
+          <h1 className="text-[13px] font-normal uppercase tracking-wordmark text-fg">EigenX</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="relative flex h-[7px] w-[7px]">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-40" />
+              <span className="relative inline-flex h-[7px] w-[7px] rounded-full bg-accent" />
+            </span>
+            <span className="text-label uppercase text-hint">Online</span>
           </div>
-          <ThemeToggle />
         </div>
       </header>
 

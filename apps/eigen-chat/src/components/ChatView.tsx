@@ -52,17 +52,17 @@ export function ChatView({
       : ['Summarize the latest policy', 'What sources cover onboarding?', 'List key entities mentioned'];
 
   return (
-    <div className="flex h-[min(72vh,640px)] flex-col overflow-hidden rounded-card border border-border bg-surface shadow-lift">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-elevated/50 px-4 py-3">
+    <div className="flex h-[min(72vh,640px)] flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div>
-          <h2 className="font-display text-lg font-semibold tracking-tight text-fg">Chat</h2>
-          <p className="text-xs text-muted">Grounded answers from your indexed corpus</p>
+          <h2 className="text-label uppercase text-accent">Chat</h2>
+          <p className="mt-1 text-body text-muted">Grounded answers from your indexed corpus</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={chatTier}
             onChange={(e) => onTierChange(e.target.value as ChatTier)}
-            className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-fg transition hover:border-muted"
+            className="h-9 rounded-lg border border-border bg-elevated px-3 text-body text-fg transition hover:border-border-hover"
           >
             <option value="eigenx">EigenX (signed in)</option>
             <option value="public">Public Eigen</option>
@@ -70,7 +70,7 @@ export function ChatView({
           <button
             type="button"
             onClick={onClearChat}
-            className="h-10 rounded-lg border border-border px-3 text-sm text-muted transition hover:bg-elevated hover:text-fg"
+            className="h-9 rounded-lg border border-border px-3 text-body text-muted transition hover:border-border-hover hover:text-fg"
           >
             Clear
           </button>
@@ -81,8 +81,8 @@ export function ChatView({
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-6 px-4 text-center">
             <div>
-              <p className="font-display text-xl font-semibold text-fg">Ask anything</p>
-              <p className="mt-1 max-w-sm text-sm text-muted">
+              <p className="text-[24px] font-normal tracking-wide text-fg">Ask anything</p>
+              <p className="mt-2 max-w-sm text-body text-muted">
                 {chatTier === 'public'
                   ? 'Public mode uses the public corpus only. No account required.'
                   : 'Signed-in mode uses your EigenX retrieval scope (and session memory when enabled).'}
@@ -94,7 +94,7 @@ export function ChatView({
                   key={s}
                   type="button"
                   onClick={() => onMessageChange(s)}
-                  className="rounded-pill border border-border bg-elevated px-4 py-2 text-sm text-fg transition hover:border-accent hover:bg-surface"
+                  className="rounded-lg border border-border bg-elevated px-4 py-2 text-body text-fg transition hover:border-border-hover"
                 >
                   {s}
                 </button>
@@ -107,9 +107,9 @@ export function ChatView({
               <li key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={[
-                    'max-w-[min(100%,520px)] rounded-2xl px-4 py-3 text-sm shadow-soft transition',
+                    'max-w-[min(100%,520px)] rounded-[10px] px-4 py-3 text-body transition',
                     m.role === 'user'
-                      ? 'bg-accent text-white'
+                      ? 'bg-accent text-[#07080A]'
                       : 'border border-border bg-elevated text-fg',
                   ].join(' ')}
                 >
@@ -120,9 +120,9 @@ export function ChatView({
                       {m.content ? (
                         <MarkdownContent content={m.content} />
                       ) : m.streaming ? (
-                        <span className="inline-flex items-center gap-1 text-muted">
-                          <span className="animate-pulse">Thinking</span>
-                          <span className="inline-block h-4 w-0.5 animate-pulse bg-accent" />
+                        <span className="inline-flex items-center gap-2 text-muted">
+                          <span className="animate-pulse text-label uppercase tracking-label">Processing</span>
+                          <span className="inline-block h-3 w-[2px] animate-pulse bg-accent" />
                         </span>
                       ) : null}
                       {!m.streaming && m.citations && (
@@ -144,57 +144,57 @@ export function ChatView({
 
       <form
         onSubmit={onSubmit}
-        className="shrink-0 space-y-3 border-t border-border bg-surface p-4"
+        className="shrink-0 space-y-3 border-t border-border bg-canvas p-4"
       >
         {chatTier === 'eigenx' ? (
-          <details className="rounded-lg border border-border bg-elevated/60 px-3 py-2 text-sm">
-            <summary className="cursor-pointer font-medium text-fg">Advanced scope</summary>
+          <details className="rounded-lg border border-border bg-elevated px-3 py-2 text-body">
+            <summary className="cursor-pointer text-label uppercase tracking-label text-accent">Advanced scope</summary>
             <div className="mt-3 grid gap-2">
               <input
                 value={entityScope}
                 onChange={(e) => onEntityScopeChange(e.target.value)}
                 placeholder="Entity IDs (comma-separated UUIDs)"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-body text-fg placeholder:text-hint"
               />
               <input
                 value={policyScope}
                 onChange={(e) => onPolicyScopeChange(e.target.value)}
                 placeholder="Policy tags (comma-separated)"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-elevated px-3 py-2 text-body text-fg placeholder:text-hint"
               />
             </div>
           </details>
         ) : null}
 
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+        <label className="flex cursor-pointer items-center gap-2 text-body text-muted">
           <input
             type="checkbox"
             checked={streamResponses}
             onChange={(e) => onStreamResponsesChange(e.target.checked)}
-            className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+            className="h-4 w-4 rounded border-border accent-accent"
           />
-          Stream response (SSE; requires server <code className="text-fg">OPENAI_API_KEY</code>)
+          Stream response (SSE)
         </label>
 
         <div className="flex gap-2">
           <textarea
             value={message}
             onChange={(e) => onMessageChange(e.target.value)}
-            placeholder="Message Eigen…"
+            placeholder="Message Eigen..."
             rows={2}
-            className="min-h-[48px] flex-1 resize-none rounded-xl border border-border bg-elevated px-4 py-3 text-sm text-fg placeholder:text-muted focus:border-accent"
+            className="min-h-[48px] flex-1 resize-none rounded-[10px] border border-border bg-elevated px-4 py-3 text-body text-fg placeholder:text-hint transition focus:border-accent/50"
           />
           <button
             type="submit"
             disabled={isLoading || !message.trim()}
-            className="shrink-0 self-end rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 self-end rounded-[10px] bg-accent px-6 py-3 text-body font-medium text-[#07080A] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isLoading ? '…' : 'Send'}
+            {isLoading ? '...' : 'SEND'}
           </button>
         </div>
 
         {(chatError || streamError) && (
-          <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+          <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-body text-danger">
             {chatError || streamError}
           </p>
         )}

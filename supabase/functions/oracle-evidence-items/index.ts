@@ -1,9 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
+import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { buildSafeEvidenceItemPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+
+const supabaseClients = createSupabaseClientFactory();
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,7 +20,7 @@ serve(async (req) => {
     const url = new URL(req.url);
     const evidenceId = url.searchParams.get('id');
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
+    const client = req.method === 'GET' ? supabaseClients.user(req) : supabaseClients.service();
 
     if (req.method === 'GET') {
       if (evidenceId) {
@@ -84,9 +87,17 @@ serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
+      const patch = buildSafeEvidenceItemPatch(body as Record<string, unknown>);
+      if (Object.keys(patch).length === 1) {
+        return errorResponse(
+          'No patchable fields provided. Allowed fields: signal_id, source_lane, source_class, source_ref, content_summary, confidence, evidence_strength, source_date, publication_url, author_info, metadata',
+          400,
+        );
+      }
+
       const { data, error } = await client
         .from('oracle_evidence_items')
-        .update(body)
+        .update(patch)
         .eq('id', itemId)
         .select()
         .single();

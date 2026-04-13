@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { getServiceClient } from '../_shared/supabase.ts';
+import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import {
@@ -38,6 +38,8 @@ interface ChatRequest {
     strata_weights?: Record<string, number>;
   };
 }
+
+const supabaseClients = createSupabaseClientFactory();
 
 function readMaxMessageChars(): number {
   const raw = Deno.env.get('EIGEN_CHAT_MAX_MESSAGE_CHARS') ?? '32000';
@@ -291,7 +293,7 @@ serve(async (req) => {
 
   try {
     const body = parseRequest(await req.json());
-    const client = getServiceClient();
+    const client = supabaseClients.service();
     const preScope = body.policy_scope_explicit
       ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, body.policy_scope)
       : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);

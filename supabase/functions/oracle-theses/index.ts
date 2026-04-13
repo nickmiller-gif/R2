@@ -4,6 +4,7 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -233,9 +234,17 @@ serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
+      const patch = buildSafeThesisPatch(body as Record<string, unknown>);
+      if (Object.keys(patch).length === 1) {
+        return errorResponse(
+          'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+          400,
+        );
+      }
+
       const { data, error } = await client
         .from('oracle_theses')
-        .update(body)
+        .update(patch)
         .eq('id', thesisId)
         .select()
         .single();

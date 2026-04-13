@@ -38,6 +38,7 @@
     "vitest": "^4.1.2"
   },
   "dependencies": {
-    "@rolldown/pluginutils": "^1.0.0-rc.15"
+    "@rolldown/pluginutils": "^1.0.0-rc.15",
+    "@supabase/supabase-js": "^2.103.0"
   }
 }

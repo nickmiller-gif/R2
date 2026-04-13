@@ -67,6 +67,12 @@ There are **37** deployed function entrypoints under `supabase/functions/`. Most
 2. Eigen policy engine + capability registry (EigenX/KOS upgrade)
 3. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
 
+## Supabase Client Factory Pattern
+
+- Edge functions should instantiate `const supabaseClients = createSupabaseClientFactory()` once at module scope, then use `supabaseClients.user(req)` for caller-scoped reads and `supabaseClients.service()` for operator writes.
+- Shared Deno helper lives at `supabase/functions/_shared/supabase.ts`.
+- Node/Vitest helper mirrors the same contract at `src/lib/supabase/create-client-factory.ts` so test harnesses and tooling can inject clients without coupling to Deno globals.
+
 ## CI Secrets For Remote Supabase Checks
 
 When both of these GitHub Actions repository secrets are set, `npm run check` also runs migration drift and generated-types verification against the linked Supabase project:

@@ -53,22 +53,60 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
   };
 }
 
-function matchWildcard(pattern: string, value: string): boolean {
+const ROLE_HIERARCHY = ['member', 'reviewer', 'operator', 'counsel', 'admin'] as const;
+type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
+
+function isHierarchicalRole(value: string): value is HierarchicalRole {
+  return ROLE_HIERARCHY.includes(value as HierarchicalRole);
+}
+
+function hasRequiredRole(callerRoles: string[], requiredRole: string | null): boolean {
+  if (!requiredRole) return true;
+  if (callerRoles.includes(requiredRole)) return true;
+  if (!isHierarchicalRole(requiredRole)) return false;
+  const minimumIndex = ROLE_HIERARCHY.indexOf(requiredRole);
+  return callerRoles.some((role) =>
+    isHierarchicalRole(role) && ROLE_HIERARCHY.indexOf(role) >= minimumIndex,
+  );
+}
+
+export function matchWildcard(pattern: string, value: string): boolean {
   if (pattern === '*') return true;
   if (!pattern.includes('*')) return pattern === value;
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`).test(value);
 }
 
-function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {
+export function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {
   const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));
   if (!policyTagMatch) return false;
   const capabilityTagMatch = input.capabilityTags.some((tag) =>
     matchWildcard(rule.capabilityTagPattern, tag),
   );
   if (!capabilityTagMatch) return false;
-  if (rule.requiredRole && !input.callerRoles.includes(rule.requiredRole)) return false;
+  if (!hasRequiredRole(input.callerRoles, rule.requiredRole)) return false;
   return true;
+}
+
+export function evaluateEigenPolicyRules(
+  rules: EigenPolicyRule[],
+  input: EvaluateEigenPolicyInput,
+): EvaluateEigenPolicyResult {
+  const matching = rules.filter((rule) => matchesRule(rule, input));
+  const denying = matching.filter((rule) => rule.effect === 'deny');
+  if (denying.length > 0) {
+    return {
+      allowed: false,
+      matchedRuleIds: matching.map((r) => r.id),
+      denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`),
+    };
+  }
+  const allowing = matching.filter((rule) => rule.effect === 'allow');
+  return {
+    allowed: allowing.length > 0,
+    matchedRuleIds: matching.map((r) => r.id),
+    denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'],
+  };
 }
 
 export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPolicyEngineService {
@@ -117,21 +155,7 @@ export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPo
 
     async evaluate(input) {
       const rules = await this.listRules();
-      const matching = rules.filter((rule) => matchesRule(rule, input));
-      const denying = matching.filter((rule) => rule.effect === 'deny');
-      if (denying.length > 0) {
-        return {
-          allowed: false,
-          matchedRuleIds: matching.map((r) => r.id),
-          denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`),
-        };
-      }
-      const allowing = matching.filter((rule) => rule.effect === 'allow');
-      return {
-        allowed: allowing.length > 0,
-        matchedRuleIds: matching.map((r) => r.id),
-        denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'],
-      };
+      return evaluateEigenPolicyRules(rules, input);
     },
   };
 }

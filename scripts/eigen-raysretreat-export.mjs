@@ -10,7 +10,8 @@ const ENABLE_R2_EIGEN_INGEST = process.env.ENABLE_R2_EIGEN_INGEST === "true";
 const DRY_RUN = process.env.RAYSRETREAT_EIGEN_DRY_RUN === "true";
 const INGEST_TIMEOUT_MS = Number(process.env.RAYSRETREAT_EIGEN_INGEST_TIMEOUT_MS ?? "12000");
 
-const EXPORT_LIMIT = Number(process.env.RAYSRETREAT_EXPORT_LIMIT ?? "200");
+const EXPORT_LIMIT = Number(process.env.RAYSRETREAT_EXPORT_LIMIT ?? "100");
+const INGEST_CONCURRENCY = Number(process.env.RAYSRETREAT_EIGEN_INGEST_CONCURRENCY ?? "5");
 const MAX_INGEST_BODY_CHARS = Number(process.env.RAYSRETREAT_EIGEN_MAX_BODY_CHARS ?? "60000");
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -88,7 +89,7 @@ async function ingest(payload) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${R2_EIGEN_INGEST_BEARER_TOKEN}`,
-          "x-idempotency-key": `raysretreat:agenda_thought_pieces:${payload.source_ref}`,
+          "x-idempotency-key": `raysretreat:${payload.source_ref}`,
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(INGEST_TIMEOUT_MS),
@@ -117,11 +118,20 @@ async function main() {
 
   const rows = Array.isArray(data) ? data : [];
   let ok = 0;
-  for (const row of rows) {
-    const payload = rowToDocument(row);
-    await ingest(payload);
-    ok += 1;
+  const queue = [...rows];
+  const workerCount = Math.max(1, Math.min(INGEST_CONCURRENCY, queue.length));
+
+  async function worker() {
+    while (queue.length > 0) {
+      const row = queue.shift();
+      if (!row) return;
+      const payload = rowToDocument(row);
+      await ingest(payload);
+      ok += 1;
+    }
   }
+
+  await Promise.all(Array.from({ length: workerCount }, worker));
   console.log(`Raysretreat thought pieces export complete: ${ok} documents ingested`);
 }
 

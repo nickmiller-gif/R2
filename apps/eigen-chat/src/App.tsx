@@ -249,6 +249,9 @@ export function App() {
     };
 
     if (streamResponses) {
+      // Capture the previous streaming assistant ID before cancelling so we
+      // can remove any orphaned streaming message from state below.
+      const prevAssistantId = streamAssistantIdRef.current;
       cancelActiveStream();
       const assistantId = crypto.randomUUID();
       const controller = new AbortController();
@@ -259,17 +262,22 @@ export function App() {
 
       setStreamChatError(null);
       setIsStreamingChat(true);
-      setMessages((prev) => [
-        ...prev,
-        userMsg,
-        {
-          id: assistantId,
-          role: 'assistant',
-          content: '',
-          streaming: true,
-          citations: [],
-        },
-      ]);
+      setMessages((prev) => {
+        // Remove the previous orphaned streaming message (if any) so it doesn't
+        // persist indefinitely with streaming: true after being superseded.
+        const base = prevAssistantId ? prev.filter((m) => m.id !== prevAssistantId) : prev;
+        return [
+          ...base,
+          userMsg,
+          {
+            id: assistantId,
+            role: 'assistant',
+            content: '',
+            streaming: true,
+            citations: [],
+          },
+        ];
+      });
 
       void (async () => {
         try {
@@ -297,16 +305,15 @@ export function App() {
           if (streamRequestVersionRef.current !== requestVersion) return;
           if (chatTier === 'eigenx') setSessionId(result.session_id);
           setMessage('');
-          setMessages((prev) =>
-            updateAssistantMessage(prev, assistantId, (m) => ({
-              ...m,
-              content: result.response,
-              streaming: false,
-              citations: result.citations,
-              confidence: result.confidence,
-              retrieval_run_id: result.retrieval_run_id,
-            })),
-          );
+          const finalizeAssistantMessage = (m: ChatMessageAssistant): ChatMessageAssistant => ({
+            ...m,
+            content: result.response,
+            streaming: false,
+            citations: result.citations,
+            confidence: result.confidence,
+            retrieval_run_id: result.retrieval_run_id,
+          });
+          setMessages((prev) => updateAssistantMessage(prev, assistantId, finalizeAssistantMessage));
         } catch (err) {
           if (streamRequestVersionRef.current !== requestVersion) return;
           if (err instanceof Error && err.name === 'AbortError') return;

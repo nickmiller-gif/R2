@@ -100,4 +100,35 @@ describe('consumeEigenChatSse', () => {
     expect(onDelta).toHaveBeenCalledWith('B');
     expect(result.session_id).toBe('tail');
   });
+
+  it('short-circuits after first done payload and ignores subsequent blocks', async () => {
+    const response = makeSseResponse([
+      'data: {"text":"C"}\n\n',
+      'data: {"done":true,"response":"C","citations":[],"confidence":"high","retrieval_run_id":"run-sc","memory_updated":false,"session_id":"sc"}\n\n',
+      // extra block after done — should be ignored
+      'data: {"done":true,"response":"OVERWRITE","citations":[],"confidence":"low","retrieval_run_id":"bad","memory_updated":false,"session_id":"bad"}\n\n',
+    ]);
+    const onDelta = vi.fn();
+
+    const result = await consumeEigenChatSse(response, onDelta);
+
+    expect(onDelta).toHaveBeenCalledTimes(1);
+    expect(result.response).toBe('C');
+    expect(result.session_id).toBe('sc');
+  });
+
+  it('throws on buffer overflow when server sends excessive data without separator', async () => {
+    // Build a chunk larger than the 4 MB guard (no \n\n separator so it
+    // accumulates entirely in the buffer).
+    const largeChunk = 'data: ' + 'x'.repeat(5 * 1024 * 1024);
+    const response = makeSseResponse([largeChunk]);
+
+    await expect(consumeEigenChatSse(response, vi.fn())).rejects.toThrow('SSE buffer overflow');
+  });
+
+  it('includes HTTP status in error message when response body is empty', async () => {
+    const response = new Response('', { status: 503 });
+
+    await expect(consumeEigenChatSse(response, vi.fn())).rejects.toThrow('HTTP 503');
+  });
 });

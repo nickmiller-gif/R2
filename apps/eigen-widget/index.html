@@ -292,23 +292,27 @@
     </style>
   </head>
   <body>
-    <div id="backdrop" class="backdrop" aria-hidden="true"></div>
-    <button type="button" id="launcher" class="launcher" aria-label="Open chat" aria-expanded="false">
-      <span class="pulse-dot"></span>
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Shared SVG symbol for the EigenX circle-X logo mark -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+      <symbol id="eigenx-mark" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="36" stroke="#EF9F27" stroke-width="1.5"/>
         <line x1="25" y1="25" x2="75" y2="75" stroke="#EF9F27" stroke-width="1.8" stroke-linecap="square"/>
         <line x1="75" y1="25" x2="25" y2="75" stroke="#EF9F27" stroke-width="1.8" stroke-linecap="square"/>
         <circle cx="50" cy="50" r="2.5" fill="#EF9F27"/>
+      </symbol>
+    </svg>
+
+    <div id="backdrop" class="backdrop" aria-hidden="true"></div>
+    <button type="button" id="launcher" class="launcher" aria-label="Open chat" aria-expanded="false">
+      <span class="pulse-dot"></span>
+      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <use href="#eigenx-mark"/>
       </svg>
     </button>
     <div id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="head-title" hidden>
       <div class="head">
         <svg class="head-logo" viewBox="0 0 100 100" fill="none">
-          <circle cx="50" cy="50" r="36" stroke="#EF9F27" stroke-width="2"/>
-          <line x1="28" y1="28" x2="72" y2="72" stroke="#EF9F27" stroke-width="2"/>
-          <line x1="72" y1="28" x2="28" y2="72" stroke="#EF9F27" stroke-width="2"/>
-          <circle cx="50" cy="50" r="3" fill="#EF9F27"/>
+          <use href="#eigenx-mark"/>
         </svg>
         <h2 id="head-title">Eigen</h2>
         <p id="head-sub"></p>

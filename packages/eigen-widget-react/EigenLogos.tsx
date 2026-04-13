@@ -8,6 +8,7 @@
  *   <EigenXLogo size={24} />        // Amber circle + X
  *   <EigenXLogoFull size={200} />   // Full mark with glow, ticks, chevrons
  */
+import { useId } from 'react';
 
 interface LogoProps {
   size?: number;
@@ -28,6 +29,8 @@ export function EigenLogo({ size = 24, className, style }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={style}
+      aria-hidden="true"
+      focusable="false"
     >
       {/* Ghost axes */}
       <line x1="50" y1="8" x2="50" y2="92" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
@@ -67,6 +70,8 @@ export function EigenXLogo({ size = 24, className, style }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={style}
+      aria-hidden="true"
+      focusable="false"
     >
       <circle cx="50" cy="50" r="36" stroke="#EF9F27" strokeWidth="1.5" />
       <line x1="25" y1="25" x2="75" y2="75" stroke="#EF9F27" strokeWidth="1.8" strokeLinecap="square" />
@@ -81,6 +86,8 @@ export function EigenXLogo({ size = 24, className, style }: LogoProps) {
  * For hero sections, splash screens, about pages.
  */
 export function EigenXLogoFull({ size = 200, className, style }: LogoProps) {
+  const uid = useId();
+  const glowId = `eigenx-glow-${uid}`;
   return (
     <svg
       viewBox="0 0 200 200"
@@ -90,15 +97,17 @@ export function EigenXLogoFull({ size = 200, className, style }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={style}
+      aria-hidden="true"
+      focusable="false"
     >
       <defs>
-        <radialGradient id="eigenx-glow" cx="50%" cy="50%" r="50%">
+        <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="rgba(239,159,39,0.08)" />
           <stop offset="100%" stopColor="transparent" />
         </radialGradient>
       </defs>
       {/* Ambient glow */}
-      <circle cx="100" cy="100" r="85" fill="url(#eigenx-glow)" />
+      <circle cx="100" cy="100" r="85" fill={`url(#${glowId})`} />
       {/* Outer faint ring */}
       <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(239,159,39,0.06)" strokeWidth="0.5" />
       {/* Primary circle */}
@@ -128,6 +137,8 @@ export function EigenXLogoFull({ size = 200, className, style }: LogoProps) {
  * For hero sections, splash screens, about pages.
  */
 export function EigenLogoFull({ size = 200, className, style }: LogoProps) {
+  const uid = useId();
+  const glowId = `eigen-glow-${uid}`;
   return (
     <svg
       viewBox="0 0 200 200"
@@ -137,15 +148,17 @@ export function EigenLogoFull({ size = 200, className, style }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={style}
+      aria-hidden="true"
+      focusable="false"
     >
       <defs>
-        <radialGradient id="eigen-glow" cx="50%" cy="50%" r="50%">
+        <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
           <stop offset="100%" stopColor="transparent" />
         </radialGradient>
       </defs>
       {/* Ambient glow */}
-      <circle cx="100" cy="100" r="80" fill="url(#eigen-glow)" />
+      <circle cx="100" cy="100" r="80" fill={`url(#${glowId})`} />
       {/* Ghost axes */}
       <line x1="100" y1="16" x2="100" y2="184" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
       <line x1="16" y1="100" x2="184" y2="100" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
@@ -229,32 +242,40 @@ export function EigenWordmark({ size = 24, className, style }: LogoProps) {
  */
 export function EigenPulseDot({ className, style }: Omit<LogoProps, 'size'>) {
   return (
-    <span
-      className={className}
-      style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7, ...style }}
-    >
+    <>
+      <style>{`
+        @keyframes eigen-pulse-dot {
+          0%, 100% { transform: scale(1); opacity: 0.4; }
+          50%       { transform: scale(1.9); opacity: 0; }
+        }
+      `}</style>
       <span
-        style={{
-          position: 'absolute',
-          display: 'inline-flex',
-          width: '100%',
-          height: '100%',
-          borderRadius: '50%',
-          background: '#EF9F27',
-          opacity: 0.4,
-          animation: 'eigen-pulse 2.4s ease-in-out infinite',
-        }}
-      />
-      <span
-        style={{
-          position: 'relative',
-          display: 'inline-flex',
-          width: 7,
-          height: 7,
-          borderRadius: '50%',
-          background: '#EF9F27',
-        }}
-      />
-    </span>
+        className={className}
+        style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7, ...style }}
+      >
+        <span
+          style={{
+            position: 'absolute',
+            display: 'inline-flex',
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            background: '#EF9F27',
+            opacity: 0.4,
+            animation: 'eigen-pulse-dot 2.4s ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            position: 'relative',
+            display: 'inline-flex',
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: '#EF9F27',
+          }}
+        />
+      </span>
+    </>
   );
 }

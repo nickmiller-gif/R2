@@ -16,7 +16,11 @@ interface EigenWidgetConnectedProps {
   siteId: string;
   widgetHost?: string;
   apiBase?: string;
-  theme?: 'dark';
+  /**
+   * Widget color theme. Eigen's design system is dark-only.
+   * @deprecated 'light' is accepted for backward compatibility but rendered as dark; Eigen always runs in dark mode.
+   */
+  theme?: 'light' | 'dark';
   className?: string;
   style?: React.CSSProperties;
 }

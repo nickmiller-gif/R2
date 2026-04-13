@@ -33,8 +33,11 @@ interface EigenWidgetProps {
   apiBase?: string;
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
-  /** 'dark' — Eigen design system is dark-only */
-  theme?: 'dark';
+  /**
+   * Widget color theme. Eigen's design system is dark-only.
+   * @deprecated 'light' is accepted for backward compatibility but rendered as dark; Eigen always runs in dark mode.
+   */
+  theme?: 'light' | 'dark';
   /** Extra CSS class on the wrapper div */
   className?: string;
   /** Inline style on the wrapper div */

@@ -91,6 +91,8 @@ jobs:
       - name: Deploy edge functions
         run: |
           SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
+          # Widget-facing functions accept unauthenticated public requests
+          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat)$"
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
             # skip shared and known non-deployable legacy function
@@ -99,7 +101,11 @@ jobs:
               continue
             fi
             echo "::group::Deploying $fn_name"
-            supabase functions deploy "$fn_name"
+            if [[ "$fn_name" =~ $NO_VERIFY_JWT_REGEX ]]; then
+              supabase functions deploy "$fn_name" --no-verify-jwt
+            else
+              supabase functions deploy "$fn_name"
+            fi
             echo "::endgroup::"
           done
 

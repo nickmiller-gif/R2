@@ -17,9 +17,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p0',
     target_source_system: 'raysretreat',
     corpus_tier: 'mixed',
-    status: 'deferred',
+    status: 'in_progress',
     notes:
-      'Deferred for current production wave. Site can ship without scheduled R2 export; revisit after retreat content pipeline freeze. Planned scope remains public pages/news to eigen_public and internal ops docs to eigenx.',
+      'agenda_thought_pieces export wired via scripts/eigen-raysretreat-export.mjs + weekly workflow. Follow-up: public pages/news to eigen_public and internal ops docs to eigenx.',
   },
   {
     repo: 'ip-insights-hub',

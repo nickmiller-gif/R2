@@ -1,0 +1,38 @@
+name: Eigen raysretreat thought pieces export
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 7 * * 1" # Weekly Monday 07:20 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export thought pieces to eigen-ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export thought pieces
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_EIGEN_INGEST_ENDPOINT: ${{ secrets.R2_EIGEN_INGEST_ENDPOINT }}
+          R2_EIGEN_INGEST_BEARER_TOKEN: ${{ secrets.EIGEN_SYNC_AUTH_BEARER }}
+          ENABLE_R2_EIGEN_INGEST: "true"
+        run: node scripts/eigen-raysretreat-export.mjs

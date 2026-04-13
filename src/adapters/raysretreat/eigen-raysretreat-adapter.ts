@@ -40,11 +40,50 @@ export function mapRaysRetreatEventToEigen(event: RaysRetreatContentEvent): Eige
   };
 }
 
+export interface ThoughtPieceEvent {
+  id: string;
+  retreat_year_id: string;
+  title: string;
+  content: string;
+  theme_tags: string[];
+  generated_at: string;
+  content_hash: string;
+  visibility?: AdapterVisibility;
+}
+
+export function mapThoughtPieceToEigen(event: ThoughtPieceEvent): EigenIngestRequest {
+  const visibility = event.visibility ?? 'public';
+  const extraTags = ['raysretreat', 'retreat-thought-piece', ...event.theme_tags.filter(Boolean)];
+  return {
+    source_system: 'raysretreat',
+    source_ref: `agenda_thought_pieces:${event.id}`,
+    document: {
+      title: event.title,
+      body: event.content,
+      content_type: 'retreat_thought_piece',
+      metadata: {
+        table: 'agenda_thought_pieces',
+        retreat_year_id: event.retreat_year_id,
+        generated_at: event.generated_at,
+        content_hash: event.content_hash,
+        theme_tags: event.theme_tags,
+        visibility,
+      },
+    },
+    chunking_mode: 'hierarchical',
+    policy_tags: visibilityPolicyTags(visibility, extraTags),
+    entity_ids: [],
+  };
+}
+
 export function createRaysRetreatEigenAdapter(config: EigenIngestClientConfig) {
   const ingestClient = createEigenIngestClient(config);
   return {
     async onContentUpdated(event: RaysRetreatContentEvent) {
       return ingestClient.ingest(mapRaysRetreatEventToEigen(event));
+    },
+    async onThoughtPieceUpdated(event: ThoughtPieceEvent) {
+      return ingestClient.ingest(mapThoughtPieceToEigen(event));
     },
   };
 }

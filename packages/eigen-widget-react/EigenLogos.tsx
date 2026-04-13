@@ -17,12 +17,13 @@ interface LogoProps {
 }
 
 // Ensure @keyframes eigen-pulse-dot is injected into the document once.
-let _pulseDotStyleInjected = false;
+// Uses a DOM attribute check so it is StrictMode-safe (effects can fire twice).
 function usePulseDotStyle() {
   useEffect(() => {
-    if (_pulseDotStyleInjected || typeof document === 'undefined') return;
-    _pulseDotStyleInjected = true;
+    if (typeof document === 'undefined') return;
+    if (document.querySelector('style[data-eigen-pulse-dot]')) return;
     const el = document.createElement('style');
+    el.setAttribute('data-eigen-pulse-dot', '');
     el.textContent =
       '@keyframes eigen-pulse-dot{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.9);opacity:0}}';
     document.head.appendChild(el);

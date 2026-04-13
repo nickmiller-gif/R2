@@ -18,7 +18,9 @@ export {
 export {
   createRaysRetreatEigenAdapter,
   mapRaysRetreatEventToEigen,
+  mapThoughtPieceToEigen,
   type RaysRetreatContentEvent,
+  type ThoughtPieceEvent,
 } from './raysretreat/eigen-raysretreat-adapter.js';
 
 export {

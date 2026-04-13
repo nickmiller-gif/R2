@@ -33,7 +33,10 @@ interface EigenWidgetProps {
   apiBase?: string;
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
-  /** 'light' | 'dark' — defaults to 'light' */
+  /**
+   * Widget color theme. Eigen's design system is dark-only.
+   * @deprecated 'light' is accepted for backward compatibility but rendered as dark; Eigen always runs in dark mode.
+   */
   theme?: 'light' | 'dark';
   /** Extra CSS class on the wrapper div */
   className?: string;
@@ -49,7 +52,7 @@ export default function EigenWidget({
   accessToken = null,
   apiBase = DEFAULT_API_BASE,
   widgetHost = DEFAULT_WIDGET_HOST,
-  theme = 'light',
+  theme = 'dark',
   className,
   style,
 }: EigenWidgetProps) {

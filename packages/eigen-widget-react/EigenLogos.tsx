@@ -8,12 +8,25 @@
  *   <EigenXLogo size={24} />        // Amber circle + X
  *   <EigenXLogoFull size={200} />   // Full mark with glow, ticks, chevrons
  */
-import { useId } from 'react';
+import { useEffect, useId } from 'react';
 
 interface LogoProps {
   size?: number;
   className?: string;
   style?: React.CSSProperties;
+}
+
+// Ensure @keyframes eigen-pulse-dot is injected into the document once.
+let _pulseDotStyleInjected = false;
+function usePulseDotStyle() {
+  useEffect(() => {
+    if (_pulseDotStyleInjected || typeof document === 'undefined') return;
+    _pulseDotStyleInjected = true;
+    const el = document.createElement('style');
+    el.textContent =
+      '@keyframes eigen-pulse-dot{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.9);opacity:0}}';
+    document.head.appendChild(el);
+  }, []);
 }
 
 /**
@@ -241,41 +254,34 @@ export function EigenWordmark({ size = 24, className, style }: LogoProps) {
  * Place next to a status label.
  */
 export function EigenPulseDot({ className, style }: Omit<LogoProps, 'size'>) {
+  usePulseDotStyle();
   return (
-    <>
-      <style>{`
-        @keyframes eigen-pulse-dot {
-          0%, 100% { transform: scale(1); opacity: 0.4; }
-          50%       { transform: scale(1.9); opacity: 0; }
-        }
-      `}</style>
+    <span
+      className={className}
+      style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7, ...style }}
+    >
       <span
-        className={className}
-        style={{ position: 'relative', display: 'inline-flex', width: 7, height: 7, ...style }}
-      >
-        <span
-          style={{
-            position: 'absolute',
-            display: 'inline-flex',
-            width: '100%',
-            height: '100%',
-            borderRadius: '50%',
-            background: '#EF9F27',
-            opacity: 0.4,
-            animation: 'eigen-pulse-dot 2.4s ease-in-out infinite',
-          }}
-        />
-        <span
-          style={{
-            position: 'relative',
-            display: 'inline-flex',
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: '#EF9F27',
-          }}
-        />
-      </span>
-    </>
+        style={{
+          position: 'absolute',
+          display: 'inline-flex',
+          width: '100%',
+          height: '100%',
+          borderRadius: '50%',
+          background: '#EF9F27',
+          opacity: 0.4,
+          animation: 'eigen-pulse-dot 2.4s ease-in-out infinite',
+        }}
+      />
+      <span
+        style={{
+          position: 'relative',
+          display: 'inline-flex',
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          background: '#EF9F27',
+        }}
+      />
+    </span>
   );
 }

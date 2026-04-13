@@ -65,6 +65,36 @@ export type Database = {
         }
         Relationships: []
       }
+      agenda_thought_pieces: {
+        Row: {
+          content: string
+          content_hash: string
+          generated_at: string
+          id: string
+          retreat_year_id: string
+          theme_tags: string[]
+          title: string
+        }
+        Insert: {
+          content: string
+          content_hash: string
+          generated_at?: string
+          id?: string
+          retreat_year_id?: string
+          theme_tags?: string[]
+          title: string
+        }
+        Update: {
+          content?: string
+          content_hash?: string
+          generated_at?: string
+          id?: string
+          retreat_year_id?: string
+          theme_tags?: string[]
+          title?: string
+        }
+        Relationships: []
+      }
       asset_evidence_link: {
         Row: {
           asset_registry_id: string
@@ -1003,6 +1033,42 @@ export type Database = {
           id?: string
           industry?: string | null
           name?: string
+        }
+        Relationships: []
+      }
+      coffee_matches: {
+        Row: {
+          compatibility_score: number
+          conversation_topics: string[]
+          created_at: string
+          id: string
+          match_reason: string
+          matched_attendee_id: string
+          matched_attendee_name: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          compatibility_score?: number
+          conversation_topics?: string[]
+          created_at?: string
+          id?: string
+          match_reason: string
+          matched_attendee_id: string
+          matched_attendee_name: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          compatibility_score?: number
+          conversation_topics?: string[]
+          created_at?: string
+          id?: string
+          match_reason?: string
+          matched_attendee_id?: string
+          matched_attendee_name?: string
+          status?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -2032,6 +2098,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      live_polls: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          options: Json
+          poll_type: string
+          question: string
+          retreat_year_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          options?: Json
+          poll_type?: string
+          question: string
+          retreat_year_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          options?: Json
+          poll_type?: string
+          question?: string
+          retreat_year_id?: string
+        }
+        Relationships: []
       }
       market_intel: {
         Row: {
@@ -3076,6 +3178,65 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_submissions: {
+        Row: {
+          caption: string | null
+          created_at: string
+          id: string
+          photo_url: string
+          retreat_year_id: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          photo_url: string
+          retreat_year_id: string
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          photo_url?: string
+          retreat_year_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      poll_votes: {
+        Row: {
+          created_at: string
+          id: string
+          poll_id: string
+          selected_option: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          poll_id: string
+          selected_option: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          poll_id?: string
+          selected_option?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "live_polls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portfolios: {
         Row: {
           created_at: string
@@ -3294,6 +3455,68 @@ export type Database = {
           },
         ]
       }
+      qa_questions: {
+        Row: {
+          answer: string | null
+          created_at: string
+          id: string
+          is_answered: boolean
+          question: string
+          retreat_year_id: string
+          upvotes: number
+          user_id: string
+        }
+        Insert: {
+          answer?: string | null
+          created_at?: string
+          id?: string
+          is_answered?: boolean
+          question: string
+          retreat_year_id: string
+          upvotes?: number
+          user_id: string
+        }
+        Update: {
+          answer?: string | null
+          created_at?: string
+          id?: string
+          is_answered?: boolean
+          question?: string
+          retreat_year_id?: string
+          upvotes?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      qa_upvotes: {
+        Row: {
+          created_at: string
+          id: string
+          question_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_upvotes_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "qa_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       r2_core_asset_evidence_links: {
         Row: {
           confidence: number | null
@@ -3451,6 +3674,51 @@ export type Database = {
           },
         ]
       }
+      retreat_agenda_items: {
+        Row: {
+          created_at: string
+          day_number: number
+          description: string | null
+          display_order: number | null
+          end_time: string | null
+          id: string
+          location: string | null
+          retreat_year_id: string
+          session_type: string | null
+          speaker_name: string | null
+          start_time: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          day_number?: number
+          description?: string | null
+          display_order?: number | null
+          end_time?: string | null
+          id?: string
+          location?: string | null
+          retreat_year_id: string
+          session_type?: string | null
+          speaker_name?: string | null
+          start_time?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          day_number?: number
+          description?: string | null
+          display_order?: number | null
+          end_time?: string | null
+          id?: string
+          location?: string | null
+          retreat_year_id?: string
+          session_type?: string | null
+          speaker_name?: string | null
+          start_time?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
       retreat_attendees: {
         Row: {
           attendance_count: number | null
@@ -3581,6 +3849,41 @@ export type Database = {
           },
         ]
       }
+      retreat_discussions: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          parent_id: string | null
+          retreat_year_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          parent_id?: string | null
+          retreat_year_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          parent_id?: string | null
+          retreat_year_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retreat_discussions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "retreat_discussions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       retreat_media: {
         Row: {
           category: string | null
@@ -3646,6 +3949,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      retreat_rsvps: {
+        Row: {
+          created_at: string
+          id: string
+          retreat_year_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          retreat_year_id: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          retreat_year_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       retreat_speakers: {
         Row: {
@@ -3761,6 +4088,134 @@ export type Database = {
           oracle_context?: Json
           query_hash?: string
           status?: Database["public"]["Enums"]["retrieval_run_status"]
+        }
+        Relationships: []
+      }
+      rr_photo_submissions: {
+        Row: {
+          approved: boolean
+          caption: string | null
+          created_at: string
+          file_url: string
+          id: string
+          retreat_year: number | null
+          review_status: string
+          submitter_email: string
+          submitter_name: string
+        }
+        Insert: {
+          approved?: boolean
+          caption?: string | null
+          created_at?: string
+          file_url: string
+          id?: string
+          retreat_year?: number | null
+          review_status?: string
+          submitter_email: string
+          submitter_name: string
+        }
+        Update: {
+          approved?: boolean
+          caption?: string | null
+          created_at?: string
+          file_url?: string
+          id?: string
+          retreat_year?: number | null
+          review_status?: string
+          submitter_email?: string
+          submitter_name?: string
+        }
+        Relationships: []
+      }
+      session_notes: {
+        Row: {
+          ai_summary: string | null
+          content: string
+          created_at: string
+          id: string
+          retreat_year_id: string
+          session_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          retreat_year_id: string
+          session_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_summary?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          retreat_year_id?: string
+          session_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      session_request_upvotes: {
+        Row: {
+          created_at: string
+          id: string
+          request_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          request_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          request_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_request_upvotes_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "session_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_requests: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          retreat_year_id: string
+          title: string
+          upvotes: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          retreat_year_id?: string
+          title: string
+          upvotes?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          retreat_year_id?: string
+          title?: string
+          upvotes?: number
+          user_id?: string
         }
         Relationships: []
       }
@@ -4060,6 +4515,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          onboarding_completed: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          onboarding_completed?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          onboarding_completed?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -4187,6 +4663,10 @@ export type Database = {
       sign: {
         Args: { algorithm?: string; payload: Json; secret: string }
         Returns: string
+      }
+      toggle_session_request_upvote: {
+        Args: { p_request_id: string; p_user_id: string }
+        Returns: undefined
       }
       try_cast_double: { Args: { inp: string }; Returns: number }
       url_decode: { Args: { data: string }; Returns: string }

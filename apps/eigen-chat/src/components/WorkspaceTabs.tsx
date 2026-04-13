@@ -15,7 +15,7 @@ export function WorkspaceTabs({
 }) {
   return (
     <nav
-      className="flex gap-1 rounded-xl border border-border bg-elevated/80 p-1 shadow-soft"
+      className="flex gap-1 rounded-card border border-border bg-surface p-1"
       aria-label="Workspace"
     >
       {TABS.map((t) => (
@@ -25,10 +25,10 @@ export function WorkspaceTabs({
           onClick={() => onChange(t.id)}
           title={t.hint}
           className={[
-            'flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition',
+            'flex-1 rounded-[10px] px-4 py-2.5 text-label uppercase tracking-label transition',
             active === t.id
-              ? 'bg-surface text-fg shadow-soft ring-1 ring-border'
-              : 'text-muted hover:bg-surface/60 hover:text-fg',
+              ? 'border border-border-hover bg-elevated text-accent'
+              : 'border border-transparent text-muted hover:text-fg',
           ].join(' ')}
         >
           {t.label}

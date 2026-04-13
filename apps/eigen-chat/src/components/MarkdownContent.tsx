@@ -5,12 +5,13 @@ export function MarkdownContent({ content }: { content: string }) {
   return (
     <div
       className={[
-        'prose prose-sm max-w-none dark:prose-invert',
-        'prose-p:leading-relaxed prose-p:my-2',
-        'prose-headings:font-display prose-headings:font-semibold prose-headings:tracking-tight',
+        'prose prose-sm prose-invert max-w-none',
+        'prose-p:leading-relaxed prose-p:my-2 prose-p:text-body prose-p:tracking-wide',
+        'prose-headings:font-normal prose-headings:tracking-wide prose-headings:text-fg',
         'prose-a:text-accent prose-a:no-underline hover:prose-a:underline',
-        'prose-code:rounded prose-code:bg-elevated prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.9em] prose-code:before:content-none prose-code:after:content-none',
-        'prose-pre:bg-elevated prose-pre:border prose-pre:border-border prose-pre:rounded-card',
+        'prose-code:rounded prose-code:border prose-code:border-border prose-code:bg-canvas prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.9em] prose-code:before:content-none prose-code:after:content-none',
+        'prose-pre:bg-canvas prose-pre:border prose-pre:border-border prose-pre:rounded-[10px]',
+        'prose-strong:text-fg prose-strong:font-medium',
       ].join(' ')}
     >
       <ReactMarkdown

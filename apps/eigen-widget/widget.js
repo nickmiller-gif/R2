@@ -14,9 +14,7 @@ const chat = document.getElementById('chat');
 const form = document.getElementById('form');
 const input = document.getElementById('input');
 
-if (theme === 'dark') {
-  document.documentElement.setAttribute('data-theme', 'dark');
-}
+// Dark-only design system — no theme switching needed.
 
 function setOpen(open) {
   panel.hidden = !open;

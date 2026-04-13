@@ -13,7 +13,6 @@ import { consumeEigenChatSse } from './chatSse';
 import { ChatView } from './components/ChatView';
 import { IngestPanel } from './components/IngestPanel';
 import { SourcesPanel } from './components/SourcesPanel';
-import { ThemeToggle } from './components/ThemeToggle';
 import { WorkspaceTabs, type TabId } from './components/WorkspaceTabs';
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
@@ -24,6 +23,17 @@ function getApiBaseUrl(): string {
     return `${fromEnv.replace(/\/+$/, '')}/functions/v1`;
   }
   return '/functions/v1';
+}
+
+function EigenXLogo({ size = 20 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="36" stroke="#EF9F27" strokeWidth="1.5" />
+      <line x1="25" y1="25" x2="75" y2="75" stroke="#EF9F27" strokeWidth="1.8" strokeLinecap="square" />
+      <line x1="75" y1="25" x2="25" y2="75" stroke="#EF9F27" strokeWidth="1.8" strokeLinecap="square" />
+      <circle cx="50" cy="50" r="2.5" fill="#EF9F27" />
+    </svg>
+  );
 }
 
 export function App() {
@@ -276,13 +286,17 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <header className="border-b border-border bg-surface/80 shadow-soft backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-fg">Eigen</h1>
-            <p className="text-sm text-muted">Retrieval-grounded chat · ingest · corpus health</p>
+      <header className="border-b border-border">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          <EigenXLogo size={24} />
+          <h1 className="text-[13px] font-normal uppercase tracking-wordmark text-fg">EigenX</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="relative flex h-[7px] w-[7px]">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-40" />
+              <span className="relative inline-flex h-[7px] w-[7px] rounded-full bg-accent" />
+            </span>
+            <span className="text-label uppercase text-hint">Online</span>
           </div>
-          <ThemeToggle />
         </div>
       </header>
 

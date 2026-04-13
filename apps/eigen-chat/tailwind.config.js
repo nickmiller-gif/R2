@@ -9,7 +9,9 @@ export default {
         surface: 'var(--color-surface)',
         elevated: 'var(--color-elevated)',
         border: 'var(--color-border)',
+        'border-hover': 'var(--color-border-hover)',
         muted: 'var(--color-muted)',
+        hint: 'var(--color-hint)',
         fg: 'var(--color-fg)',
         accent: 'var(--color-accent)',
         'accent-hover': 'var(--color-accent-hover)',
@@ -17,19 +19,19 @@ export default {
         success: 'var(--color-success)',
       },
       fontFamily: {
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
-        display: ['var(--font-display)', 'var(--font-sans)', 'system-ui', 'sans-serif'],
-      },
-      boxShadow: {
-        soft: 'var(--shadow-soft)',
-        lift: 'var(--shadow-lift)',
+        mono: ['var(--font-mono)', 'Courier New', 'monospace'],
       },
       borderRadius: {
         card: 'var(--radius-card)',
-        pill: '9999px',
       },
-      transitionDuration: {
-        DEFAULT: '180ms',
+      letterSpacing: {
+        label: '0.2em',
+        wide: '0.08em',
+        wordmark: '0.22em',
+      },
+      fontSize: {
+        label: ['10px', { lineHeight: '1.4', letterSpacing: '0.2em' }],
+        body: ['12px', { lineHeight: '1.6', letterSpacing: '0.08em' }],
       },
     },
   },

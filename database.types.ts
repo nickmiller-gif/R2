@@ -1565,6 +1565,42 @@ export type Database = {
         }
         Relationships: []
       }
+      eigen_policy_rules: {
+        Row: {
+          capability_tag_pattern: string
+          created_at: string
+          effect: string
+          id: string
+          metadata: Json
+          policy_tag: string
+          rationale: string | null
+          required_role: Database["public"]["Enums"]["charter_role"] | null
+          updated_at: string
+        }
+        Insert: {
+          capability_tag_pattern: string
+          created_at?: string
+          effect: string
+          id?: string
+          metadata?: Json
+          policy_tag: string
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          updated_at?: string
+        }
+        Update: {
+          capability_tag_pattern?: string
+          created_at?: string
+          effect?: string
+          id?: string
+          metadata?: Json
+          policy_tag?: string
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       eigen_public_rate_buckets: {
         Row: {
           bucket_key: string
@@ -2856,6 +2892,10 @@ export type Database = {
           entity_asset_id: string
           id: string
           producer_ref: string
+          publication_notes: string | null
+          publication_state: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at: string | null
+          published_by: string | null
           reasons: string[]
           score: number
           scored_at: string
@@ -2872,6 +2912,10 @@ export type Database = {
           entity_asset_id: string
           id?: string
           producer_ref: string
+          publication_notes?: string | null
+          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at?: string | null
+          published_by?: string | null
           reasons?: string[]
           score: number
           scored_at?: string
@@ -2888,6 +2932,10 @@ export type Database = {
           entity_asset_id?: string
           id?: string
           producer_ref?: string
+          publication_notes?: string | null
+          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at?: string | null
+          published_by?: string | null
           reasons?: string[]
           score?: number
           scored_at?: string

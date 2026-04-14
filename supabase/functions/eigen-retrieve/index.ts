@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
@@ -9,7 +8,7 @@ import {
 } from '../_shared/eigen-retrieve-core.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 

@@ -1,5 +1,6 @@
 import { getServiceClient } from './supabase.ts';
 import { corsHeaders } from './cors.ts';
+import { type CharterRole, ROLE_HIERARCHY } from './roles.ts';
 
 /**
  * RBAC helpers for edge functions (ADR-002).
@@ -20,23 +21,10 @@ import { corsHeaders } from './cors.ts';
  */
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (re-exported for backward compatibility)
 // ---------------------------------------------------------------------------
 
-/** Must match the `charter_role` enum in the database. */
-export type CharterRole = 'member' | 'reviewer' | 'operator' | 'counsel' | 'admin';
-
-/**
- * Role hierarchy — higher index = more privilege.
- * `requireRole('operator')` succeeds if the user has 'operator', 'counsel', or 'admin'.
- */
-const ROLE_HIERARCHY: CharterRole[] = [
-  'member',
-  'reviewer',
-  'operator',
-  'counsel',
-  'admin',
-];
+export type { CharterRole };
 
 export type RoleCheckResult =
   | { ok: true; roles: CharterRole[] }

@@ -33,9 +33,15 @@ export {
   type DbMemoryEntryRow,
 } from './memory-entry.service.js';
 
-
 export {
   createEigenOracleWhitespaceReaderService,
   type EigenOracleWhitespaceReaderService,
   type EigenOracleWhitespaceReaderDeps,
 } from './oracle-whitespace-intelligence.service.js';
+
+export {
+  createAutonomousCaptureService,
+  type AutonomousCaptureService,
+  type AutonomousCaptureDb,
+  type DbAutonomousCaptureRow,
+} from './autonomous-capture.service.js';

@@ -7,12 +7,7 @@ import {
   executeEigenRetrieve,
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
-import {
-  clampExplicitEigenxPolicyScope,
-  defaultEigenxRetrievePolicyScope,
-  readEigenxEnvDefaultPolicyScope,
-} from '../_shared/eigenx-scope.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -178,15 +173,13 @@ serve(async (req) => {
   try {
     const body = parseRequest(await req.json());
     const client = supabaseClients.service();
-    const preScope = body.policy_scope_explicit
-      ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, body.policy_scope)
-      : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);
-    const resolvedScope = await resolveEigenxPolicyScope(client, {
+    const resolvedScope = await resolveEffectiveEigenxScope({
+      client,
       userId: auth.claims.userId,
-      requestedPolicyScope: preScope,
-      defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
+      roles: roleCheck.roles,
+      explicitScope: body.policy_scope_explicit ? body.policy_scope : undefined,
     });
-    if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
+    if (resolvedScope.emptyAfterGrantIntersection) {
       return errorResponse('No private policy scope access for this user', 403);
     }
     body.policy_scope = resolvedScope.effectivePolicyScope;

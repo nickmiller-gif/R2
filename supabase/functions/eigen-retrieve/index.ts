@@ -7,12 +7,7 @@ import {
   executeEigenRetrieve,
   parseEigenRetrieveRequest,
 } from '../_shared/eigen-retrieve-core.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
-import {
-  clampExplicitEigenxPolicyScope,
-  defaultEigenxRetrievePolicyScope,
-  readEigenxEnvDefaultPolicyScope,
-} from '../_shared/eigenx-scope.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -27,16 +22,13 @@ serve(async (req) => {
   try {
     const client = getServiceClient();
     let payload = parseEigenRetrieveRequest(await req.json());
-    const explicit = (payload.policy_scope?.length ?? 0) > 0;
-    const preScope = explicit
-      ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, payload.policy_scope)
-      : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);
-    const resolvedScope = await resolveEigenxPolicyScope(client, {
+    const resolvedScope = await resolveEffectiveEigenxScope({
+      client,
       userId: auth.claims.userId,
-      requestedPolicyScope: preScope,
-      defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
+      roles: roleCheck.roles,
+      explicitScope: payload.policy_scope,
     });
-    if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
+    if (resolvedScope.emptyAfterGrantIntersection) {
       return errorResponse('No private policy scope access for this user', 403);
     }
     payload = { ...payload, policy_scope: resolvedScope.effectivePolicyScope };

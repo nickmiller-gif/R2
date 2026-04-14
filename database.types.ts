@@ -1565,6 +1565,42 @@ export type Database = {
         }
         Relationships: []
       }
+      eigen_policy_rules: {
+        Row: {
+          capability_tag_pattern: string
+          created_at: string
+          effect: string
+          id: string
+          metadata: Json
+          policy_tag: string
+          rationale: string | null
+          required_role: Database["public"]["Enums"]["charter_role"] | null
+          updated_at: string
+        }
+        Insert: {
+          capability_tag_pattern: string
+          created_at?: string
+          effect: string
+          id?: string
+          metadata?: Json
+          policy_tag: string
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          updated_at?: string
+        }
+        Update: {
+          capability_tag_pattern?: string
+          created_at?: string
+          effect?: string
+          id?: string
+          metadata?: Json
+          policy_tag?: string
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       eigen_public_rate_buckets: {
         Row: {
           bucket_key: string

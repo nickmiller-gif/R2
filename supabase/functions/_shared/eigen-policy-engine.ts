@@ -1,10 +1,29 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import {
-  evaluateEigenPolicyRules,
-  type DbEigenPolicyRuleRow,
-} from '../../../src/services/eigen/policy-engine.service.ts';
-import type { EigenPolicyRule } from '../../../src/types/eigen/policy-engine.ts';
 import type { CharterRole } from './rbac.ts';
+
+interface EigenPolicyRule {
+  id: string;
+  policyTag: string;
+  capabilityTagPattern: string;
+  effect: 'allow' | 'deny';
+  requiredRole: CharterRole | null;
+  rationale: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DbEigenPolicyRuleRow {
+  id: string;
+  policy_tag: string;
+  capability_tag_pattern: string;
+  effect: 'allow' | 'deny';
+  required_role: CharterRole | null;
+  rationale: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface ResolveEigenCapabilityAccessInput {
   policyTags: string[];
@@ -17,6 +36,45 @@ export interface ResolveEigenCapabilityAccessResult {
   deniedCapabilityTags: string[];
   rulesConfigured: boolean;
   deniedReasonsByCapability: Record<string, string[]>;
+}
+
+const ROLE_HIERARCHY = ['member', 'reviewer', 'operator', 'counsel', 'admin'] as const;
+function hasRequiredRole(callerRoles: CharterRole[], requiredRole: CharterRole | null): boolean {
+  if (!requiredRole) return true;
+  if (callerRoles.includes(requiredRole)) return true;
+  const minimumIndex = ROLE_HIERARCHY.indexOf(requiredRole);
+  return callerRoles.some((role) => ROLE_HIERARCHY.indexOf(role) >= minimumIndex);
+}
+
+function matchWildcard(pattern: string, value: string): boolean {
+  if (pattern === '*') return true;
+  if (!pattern.includes('*')) return pattern === value;
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`).test(value);
+}
+
+function matchesRule(
+  rule: EigenPolicyRule,
+  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
+): boolean {
+  const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));
+  if (!policyTagMatch) return false;
+  const capabilityTagMatch = input.capabilityTags.some((tag) => matchWildcard(rule.capabilityTagPattern, tag));
+  if (!capabilityTagMatch) return false;
+  return hasRequiredRole(input.callerRoles, rule.requiredRole);
+}
+
+function evaluateEigenPolicyRules(
+  rules: EigenPolicyRule[],
+  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
+): { allowed: boolean; denyReasons: string[] } {
+  const matching = rules.filter((rule) => matchesRule(rule, input));
+  const denying = matching.filter((rule) => rule.effect === 'deny');
+  if (denying.length > 0) {
+    return { allowed: false, denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`) };
+  }
+  const allowing = matching.filter((rule) => rule.effect === 'allow');
+  return { allowed: allowing.length > 0, denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'] };
 }
 
 function normalizeTags(values: string[]): string[] {
@@ -32,8 +90,8 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
     requiredRole: row.required_role,
     rationale: row.rationale,
     metadata: row.metadata ?? {},
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 

@@ -1,4 +1,5 @@
 import type { LlmProvider } from './eigen-chat-contract.ts';
+import type { ConfidenceLabel } from './eigen-chat-contract.ts';
 
 export interface LlmChatRequest {
   provider?: LlmProvider;
@@ -7,6 +8,11 @@ export interface LlmChatRequest {
   userContent: string;
   maxTokens: number;
   temperature: number;
+  critic?: {
+    enabled?: boolean;
+    confidence_label?: ConfidenceLabel;
+    trigger_at?: ConfidenceLabel;
+  };
 }
 
 export interface LlmChatResult {
@@ -14,6 +20,9 @@ export interface LlmChatResult {
   provider: LlmProvider;
   model: string;
   fallback_used: boolean;
+  critic_used?: boolean;
+  critic_provider?: LlmProvider;
+  critic_model?: string;
 }
 
 const DEFAULT_PROVIDER: LlmProvider =
@@ -43,6 +52,28 @@ function resolveProvider(requested?: LlmProvider): { provider: LlmProvider; fall
     }
   }
   return { provider: firstChoice, fallbackUsed: false };
+}
+
+function confidenceRank(value: ConfidenceLabel): number {
+  if (value === 'low') return 0;
+  if (value === 'medium') return 1;
+  return 2;
+}
+
+function shouldRunCritic(critic: LlmChatRequest['critic']): boolean {
+  if (!critic?.enabled) return false;
+  if (!critic.confidence_label) return false;
+  const triggerAt = critic.trigger_at ?? 'medium';
+  return confidenceRank(critic.confidence_label) <= confidenceRank(triggerAt);
+}
+
+function resolveCriticProvider(primaryProvider: LlmProvider): LlmProvider | null {
+  const preferred: LlmProvider[] = ['openai', 'anthropic'];
+  for (const provider of preferred) {
+    if (provider === primaryProvider) continue;
+    if (apiKeyForProvider(provider)) return provider;
+  }
+  return null;
 }
 
 async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 45000): Promise<Response> {
@@ -136,19 +167,72 @@ async function completePerplexity(request: LlmChatRequest, model: string): Promi
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
+async function completeWithProvider(
+  provider: LlmProvider,
+  request: LlmChatRequest,
+  model: string,
+): Promise<string> {
+  if (provider === 'openai') return completeOpenAi(request, model);
+  if (provider === 'anthropic') return completeAnthropic(request, model);
+  return completePerplexity(request, model);
+}
+
 export async function completeLlmChat(request: LlmChatRequest): Promise<LlmChatResult> {
   const { provider, fallbackUsed } = resolveProvider(request.provider);
   const model = request.model?.trim() || defaultModelForProvider(provider);
-  let text = '';
-  if (provider === 'openai') text = await completeOpenAi(request, model);
-  if (provider === 'anthropic') text = await completeAnthropic(request, model);
-  if (provider === 'perplexity') text = await completePerplexity(request, model);
+  let text = await completeWithProvider(provider, request, model);
   if (!text) throw new Error('LLM provider returned empty content');
+
+  let criticUsed = false;
+  let criticProvider: LlmProvider | undefined;
+  let criticModel: string | undefined;
+  if (shouldRunCritic(request.critic)) {
+    const selectedCriticProvider = resolveCriticProvider(provider);
+    if (selectedCriticProvider) {
+      const selectedCriticModel = defaultModelForProvider(selectedCriticProvider);
+      const criticPrompt = [
+        'You are a response quality reviewer.',
+        'Improve the draft for clarity and coherence, while preserving factual grounding.',
+        'Do not introduce new facts not already present in context.',
+        'Do not change the answer topic.',
+      ].join(' ');
+      const criticUserContent = [
+        `Original user/context message:\n${request.userContent}`,
+        `\nDraft answer:\n${text}`,
+        '\nReturn only the revised answer text.',
+      ].join('\n');
+      try {
+        const revised = await completeWithProvider(
+          selectedCriticProvider,
+          {
+            ...request,
+            provider: selectedCriticProvider,
+            model: selectedCriticModel,
+            systemPrompt: criticPrompt,
+            userContent: criticUserContent,
+            temperature: Math.min(0.4, Math.max(0, request.temperature)),
+          },
+          selectedCriticModel,
+        );
+        if (revised.trim().length > 0) {
+          text = revised.trim();
+          criticUsed = true;
+          criticProvider = selectedCriticProvider;
+          criticModel = selectedCriticModel;
+        }
+      } catch (_criticError) {
+        // Fail-soft: keep primary answer if critic provider is unavailable.
+      }
+    }
+  }
   return {
     text,
     provider,
     model,
     fallback_used: fallbackUsed,
+    critic_used: criticUsed,
+    critic_provider: criticProvider,
+    critic_model: criticModel,
   };
 }
 

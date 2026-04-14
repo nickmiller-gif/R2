@@ -13,14 +13,18 @@ import {
   buildCitations,
   buildCompositeConfidence,
   buildUploadFirstStrataWeights,
+  type ConfidenceLabel,
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat } from '../_shared/llm-chat.ts';
+import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
+import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
   message: string;
   response_format?: 'structured' | 'freeform';
+  conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
   llm_provider?: LlmProvider;
   llm_model?: string;
   budget_profile?: {
@@ -46,6 +50,10 @@ function parseRequest(value: unknown): WidgetChatRequest {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
+    conversation_intent:
+      body.conversation_intent === 'retreat_content' || body.conversation_intent === 'event_ops'
+        ? (body.conversation_intent as WidgetChatRequest['conversation_intent'])
+        : 'general',
     llm_provider:
       body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
         ? (body.llm_provider as LlmProvider)
@@ -121,20 +129,34 @@ function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolea
 }
 
 async function synthesize(
+  client: ReturnType<typeof getServiceClient>,
   mode: 'public' | 'eigenx',
+  policyScope: string[],
   message: string,
   chunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
   llmProvider: LlmProvider | undefined,
   llmModel: string | undefined,
-): Promise<string> {
+  confidenceLabel: ConfidenceLabel,
+): Promise<{ text: string; critic_used: boolean; critic_provider?: LlmProvider; critic_model?: string }> {
   const hasContext = chunks.length > 0;
 
   const envPrompt = mode === 'public'
     ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
     : Deno.env.get('EIGENX_SYSTEM_PROMPT');
   const basePrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(mode, hasContext);
-  const systemPrompt = withEigenChatProseStyle(basePrompt);
+  const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+    message,
+    includePrivate: mode === 'eigenx',
+    policyScope,
+  });
+  const systemPrompt = [
+    withEigenChatProseStyle(basePrompt),
+    'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+    voiceStyleAddendum,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const labeled = buildContext(chunks);
   const userContent = hasContext
@@ -148,8 +170,18 @@ async function synthesize(
     userContent,
     maxTokens: readWidgetMaxTokens(format),
     temperature: readWidgetTemperature(mode),
+    critic: {
+      enabled: true,
+      confidence_label: confidenceLabel,
+      trigger_at: 'medium',
+    },
   });
-  return result.text?.trim() || 'No response generated.';
+  return {
+    text: result.text?.trim() || 'No response generated.',
+    critic_used: result.critic_used === true,
+    critic_provider: result.critic_provider,
+    critic_model: result.critic_model,
+  };
 }
 
 serve(async (req) => {
@@ -179,11 +211,26 @@ serve(async (req) => {
       effectivePolicyScope = scopeResolution.effectivePolicyScope;
     }
 
+    const retreatScopedPublic = claims.mode === 'public' && claims.site_id === 'raysretreat';
+    const r2AppScopedPublic = claims.mode === 'public' && claims.site_id === 'r2app';
+    const outsideDomainIntent = inferOutsideDomainIntent(body.message);
+
     const retrieveResult = await executeEigenRetrieve(client, {
       query: body.message,
       policy_scope: effectivePolicyScope,
       site_id: claims.site_id,
       site_source_systems: claims.site_source_systems,
+      site_boost: retreatScopedPublic ? 0.7 : (r2AppScopedPublic ? 0.6 : undefined),
+      global_penalty: retreatScopedPublic ? -0.4 : (r2AppScopedPublic ? -0.35 : undefined),
+      site_relevance_min: retreatScopedPublic ? 0.36 : (r2AppScopedPublic ? 0.3 : undefined),
+      cross_source_max_ratio: retreatScopedPublic ? 0.2 : (r2AppScopedPublic ? 0.15 : undefined),
+      allow_cross_source_when_low_confidence: retreatScopedPublic,
+      outside_domain_intent: outsideDomainIntent,
+      disallowed_source_systems:
+        (retreatScopedPublic && body.conversation_intent === 'retreat_content' && !outsideDomainIntent) ||
+        (r2AppScopedPublic && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
+          ? ['health-supplement-tr', 'smartplrx']
+          : [],
       budget_profile: body.budget_profile
         ? {
             ...body.budget_profile,
@@ -195,22 +242,28 @@ serve(async (req) => {
     });
     if (!retrieveResult.ok) return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
 
-    const responseText = await synthesize(
+    const citations = buildCitations(retrieveResult.body.chunks);
+    const confidence = buildCompositeConfidence(citations);
+    const synthesis = await synthesize(
+      client,
       claims.mode,
+      effectivePolicyScope,
       body.message,
       retrieveResult.body.chunks,
       body.response_format ?? 'structured',
       body.llm_provider,
       body.llm_model,
+      confidence.overall,
     );
-    const citations = buildCitations(retrieveResult.body.chunks);
-    const confidence = buildCompositeConfidence(citations);
     return jsonResponse({
-      response: responseText,
+      response: synthesis.text,
       citations,
       confidence,
       llm_provider: body.llm_provider ?? 'openai',
       llm_model: body.llm_model ?? null,
+      llm_critic_used: synthesis.critic_used,
+      llm_critic_provider: synthesis.critic_provider ?? null,
+      llm_critic_model: synthesis.critic_model ?? null,
       retrieval_run_id: retrieveResult.body.retrieval_run_id,
       site_id: claims.site_id,
       mode: claims.mode,

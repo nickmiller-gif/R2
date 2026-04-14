@@ -11,3 +11,9 @@ export {
   oracleCompositeBoost,
   parseOracleRetrievalBoostCap,
 } from './oracle-retrieval-boost.js';
+
+export {
+  applySiteRelevanceGate,
+  inferOutsideDomainIntent,
+  limitCrossSourceRatio,
+} from './source-relevance-gating.js';

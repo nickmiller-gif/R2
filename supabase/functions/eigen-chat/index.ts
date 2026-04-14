@@ -24,6 +24,7 @@ import {
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
+import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 
 interface ChatRequest {
   message: string;
@@ -73,7 +74,7 @@ function readNoContextResponse(): string {
   );
 }
 
-function readSystemPrompt(format: 'structured' | 'freeform'): string {
+function readSystemPrompt(format: 'structured' | 'freeform', voiceAddendum = ''): string {
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
   const base =
     fromEnv && fromEnv.length > 0
@@ -81,7 +82,13 @@ function readSystemPrompt(format: 'structured' | 'freeform'): string {
       : format === 'structured'
         ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
         : 'You are EigenX. Provide a concise grounded answer using only provided context.';
-  return withEigenChatProseStyle(base);
+  return [
+    withEigenChatProseStyle(base),
+    'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+    voiceAddendum,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function toList(value: unknown): string[] {
@@ -227,6 +234,11 @@ serve(async (req) => {
     const retrievedChunks = retrieveResult.body.chunks;
     const citations = buildCitations(retrievedChunks);
     const confidence = buildCompositeConfidence(citations);
+    const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+      message: body.message,
+      includePrivate: true,
+      policyScope: resolvedScope.effectivePolicyScope,
+    });
 
     if (body.stream) {
       const encoder = new TextEncoder();
@@ -248,6 +260,9 @@ serve(async (req) => {
             let providerUsed: LlmProvider | undefined;
             let modelUsed: string | null = null;
             let fallbackUsed = false;
+            let criticUsed = false;
+            let criticProvider: LlmProvider | undefined;
+            let criticModel: string | undefined;
 
             if (retrievedChunks.length === 0) {
               fullText = readNoContextResponse();
@@ -256,10 +271,15 @@ serve(async (req) => {
               const stream = streamLlmChatDeltas({
                 provider: body.llm_provider,
                 model: body.llm_model,
-                systemPrompt: readSystemPrompt(body.response_format ?? 'structured'),
+                systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
                 userContent: streamUserContent,
                 maxTokens: readMaxCompletionTokens(),
                 temperature: 0.1,
+                critic: {
+                  enabled: true,
+                  confidence_label: confidence.overall,
+                  trigger_at: 'medium',
+                },
               });
               while (true) {
                 const step = await stream.next();
@@ -267,6 +287,9 @@ serve(async (req) => {
                   providerUsed = step.value.provider;
                   modelUsed = step.value.model;
                   fallbackUsed = step.value.fallback_used;
+                  criticUsed = step.value.critic_used === true;
+                  criticProvider = step.value.critic_provider;
+                  criticModel = step.value.critic_model;
                   break;
                 }
                 const delta = step.value;
@@ -324,6 +347,9 @@ serve(async (req) => {
               llm_provider: providerUsed ?? body.llm_provider ?? 'openai',
               llm_model: modelUsed ?? body.llm_model ?? null,
               llm_fallback_used: fallbackUsed,
+              llm_critic_used: criticUsed,
+              llm_critic_provider: criticProvider ?? null,
+              llm_critic_model: criticModel ?? null,
               effective_policy_scope: resolvedScope.effectivePolicyScope,
             });
           } catch (streamErr) {
@@ -342,6 +368,9 @@ serve(async (req) => {
     let llmProvider: LlmProvider = body.llm_provider ?? 'openai';
     let llmModel: string | null = body.llm_model ?? null;
     let llmFallbackUsed = false;
+    let llmCriticUsed = false;
+    let llmCriticProvider: LlmProvider | null = null;
+    let llmCriticModel: string | null = null;
 
     if (retrievedChunks.length === 0) {
       responseText = readNoContextResponse();
@@ -349,15 +378,23 @@ serve(async (req) => {
       const llmResult = await completeLlmChat({
         provider: body.llm_provider,
         model: body.llm_model,
-        systemPrompt: readSystemPrompt(body.response_format ?? 'structured'),
+        systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
         userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
         maxTokens: readMaxCompletionTokens(),
         temperature: 0.1,
+        critic: {
+          enabled: true,
+          confidence_label: confidence.overall,
+          trigger_at: 'medium',
+        },
       });
       responseText = llmResult.text;
       llmProvider = llmResult.provider;
       llmModel = llmResult.model;
       llmFallbackUsed = llmResult.fallback_used;
+      llmCriticUsed = llmResult.critic_used === true;
+      llmCriticProvider = llmResult.critic_provider ?? null;
+      llmCriticModel = llmResult.critic_model ?? null;
     }
 
     const [memoryUpsert, sessionUpdate] = await Promise.all([
@@ -402,6 +439,9 @@ serve(async (req) => {
       llm_provider: llmProvider,
       llm_model: llmModel,
       llm_fallback_used: llmFallbackUsed,
+      llm_critic_used: llmCriticUsed,
+      llm_critic_provider: llmCriticProvider,
+      llm_critic_model: llmCriticModel,
       effective_policy_scope: resolvedScope.effectivePolicyScope,
     });
   } catch (err) {

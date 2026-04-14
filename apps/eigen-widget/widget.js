@@ -4,6 +4,7 @@ const siteId = params.get('site_id') || '';
 const initialMode = params.get('mode') || 'public'; // 'public' | 'eigenx' | 'mixed'
 const theme = params.get('theme') || 'light';
 const parentOriginParam = (params.get('parent_origin') || '').replace(/\/+$/, '');
+const intentParam = (params.get('conversation_intent') || '').trim();
 
 const backdrop = document.getElementById('backdrop');
 const launcher = document.getElementById('launcher');
@@ -77,6 +78,15 @@ function updateModeUI() {
   headSub.textContent = siteId;
 }
 updateModeUI();
+
+function resolveConversationIntent() {
+  if (intentParam === 'retreat_content' || intentParam === 'event_ops' || intentParam === 'general') {
+    return intentParam;
+  }
+  if (siteId === 'raysretreat') return 'retreat_content';
+  if (siteId === 'r2app') return 'event_ops';
+  return 'general';
+}
 
 /**
  * Upgrade from public → eigenx when the parent app sends an auth token.
@@ -173,6 +183,7 @@ form.addEventListener('submit', async (e) => {
         widget_token: token,
         message,
         response_format: 'structured',
+        conversation_intent: resolveConversationIntent(),
       }),
     });
     if (!response.ok) throw new Error(await response.text());

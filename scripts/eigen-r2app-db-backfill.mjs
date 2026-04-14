@@ -9,7 +9,6 @@
  */
 
 import fs from 'node:fs';
-import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
 const WORKSPACE_ENV = '/Users/nick/Desktop/R2 Complete/.env';
@@ -17,6 +16,7 @@ const PAGE_SIZE = 500;
 const DOC_ROW_BATCH = 100;
 const MAX_DOC_CHARS = 90_000;
 const MAX_STRING_FIELD_CHARS = 2_000;
+const MAX_SANITIZE_DEPTH = 8;
 
 const TABLES = [
   'retreat_years',
@@ -63,9 +63,9 @@ const PRIVATE_TABLES = new Set([
   'user_roles',
 ]);
 
-function parseEnvFile(envPath) {
-  if (!fs.existsSync(envPath)) return {};
-  const text = fs.readFileSync(envPath, 'utf8');
+function parseWorkspaceEnvFile() {
+  if (!fs.existsSync(WORKSPACE_ENV)) return {};
+  const text = fs.readFileSync(WORKSPACE_ENV, 'utf8');
   const env = {};
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -83,31 +83,33 @@ function chunkRows(rows, maxRows = DOC_ROW_BATCH, maxChars = MAX_DOC_CHARS) {
   let current = [];
   let currentChars = 0;
 
-  for (const row of rows) {
-    const encoded = JSON.stringify(row);
+  for (const encoded of rows) {
     const nextChars = currentChars + encoded.length + 1;
     if (current.length >= maxRows || nextChars > maxChars) {
       batches.push(current);
       current = [];
       currentChars = 0;
     }
-    current.push(row);
+    current.push(encoded);
     currentChars += encoded.length + 1;
   }
   if (current.length > 0) batches.push(current);
   return batches;
 }
 
-function sanitizeValue(value) {
+function sanitizeValue(value, depth = 0, visited = new WeakSet()) {
+  if (depth >= MAX_SANITIZE_DEPTH) return '[truncated: max depth reached]';
   if (typeof value === 'string') {
     if (value.length <= MAX_STRING_FIELD_CHARS) return value;
     return `${value.slice(0, MAX_STRING_FIELD_CHARS)}\n...[truncated for embedding safety]`;
   }
-  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item));
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, depth + 1, visited));
   if (value && typeof value === 'object') {
+    if (visited.has(value)) return '[truncated: circular reference]';
+    visited.add(value);
     const out = {};
     for (const [key, item] of Object.entries(value)) {
-      out[key] = sanitizeValue(item);
+      out[key] = sanitizeValue(item, depth + 1, visited);
     }
     return out;
   }
@@ -115,7 +117,7 @@ function sanitizeValue(value) {
 }
 
 function sanitizeRows(rows) {
-  return rows.map((row) => sanitizeValue(row));
+  return rows.map((row) => JSON.stringify(sanitizeValue(row)));
 }
 
 function buildPolicyTags(tableName) {
@@ -152,10 +154,10 @@ async function ingestBatch({
   ingestBackfillToken,
   tableName,
   batchIndex,
-  batchRows,
+  batchEncodedRows,
 }) {
   const sourceRef = `r2app-db:${tableName}:batch-${String(batchIndex).padStart(4, '0')}`;
-  const bodyText = batchRows.map((row) => JSON.stringify(row)).join('\n');
+  const bodyText = batchEncodedRows.join('\n');
   const payload = {
     source_system: 'r2app',
     source_ref: sourceRef,
@@ -169,7 +171,7 @@ async function ingestBatch({
         site_id: 'r2app',
         source_table: tableName,
         batch_index: batchIndex,
-        rows_in_batch: batchRows.length,
+        rows_in_batch: batchEncodedRows.length,
         snapshot_kind: PRIVATE_TABLES.has(tableName) ? 'private' : 'public',
       },
     },
@@ -193,7 +195,7 @@ async function ingestBatch({
 }
 
 async function main() {
-  const env = parseEnvFile(WORKSPACE_ENV);
+  const env = parseWorkspaceEnvFile();
   const r2appUrl =
     process.env.R2APP_SUPABASE_URL || env.R2APP_SUPABASE_URL || env.VITE_SUPABASE_URL || env.SUPABASE_URL;
   const serviceRoleKey =
@@ -202,10 +204,13 @@ async function main() {
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     env.SUPABASE_SERVICE_ROLE_KEY;
   const ingestBackfillToken = process.env.EIGEN_INGEST_BACKFILL_TOKEN || env.EIGEN_INGEST_BACKFILL_TOKEN;
-  const eigenBase =
-    process.env.VITE_EIGEN_API_BASE ||
-    env.VITE_EIGEN_API_BASE ||
-    `${(env.VITE_SUPABASE_URL || env.SUPABASE_URL || '').replace(/\/+$/, '')}/functions/v1`;
+  const configuredEigenBase = process.env.VITE_EIGEN_API_BASE || env.VITE_EIGEN_API_BASE;
+  const fallbackSupabaseBase =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    env.VITE_SUPABASE_URL ||
+    env.SUPABASE_URL;
+  const eigenBase = configuredEigenBase || (fallbackSupabaseBase ? `${fallbackSupabaseBase.replace(/\/+$/, '')}/functions/v1` : '');
 
   if (!r2appUrl) throw new Error('Missing r2app Supabase URL');
   if (!serviceRoleKey) throw new Error('Missing service role key');
@@ -245,7 +250,7 @@ async function main() {
         ingestBackfillToken,
         tableName,
         batchIndex,
-        batchRows: batches[i],
+        batchEncodedRows: batches[i],
       });
       totalBatches += 1;
     }

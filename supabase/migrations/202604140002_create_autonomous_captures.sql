@@ -29,21 +29,49 @@ create index if not exists idx_autonomous_captures_ingest_status
 
 alter table public.autonomous_captures enable row level security;
 
-create policy if not exists "autonomous_captures_select_own"
-  on public.autonomous_captures
-  for select
-  using (auth.uid() = owner_id);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'autonomous_captures'
+      and policyname = 'autonomous_captures_select_own'
+  ) then
+    create policy "autonomous_captures_select_own"
+      on public.autonomous_captures
+      for select
+      using (auth.uid() = owner_id);
+  end if;
 
-create policy if not exists "autonomous_captures_insert_own"
-  on public.autonomous_captures
-  for insert
-  with check (auth.uid() = owner_id);
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'autonomous_captures'
+      and policyname = 'autonomous_captures_insert_own'
+  ) then
+    create policy "autonomous_captures_insert_own"
+      on public.autonomous_captures
+      for insert
+      with check (auth.uid() = owner_id);
+  end if;
 
-create policy if not exists "autonomous_captures_update_own"
-  on public.autonomous_captures
-  for update
-  using (auth.uid() = owner_id)
-  with check (auth.uid() = owner_id);
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'autonomous_captures'
+      and policyname = 'autonomous_captures_update_own'
+  ) then
+    create policy "autonomous_captures_update_own"
+      on public.autonomous_captures
+      for update
+      using (auth.uid() = owner_id)
+      with check (auth.uid() = owner_id);
+  end if;
+end
+$$;
 
 create or replace function public.autonomous_captures_set_updated_at()
 returns trigger

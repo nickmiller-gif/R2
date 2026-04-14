@@ -1,10 +1,35 @@
+export type LlmProvider = 'openai' | 'anthropic' | 'perplexity';
+export type ConfidenceLabel = 'low' | 'medium' | 'high';
+export type CitationAuthorityTier = 'user_upload' | 'oracle' | 'charter' | 'web' | 'corpus';
+
+export interface ChatConfidence {
+  overall: ConfidenceLabel;
+  retrieval: ConfidenceLabel;
+  upload_support: ConfidenceLabel;
+  model_agreement?: ConfidenceLabel;
+  signals: {
+    citation_count: number;
+    avg_relevance: number;
+    upload_ratio: number;
+  };
+}
+
 export interface ChatResponse {
   response: string;
-  citations: Array<{ chunk_id: string; source: string; section?: string; relevance: number }>;
-  confidence: 'low' | 'medium' | 'high';
+  citations: Array<{
+    chunk_id: string;
+    source: string;
+    section?: string;
+    relevance: number;
+    authority_tier: CitationAuthorityTier;
+  }>;
+  confidence: ChatConfidence;
   retrieval_run_id: string | null;
   memory_updated: boolean;
   session_id: string;
+  llm_provider?: LlmProvider;
+  llm_model?: string | null;
+  llm_fallback_used?: boolean;
 }
 
 export interface ChatMessageUser {
@@ -21,6 +46,9 @@ export interface ChatMessageAssistant {
   citations?: ChatResponse['citations'];
   confidence?: ChatResponse['confidence'];
   retrieval_run_id?: string | null;
+  llm_provider?: ChatResponse['llm_provider'];
+  llm_model?: ChatResponse['llm_model'];
+  llm_fallback_used?: ChatResponse['llm_fallback_used'];
 }
 
 export type ChatMessage = ChatMessageUser | ChatMessageAssistant;

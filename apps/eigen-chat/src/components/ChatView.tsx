@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef } from 'react';
-import type { ChatMessage, ChatTier } from '../chatTypes';
+import type { ChatMessage, ChatTier, LlmProvider } from '../chatTypes';
 import { CitationsPanel } from './CitationsPanel';
 import { MarkdownContent } from './MarkdownContent';
 
@@ -15,6 +15,10 @@ interface ChatViewProps {
   onPolicyScopeChange: (value: string) => void;
   streamResponses: boolean;
   onStreamResponsesChange: (value: boolean) => void;
+  llmProvider: LlmProvider;
+  onLlmProviderChange: (provider: LlmProvider) => void;
+  llmModel: string;
+  onLlmModelChange: (value: string) => void;
   isLoading: boolean;
   chatError: string | null;
   streamError: string | null;
@@ -34,6 +38,10 @@ export function ChatView({
   onPolicyScopeChange,
   streamResponses,
   onStreamResponsesChange,
+  llmProvider,
+  onLlmProviderChange,
+  llmModel,
+  onLlmModelChange,
   isLoading,
   chatError,
   streamError,
@@ -175,6 +183,29 @@ export function ChatView({
           />
           Stream response (SSE)
         </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-body text-muted">
+            <span className="text-label uppercase tracking-label text-hint">Provider</span>
+            <select
+              value={llmProvider}
+              onChange={(e) => onLlmProviderChange(e.target.value as LlmProvider)}
+              className="rounded-lg border border-border bg-elevated px-3 py-2 text-body text-fg"
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Claude (Anthropic)</option>
+              <option value="perplexity">Perplexity</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-body text-muted">
+            <span className="text-label uppercase tracking-label text-hint">Model override (optional)</span>
+            <input
+              value={llmModel}
+              onChange={(e) => onLlmModelChange(e.target.value)}
+              placeholder="e.g. gpt-4o-mini"
+              className="rounded-lg border border-border bg-elevated px-3 py-2 text-body text-fg placeholder:text-hint"
+            />
+          </label>
+        </div>
 
         <div className="flex gap-2">
           <textarea

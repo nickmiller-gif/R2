@@ -24,15 +24,49 @@ function parseDataBlock(block: string): Record<string, unknown> | null {
   }
 }
 
+function isConfidenceLabel(value: unknown): value is ChatResponse['confidence']['overall'] {
+  return value === 'low' || value === 'medium' || value === 'high';
+}
+
+function isChatConfidence(value: unknown): value is ChatResponse['confidence'] {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    isConfidenceLabel(record.overall) &&
+    isConfidenceLabel(record.retrieval) &&
+    isConfidenceLabel(record.upload_support) &&
+    typeof record.signals === 'object' &&
+    record.signals !== null
+  );
+}
+
 /** Builds a typed `ChatResponse` from a validated `done` SSE payload. */
 function resolveFromData(data: Record<string, unknown>): ChatResponse {
+  const confidenceRaw = data.confidence;
+  const fallbackLabel: ChatResponse['confidence']['overall'] =
+    isConfidenceLabel(confidenceRaw) ? confidenceRaw : 'low';
+  const confidence: ChatResponse['confidence'] = isChatConfidence(confidenceRaw)
+    ? confidenceRaw
+    : {
+        overall: fallbackLabel,
+        retrieval: 'low',
+        upload_support: 'low',
+        signals: {
+          citation_count: Array.isArray(data.citations) ? data.citations.length : 0,
+          avg_relevance: 0,
+          upload_ratio: 0,
+        },
+      };
   return {
     response: typeof data.response === 'string' ? data.response : '',
     citations: Array.isArray(data.citations) ? (data.citations as ChatResponse['citations']) : [],
-    confidence: (data.confidence as ChatResponse['confidence']) ?? 'low',
+    confidence,
     retrieval_run_id: typeof data.retrieval_run_id === 'string' ? data.retrieval_run_id : null,
     memory_updated: data.memory_updated === true,
     session_id: typeof data.session_id === 'string' ? data.session_id : '',
+    llm_provider: typeof data.llm_provider === 'string' ? (data.llm_provider as ChatResponse['llm_provider']) : undefined,
+    llm_model: typeof data.llm_model === 'string' ? data.llm_model : null,
+    llm_fallback_used: data.llm_fallback_used === true,
   };
 }
 

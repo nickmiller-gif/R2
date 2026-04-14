@@ -27,7 +27,9 @@ export function CitationsPanel({
       <div className="mt-2 space-y-2 rounded-[10px] border border-border bg-elevated px-3 py-2">
         {confidence ? (
           <p className="text-body text-muted">
-            Confidence: <span className="text-accent">{confidence}</span>
+            Confidence: <span className="text-accent">{confidence.overall}</span>
+            {' '}· Retrieval <span className="text-fg">{confidence.retrieval}</span>
+            {' '}· Upload support <span className="text-fg">{confidence.upload_support}</span>
             {retrievalRunId ? (
               <>
                 {' '}
@@ -49,6 +51,7 @@ export function CitationsPanel({
                 ) : null}
                 <p className={c.section ? 'mt-0.5 text-muted' : 'text-fg'}>{c.source}</p>
                 <p className="mt-0.5 text-[10px] text-hint">
+                  Authority <span className="text-fg">{c.authority_tier}</span> ·{' '}
                   Match strength <span className="text-accent">{(c.relevance * 100).toFixed(0)}%</span>
                 </p>
               </li>

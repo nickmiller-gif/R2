@@ -21,6 +21,7 @@ const DEFAULT_WIDGET_HOST = 'https://eigen-d3x.pages.dev';
 // ── Types ──────────────────────────────────────────────────────
 
 type EigenMode = 'public' | 'eigenx' | 'mixed';
+type LlmProvider = 'openai' | 'anthropic' | 'perplexity';
 
 interface EigenWidgetProps {
   /** Registered site_id in eigen_site_registry */
@@ -31,6 +32,12 @@ interface EigenWidgetProps {
   accessToken?: string | null;
   /** R2 Supabase edge-function base URL */
   apiBase?: string;
+  /** Optional default model provider for this embed */
+  llmProvider?: LlmProvider;
+  /** Optional model override for this embed */
+  llmModel?: string;
+  /** Optional context handles forwarded to widget chat */
+  contextHandles?: Record<string, string | null | undefined>;
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
   /**
@@ -51,6 +58,9 @@ export default function EigenWidget({
   mode = 'mixed',
   accessToken = null,
   apiBase = DEFAULT_API_BASE,
+  llmProvider,
+  llmModel,
+  contextHandles,
   widgetHost = DEFAULT_WIDGET_HOST,
   theme = 'dark',
   className,
@@ -63,7 +73,7 @@ export default function EigenWidget({
   // Build the iframe src URL
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const src = widgetHost
-    ? `${widgetHost.replace(/\/+$/, '')}/index.html?api_base=${encodeURIComponent(apiBase)}&site_id=${encodeURIComponent(siteId)}&mode=${mode}&theme=${theme}&parent_origin=${encodeURIComponent(origin)}`
+    ? `${widgetHost.replace(/\/+$/, '')}/index.html?api_base=${encodeURIComponent(apiBase)}&site_id=${encodeURIComponent(siteId)}&mode=${mode}&theme=${theme}&parent_origin=${encodeURIComponent(origin)}${llmProvider ? `&llm_provider=${encodeURIComponent(llmProvider)}` : ''}${llmModel ? `&llm_model=${encodeURIComponent(llmModel)}` : ''}`
     : '';
 
   // Send auth token to iframe via postMessage
@@ -96,6 +106,17 @@ export default function EigenWidget({
       sendAuth(accessToken ?? null);
     }
   }, [accessToken, ready, sendAuth]);
+
+  useEffect(() => {
+    if (!ready || !contextHandles) return;
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow || !widgetHost) return;
+    const targetOrigin = new URL(widgetHost).origin;
+    iframe.contentWindow.postMessage(
+      { type: 'eigen_widget_context', context: contextHandles },
+      targetOrigin,
+    );
+  }, [ready, contextHandles, widgetHost]);
 
   // Listen for the iframe to signal it's loaded
   useEffect(() => {

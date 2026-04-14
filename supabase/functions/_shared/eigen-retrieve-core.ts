@@ -101,6 +101,7 @@ function parseNumber(value: unknown): number | undefined {
 let _defaultSiteBoost: number | undefined;
 let _defaultGlobalPenalty: number | undefined;
 let _oracleBoostCap: number | undefined;
+let _uploadSourceBoost: number | undefined;
 
 function readDefaultSiteBoost(): number {
   if (_defaultSiteBoost === undefined) {
@@ -125,6 +126,15 @@ function readOracleRelevanceBoostCap(): number {
     _oracleBoostCap = parseOracleRetrievalBoostCap(Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'));
   }
   return _oracleBoostCap;
+}
+
+function readUploadSourceBoost(): number {
+  if (_uploadSourceBoost === undefined) {
+    const raw = Deno.env.get('EIGEN_UPLOAD_SOURCE_BOOST') ?? '0.12';
+    const parsed = Number.parseFloat(raw);
+    _uploadSourceBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.5)) : 0.12;
+  }
+  return _uploadSourceBoost;
 }
 
 async function loadSiteRegistryContext(
@@ -379,6 +389,7 @@ export async function executeEigenRetrieve(
     const applyRerank = payload.rerank !== false;
     const hasSiteSources = siteSources.size > 0;
     const oracleBoostCap = readOracleRelevanceBoostCap();
+    const uploadSourceBoost = readUploadSourceBoost();
 
     const scoredDescending = temporalFiltered
       .map((candidate) => {
@@ -409,10 +420,15 @@ export async function executeEigenRetrieve(
           candidate.oracle_relevance_score,
           oracleBoostCap,
         );
+        const sourceLower = candidate.source_system.toLowerCase();
+        const uploadAdj =
+          sourceLower.includes('upload') || sourceLower.includes('manual') || sourceLower.includes('autonomous')
+            ? uploadSourceBoost
+            : 0;
         return {
           ...candidate,
           composite_score: Number(
-            Math.max(0, Math.min(1.5, baseScore + siteAdj + oracleAdj)).toFixed(6),
+            Math.max(0, Math.min(1.5, baseScore + siteAdj + oracleAdj + uploadAdj)).toFixed(6),
           ),
         };
       })

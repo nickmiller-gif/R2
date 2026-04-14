@@ -9,11 +9,20 @@ import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
+import {
+  buildCitations,
+  buildCompositeConfidence,
+  buildUploadFirstStrataWeights,
+  type LlmProvider,
+} from '../_shared/eigen-chat-contract.ts';
+import { completeLlmChat } from '../_shared/llm-chat.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
   message: string;
   response_format?: 'structured' | 'freeform';
+  llm_provider?: LlmProvider;
+  llm_model?: string;
   budget_profile?: {
     max_chunks?: number;
     max_tokens?: number;
@@ -37,6 +46,11 @@ function parseRequest(value: unknown): WidgetChatRequest {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
+    llm_provider:
+      body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
+        ? (body.llm_provider as LlmProvider)
+        : undefined,
+    llm_model: typeof body.llm_model === 'string' ? body.llm_model.trim() : undefined,
     budget_profile: {
       max_chunks: typeof budget.max_chunks === 'number' ? budget.max_chunks : undefined,
       max_tokens: typeof budget.max_tokens === 'number' ? budget.max_tokens : undefined,
@@ -49,18 +63,6 @@ function parseRequest(value: unknown): WidgetChatRequest {
 
 function buildContext(chunks: EigenRetrieveChunk[]): string {
   return chunks.map((chunk, i) => `[${i + 1}] ${chunk.content}`).join('\n\n');
-}
-
-function buildCitations(chunks: EigenRetrieveChunk[]) {
-  return chunks.slice(0, 8).map((chunk) => ({
-    chunk_id: chunk.chunk_id,
-    source: chunk.provenance?.source_ref ?? chunk.provenance?.source_system ?? 'unknown',
-    section:
-      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
-        ? chunk.provenance.heading_path.join(' › ')
-        : undefined,
-    relevance: Number(chunk.composite_score?.toFixed(4) ?? 0),
-  }));
 }
 
 function readWidgetMaxTokens(format: 'structured' | 'freeform'): number {
@@ -123,26 +125,11 @@ async function synthesize(
   message: string,
   chunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
+  llmProvider: LlmProvider | undefined,
+  llmModel: string | undefined,
 ): Promise<string> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
   const hasContext = chunks.length > 0;
 
-  if (!apiKey) {
-    if (!hasContext) {
-      return mode === 'public'
-        ? 'Hi — I\'m Eigen. I don\'t have matching sourced details for that yet, but I\'m here. What would you like to know about Rays Retreat or R2?'
-        : 'I don\'t have retrieved context for that yet. Try rephrasing or point me at a specific topic.';
-    }
-    return chunks
-      .slice(0, 3)
-      .map((c) => {
-        const s = c.content.slice(0, 240).trim();
-        return `• ${s}${s.length >= 240 ? '…' : ''}`;
-      })
-      .join('\n\n');
-  }
-
-  const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
   const envPrompt = mode === 'public'
     ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
     : Deno.env.get('EIGENX_SYSTEM_PROMPT');
@@ -154,25 +141,15 @@ async function synthesize(
     ? `User message: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
     : `User message: ${message}`;
 
-  const completion = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: readWidgetTemperature(mode),
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      max_tokens: readWidgetMaxTokens(format),
-    }),
+  const result = await completeLlmChat({
+    provider: llmProvider,
+    model: llmModel,
+    systemPrompt,
+    userContent,
+    maxTokens: readWidgetMaxTokens(format),
+    temperature: readWidgetTemperature(mode),
   });
-  if (!completion.ok) throw new Error(`Chat completion failed: ${completion.status}`);
-  const payload = await completion.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return payload.choices?.[0]?.message?.content?.trim() || 'No response generated.';
+  return result.text?.trim() || 'No response generated.';
 }
 
 serve(async (req) => {
@@ -207,7 +184,12 @@ serve(async (req) => {
       policy_scope: effectivePolicyScope,
       site_id: claims.site_id,
       site_source_systems: claims.site_source_systems,
-      budget_profile: body.budget_profile ?? { max_chunks: 10, max_tokens: 3000 },
+      budget_profile: body.budget_profile
+        ? {
+            ...body.budget_profile,
+            strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+          }
+        : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
       rerank: true,
       include_provenance: true,
     });
@@ -218,12 +200,17 @@ serve(async (req) => {
       body.message,
       retrieveResult.body.chunks,
       body.response_format ?? 'structured',
+      body.llm_provider,
+      body.llm_model,
     );
     const citations = buildCitations(retrieveResult.body.chunks);
+    const confidence = buildCompositeConfidence(citations);
     return jsonResponse({
       response: responseText,
       citations,
-      confidence: citations.length >= 6 ? 'high' : citations.length >= 3 ? 'medium' : 'low',
+      confidence,
+      llm_provider: body.llm_provider ?? 'openai',
+      llm_model: body.llm_model ?? null,
       retrieval_run_id: retrieveResult.body.retrieval_run_id,
       site_id: claims.site_id,
       mode: claims.mode,

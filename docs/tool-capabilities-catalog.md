@@ -10,17 +10,20 @@ This catalog is seeded by `supabase/migrations/202604130002_seed_tool_capabiliti
 
 ## Current Totals
 
-- Total capabilities: `61`
+- Total capabilities: `64`
 - Domains covered: `eigen`, `oracle`, `meg`, `foundation`, `charter`
 
 ## Domain Breakdown
 
-### Eigen (18)
+### Eigen (21)
 
 - `edge.eigen-tool-capabilities.read`
 - `edge.eigen-tool-capabilities.write`
 - `edge.eigen-chat.write`
 - `edge.eigen-chat-public.write`
+- `edge.eigen-chat-router.write`
+- `edge.eigen-chat-confidence.read`
+- `edge.eigen-chat-provider-policy.write`
 - `edge.eigen-widget-session.write`
 - `edge.eigen-widget-chat.write`
 - `edge.eigen-retrieve.read`

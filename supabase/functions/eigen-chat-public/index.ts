@@ -8,10 +8,19 @@ import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
+import {
+  buildCitations,
+  buildCompositeConfidence,
+  buildUploadFirstStrataWeights,
+  type LlmProvider,
+} from '../_shared/eigen-chat-contract.ts';
+import { completeLlmChat } from '../_shared/llm-chat.ts';
 
 interface PublicChatRequest {
   message: string;
   response_format?: 'structured' | 'freeform';
+  llm_provider?: LlmProvider;
+  llm_model?: string;
   site_id?: string;
   site_source_systems?: string[];
   site_boost?: number;
@@ -64,6 +73,11 @@ function parseRequest(value: unknown): PublicChatRequest {
   return {
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
+    llm_provider:
+      body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
+        ? (body.llm_provider as LlmProvider)
+        : undefined,
+    llm_model: typeof body.llm_model === 'string' ? body.llm_model.trim() : undefined,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: Array.isArray(body.site_source_systems)
       ? body.site_source_systems.map((item) => String(item))
@@ -82,18 +96,6 @@ function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
 
 function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
   return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}`;
-}
-
-function buildCitations(chunks: EigenRetrieveChunk[]) {
-  return chunks.slice(0, 8).map((chunk) => ({
-    chunk_id: chunk.chunk_id,
-    source: chunk.provenance?.source_ref ?? chunk.provenance?.source_system ?? 'unknown',
-    section:
-      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
-        ? chunk.provenance.heading_path.join(' › ')
-        : undefined,
-    relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
-  }));
 }
 
 function readPublicChatTemperature(): number {
@@ -141,19 +143,11 @@ async function synthesizePublicResponse(
   message: string,
   retrievedChunks: EigenRetrieveChunk[],
   format: 'structured' | 'freeform',
+  llmProvider: LlmProvider | undefined,
+  llmModel: string | undefined,
 ): Promise<string> {
   const hasContext = retrievedChunks.length > 0;
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
 
-  if (!apiKey) {
-    if (!hasContext) {
-      return 'Hi — I\'m Public Eigen. I don\'t have matching sourced details for that in our public index yet. What are you trying to figure out?';
-    }
-    const snippets = retrievedChunks.slice(0, 3).map((c) => c.content.slice(0, 260).trim()).filter(Boolean);
-    return snippets.map((s) => `• ${s}${s.length >= 260 ? '…' : ''}`).join('\n\n');
-  }
-
-  const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
   const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
   const systemPrompt = withEigenChatProseStyle(
     envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
@@ -162,35 +156,15 @@ async function synthesizePublicResponse(
     ? buildUserMessageWithContext(message, retrievedChunks)
     : `Question: ${message}`;
 
-  const completion = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: readPublicChatTemperature(),
-      max_tokens: readMaxCompletionTokens(),
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
-    }),
+  const result = await completeLlmChat({
+    provider: llmProvider,
+    model: llmModel,
+    systemPrompt,
+    userContent,
+    temperature: readPublicChatTemperature(),
+    maxTokens: readMaxCompletionTokens(),
   });
-
-  if (!completion.ok) {
-    const text = await completion.text();
-    throw new Error(`Chat completion failed: ${completion.status} ${text}`);
-  }
-
-  const payload = await completion.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const answer = payload.choices?.[0]?.message?.content?.trim();
+  const answer = result.text?.trim();
   if (!answer) throw new Error('Chat completion returned empty content');
   return answer;
 }
@@ -225,7 +199,12 @@ serve(async (req) => {
       site_source_systems: body.site_source_systems ?? [],
       site_boost: body.site_boost,
       global_penalty: body.global_penalty,
-      budget_profile: body.budget_profile ?? { max_chunks: 10, max_tokens: 3000 },
+      budget_profile: body.budget_profile
+        ? {
+            ...body.budget_profile,
+            strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+          }
+        : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
       rerank: true,
       include_provenance: true,
     });
@@ -238,13 +217,18 @@ serve(async (req) => {
       body.message,
       retrieveResult.body.chunks,
       body.response_format ?? 'structured',
+      body.llm_provider,
+      body.llm_model,
     );
     const citations = buildCitations(retrieveResult.body.chunks);
+    const confidence = buildCompositeConfidence(citations);
 
     return jsonResponse({
       response: responseText,
       citations,
-      confidence: citations.length >= 6 ? 'high' : citations.length >= 3 ? 'medium' : 'low',
+      confidence,
+      llm_provider: body.llm_provider ?? 'openai',
+      llm_model: body.llm_model ?? null,
       retrieval_run_id: retrieveResult.body.retrieval_run_id,
       policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
       rate_limit: {

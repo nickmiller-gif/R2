@@ -36,7 +36,7 @@ describe('consumeEigenChatSse', () => {
     expect(onDelta).toHaveBeenNthCalledWith(2, ' world');
     expect(result.response).toBe('Hello world');
     expect(result.retrieval_run_id).toBe('run-1');
-    expect(result.confidence).toBe('high');
+    expect(result.confidence.overall).toBe('high');
     expect(result.memory_updated).toBe(true);
     expect(result.session_id).toBe('session-1');
   });

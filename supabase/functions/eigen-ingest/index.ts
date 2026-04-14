@@ -320,7 +320,17 @@ serve(async (req) => {
         400,
       );
     }
+    const sourceSystemLower = requestBody.source_system.toLowerCase();
     const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+    if (
+      sourceSystemLower.includes('upload') ||
+      sourceSystemLower.includes('manual') ||
+      sourceSystemLower.includes('autonomous')
+    ) {
+      if (!policyTags.includes('user_upload')) {
+        policyTags.push('user_upload');
+      }
+    }
 
     const effectiveEmbeddingModel =
       typeof requestBody.embedding_model === 'string' && requestBody.embedding_model.trim().length > 0
@@ -535,7 +545,9 @@ serve(async (req) => {
         entity_ids: requestBody.entity_ids ?? [],
         policy_tags: policyTags,
         authority_score:
-          chunk.chunkLevel === 'claim'
+          sourceSystemLower.includes('upload') || sourceSystemLower.includes('manual')
+            ? 92
+            : chunk.chunkLevel === 'claim'
             ? 85
             : chunk.chunkLevel === 'paragraph'
             ? 70

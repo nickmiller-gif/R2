@@ -5,6 +5,7 @@ import type {
   ChatMessageAssistant,
   ChatResponse,
   ChatTier,
+  LlmProvider,
   IngestCorpusTier,
   IngestResponse,
   SourceInventoryResponse,
@@ -25,6 +26,8 @@ interface ChatRequestInput {
   sessionId?: string;
   entityScope: string[];
   policyScope: string[];
+  llmProvider: LlmProvider;
+  llmModel: string;
   stream?: boolean;
   signal?: AbortSignal;
 }
@@ -57,6 +60,8 @@ function buildChatRequest(input: ChatRequestInput): { url: string; init: Request
         response_format: 'structured',
         entity_scope: input.tier === 'eigenx' ? input.entityScope : undefined,
         policy_scope: input.tier === 'eigenx' ? input.policyScope : undefined,
+        llm_provider: input.llmProvider,
+        llm_model: input.llmModel || undefined,
         stream: input.stream === true ? true : undefined,
       }),
     },
@@ -88,6 +93,8 @@ export function App() {
   const [ingestTier, setIngestTier] = useState<IngestCorpusTier>('eigenx');
   const [ingestLocalError, setIngestLocalError] = useState<string | null>(null);
   const [streamResponses, setStreamResponses] = useState(false);
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai');
+  const [llmModel, setLlmModel] = useState('');
   const [isStreamingChat, setIsStreamingChat] = useState(false);
   const [streamChatError, setStreamChatError] = useState<string | null>(null);
   const [sourceInventory, setSourceInventory] = useState<SourceInventoryResponse | null>(null);
@@ -117,6 +124,8 @@ export function App() {
       entityScope: string[];
       policyScope: string[];
       tier: ChatTier;
+      llmProvider: LlmProvider;
+      llmModel: string;
     }) => {
       const request = buildChatRequest({
         apiBaseUrl,
@@ -124,6 +133,8 @@ export function App() {
         sessionId: input.sessionId,
         entityScope: input.entityScope,
         policyScope: input.policyScope,
+        llmProvider: input.llmProvider,
+        llmModel: input.llmModel,
         tier: input.tier,
       });
       const response = await fetch(request.url, request.init);
@@ -141,6 +152,9 @@ export function App() {
         citations: result.citations,
         confidence: result.confidence,
         retrieval_run_id: result.retrieval_run_id,
+        llm_provider: result.llm_provider,
+        llm_model: result.llm_model,
+        llm_fallback_used: result.llm_fallback_used,
       };
       setMessages((prev) => [...prev, assistant]);
     },
@@ -288,6 +302,8 @@ export function App() {
             sessionId,
             entityScope: entityList,
             policyScope: policyList,
+            llmProvider,
+            llmModel,
             stream: true,
             signal: controller.signal,
           });
@@ -312,6 +328,9 @@ export function App() {
             citations: result.citations,
             confidence: result.confidence,
             retrieval_run_id: result.retrieval_run_id,
+            llm_provider: result.llm_provider,
+            llm_model: result.llm_model,
+            llm_fallback_used: result.llm_fallback_used,
           });
           setMessages((prev) => updateAssistantMessage(prev, assistantId, finalizeAssistantMessage));
         } catch (err) {
@@ -337,6 +356,8 @@ export function App() {
       sessionId,
       entityScope: entityList,
       policyScope: policyList,
+      llmProvider,
+      llmModel,
       tier: chatTier,
     });
   };
@@ -378,6 +399,10 @@ export function App() {
             onPolicyScopeChange={setPolicyScope}
             streamResponses={streamResponses}
             onStreamResponsesChange={setStreamResponses}
+            llmProvider={llmProvider}
+            onLlmProviderChange={setLlmProvider}
+            llmModel={llmModel}
+            onLlmModelChange={setLlmModel}
             isLoading={chatMutation.isPending || isStreamingChat}
             chatError={chatMutationError}
             streamError={streamChatError}

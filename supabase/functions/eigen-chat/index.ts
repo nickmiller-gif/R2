@@ -17,6 +17,13 @@ import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
+import {
+  buildCitations,
+  buildCompositeConfidence,
+  buildUploadFirstStrataWeights,
+  type LlmProvider,
+} from '../_shared/eigen-chat-contract.ts';
+import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 
 interface ChatRequest {
   message: string;
@@ -37,6 +44,10 @@ interface ChatRequest {
     max_tokens?: number;
     strata_weights?: Record<string, number>;
   };
+  llm_provider?: LlmProvider;
+  llm_model?: string;
+  oracle_run_id?: string;
+  charter_decision_id?: string;
 }
 
 const supabaseClients = createSupabaseClientFactory();
@@ -49,7 +60,7 @@ function readMaxMessageChars(): number {
 }
 
 function readMaxCompletionTokens(): number {
-  const raw = Deno.env.get('OPENAI_CHAT_MAX_TOKENS') ?? '1200';
+  const raw = Deno.env.get('EIGEN_CHAT_MAX_TOKENS') ?? Deno.env.get('OPENAI_CHAT_MAX_TOKENS') ?? '1200';
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(n, 16_000);
@@ -118,6 +129,13 @@ function parseRequest(value: unknown): ChatRequest {
     site_boost: typeof body.site_boost === 'number' ? body.site_boost : undefined,
     global_penalty: typeof body.global_penalty === 'number' ? body.global_penalty : undefined,
     budget_profile,
+    llm_provider:
+      body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
+        ? (body.llm_provider as LlmProvider)
+        : undefined,
+    llm_model: typeof body.llm_model === 'string' ? body.llm_model.trim() : undefined,
+    oracle_run_id: typeof body.oracle_run_id === 'string' ? body.oracle_run_id.trim() : undefined,
+    charter_decision_id: typeof body.charter_decision_id === 'string' ? body.charter_decision_id.trim() : undefined,
   };
 }
 
@@ -125,161 +143,20 @@ function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
   return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
 }
 
-function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
-  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}`;
+function buildContextHandlesMessage(body: ChatRequest): string {
+  const handles: string[] = [];
+  if (body.oracle_run_id) handles.push(`oracle_run_id=${body.oracle_run_id}`);
+  if (body.charter_decision_id) handles.push(`charter_decision_id=${body.charter_decision_id}`);
+  if (!handles.length) return '';
+  return `\n\nLinked governance context handles:\n- ${handles.join('\n- ')}`;
 }
 
-function buildFallbackAnswer(message: string, retrievedChunks: EigenRetrieveChunk[]): string {
-  const snippets = retrievedChunks.slice(0, 3).map((chunk) => chunk.content.slice(0, 280).trim()).filter(
-    Boolean,
-  );
-  if (snippets.length === 0) {
-    return 'No grounded knowledge was retrieved for this query.';
-  }
-  const body = snippets
-    .map((s) => `• ${s}${s.length >= 280 ? '…' : ''}`)
-    .join('\n\n');
-  const shortQ = message.length > 120 ? `${message.slice(0, 117)}…` : message;
-  return `From the indexed materials for “${shortQ}”:\n\n${body}`;
-}
-
-function buildCitations(chunks: EigenRetrieveChunk[]) {
-  return chunks.slice(0, 8).map((chunk) => ({
-    chunk_id: chunk.chunk_id,
-    source:
-      chunk.provenance?.source_ref ??
-      chunk.provenance?.source_system ??
-      'unknown',
-    section:
-      chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
-        ? chunk.provenance.heading_path.join(' › ')
-        : undefined,
-    relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
-  }));
-}
-
-async function synthesizeResponse(
+function buildUserMessageWithContext(
   message: string,
-  retrievedChunks: EigenRetrieveChunk[],
-  format: 'structured' | 'freeform',
-): Promise<string> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (retrievedChunks.length === 0) {
-    return readNoContextResponse();
-  }
-  if (!apiKey) {
-    return buildFallbackAnswer(message, retrievedChunks);
-  }
-
-  const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const userContent = buildUserMessageWithContext(message, retrievedChunks);
-  const systemPrompt = readSystemPrompt(format);
-
-  const completion = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: readMaxCompletionTokens(),
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
-    }),
-  });
-
-  if (!completion.ok) {
-    const text = await completion.text();
-    throw new Error(`Chat completion failed: ${completion.status} ${text}`);
-  }
-
-  const payload = await completion.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const answer = payload.choices?.[0]?.message?.content?.trim();
-  if (!answer) throw new Error('Chat completion returned empty content');
-  return answer;
-}
-
-async function* streamOpenAiChatDeltas(
-  userContent: string,
-  format: 'structured' | 'freeform',
-): AsyncGenerator<string, void, void> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) {
-    throw new Error('Streaming requires OPENAI_API_KEY');
-  }
-
-  const model = Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  const systemPrompt = readSystemPrompt(format);
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: readMaxCompletionTokens(),
-      stream: true,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok || !response.body) {
-    const text = await response.text();
-    throw new Error(`Chat stream failed: ${response.status} ${text}`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const segments = buffer.split('\n\n');
-      buffer = segments.pop() ?? '';
-
-      for (const segment of segments) {
-        const line = segment.split('\n').find((l) => l.startsWith('data: '));
-        if (!line) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') return;
-
-        try {
-          const json = JSON.parse(data) as {
-            choices?: Array<{ delta?: { content?: string } }>;
-          };
-          const piece = json.choices?.[0]?.delta?.content;
-          if (typeof piece === 'string' && piece.length > 0) {
-            yield piece;
-          }
-        } catch {
-          /* ignore malformed SSE payloads */
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
+  chunks: EigenRetrieveChunk[],
+  body: ChatRequest,
+): string {
+  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}${buildContextHandlesMessage(body)}`;
 }
 
 serve(async (req) => {
@@ -333,7 +210,12 @@ serve(async (req) => {
       site_source_systems: body.site_source_systems ?? [],
       site_boost: body.site_boost,
       global_penalty: body.global_penalty,
-      budget_profile: body.budget_profile ?? { max_chunks: 12, max_tokens: 4000 },
+      budget_profile: body.budget_profile
+        ? {
+            ...body.budget_profile,
+            strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+          }
+        : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
       rerank: true,
       include_provenance: true,
     });
@@ -344,12 +226,11 @@ serve(async (req) => {
 
     const retrievedChunks = retrieveResult.body.chunks;
     const citations = buildCitations(retrievedChunks);
-    const confidence: 'low' | 'medium' | 'high' =
-      citations.length >= 6 ? 'high' : citations.length >= 3 ? 'medium' : 'low';
+    const confidence = buildCompositeConfidence(citations);
 
     if (body.stream) {
       const encoder = new TextEncoder();
-      const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks);
+      const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks, body);
       const sseHeaders = {
         ...corsHeaders,
         'Content-Type': 'text/event-stream; charset=utf-8',
@@ -364,19 +245,31 @@ serve(async (req) => {
 
           try {
             let fullText = '';
-            const apiKey = Deno.env.get('OPENAI_API_KEY');
+            let providerUsed: LlmProvider | undefined;
+            let modelUsed: string | null = null;
+            let fallbackUsed = false;
 
             if (retrievedChunks.length === 0) {
               fullText = readNoContextResponse();
               send({ text: fullText });
-            } else if (!apiKey) {
-              fullText = buildFallbackAnswer(body.message, retrievedChunks);
-              send({ text: fullText });
             } else {
-              for await (const delta of streamOpenAiChatDeltas(
-                streamUserContent,
-                body.response_format ?? 'structured',
-              )) {
+              const stream = streamLlmChatDeltas({
+                provider: body.llm_provider,
+                model: body.llm_model,
+                systemPrompt: readSystemPrompt(body.response_format ?? 'structured'),
+                userContent: streamUserContent,
+                maxTokens: readMaxCompletionTokens(),
+                temperature: 0.1,
+              });
+              while (true) {
+                const step = await stream.next();
+                if (step.done) {
+                  providerUsed = step.value.provider;
+                  modelUsed = step.value.model;
+                  fallbackUsed = step.value.fallback_used;
+                  break;
+                }
+                const delta = step.value;
                 fullText += delta;
                 send({ text: delta });
               }
@@ -428,6 +321,9 @@ serve(async (req) => {
               retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
               memory_updated: true,
               session_id: sessionId,
+              llm_provider: providerUsed ?? body.llm_provider ?? 'openai',
+              llm_model: modelUsed ?? body.llm_model ?? null,
+              llm_fallback_used: fallbackUsed,
               effective_policy_scope: resolvedScope.effectivePolicyScope,
             });
           } catch (streamErr) {
@@ -442,11 +338,27 @@ serve(async (req) => {
       return new Response(stream, { headers: sseHeaders });
     }
 
-    const responseText = await synthesizeResponse(
-      body.message,
-      retrievedChunks,
-      body.response_format ?? 'structured',
-    );
+    let responseText = '';
+    let llmProvider: LlmProvider = body.llm_provider ?? 'openai';
+    let llmModel: string | null = body.llm_model ?? null;
+    let llmFallbackUsed = false;
+
+    if (retrievedChunks.length === 0) {
+      responseText = readNoContextResponse();
+    } else {
+      const llmResult = await completeLlmChat({
+        provider: body.llm_provider,
+        model: body.llm_model,
+        systemPrompt: readSystemPrompt(body.response_format ?? 'structured'),
+        userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
+        maxTokens: readMaxCompletionTokens(),
+        temperature: 0.1,
+      });
+      responseText = llmResult.text;
+      llmProvider = llmResult.provider;
+      llmModel = llmResult.model;
+      llmFallbackUsed = llmResult.fallback_used;
+    }
 
     const [memoryUpsert, sessionUpdate] = await Promise.all([
       client.from('memory_entries').upsert(
@@ -487,6 +399,9 @@ serve(async (req) => {
       retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
       memory_updated: true,
       session_id: sessionId,
+      llm_provider: llmProvider,
+      llm_model: llmModel,
+      llm_fallback_used: llmFallbackUsed,
       effective_policy_scope: resolvedScope.effectivePolicyScope,
     });
   } catch (err) {

@@ -128,8 +128,24 @@ export function createAutonomousCaptureService(db: AutonomousCaptureDb): Autonom
 
     async upsert(input) {
       const now = nowUtc().toISOString();
+      const existing = await db.findCaptureByFingerprint(input.ownerId, input.contentFingerprint);
       const row = await db.upsertCapture(
-        inputToRow(crypto.randomUUID(), input, now),
+        existing
+          ? {
+              ...existing,
+              source_url: input.sourceUrl,
+              page_title: input.pageTitle ?? existing.page_title,
+              raw_excerpt: input.rawExcerpt,
+              summary: input.summary ?? existing.summary,
+              summary_model: input.summaryModel ?? existing.summary_model,
+              confidence_label: input.confidenceLabel ?? existing.confidence_label,
+              session_label: input.sessionLabel ?? existing.session_label,
+              oracle_run_id: input.oracleRunId ?? existing.oracle_run_id,
+              charter_decision_id: input.charterDecisionId ?? existing.charter_decision_id,
+              metadata: input.metadata ?? existing.metadata ?? {},
+              updated_at: now,
+            }
+          : inputToRow(crypto.randomUUID(), input, now),
         ['owner_id', 'content_fingerprint'],
       );
       return rowToCapture(row);

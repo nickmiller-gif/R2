@@ -1,6 +1,6 @@
+import type { CharterRole } from '../../types/shared/roles.js';
 import type {
   CharterUserRole,
-  CharterRole,
   AssignCharterRoleInput,
   CharterUserRoleFilter,
 } from '../../types/charter/types.js';

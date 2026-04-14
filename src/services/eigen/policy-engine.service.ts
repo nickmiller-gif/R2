@@ -11,6 +11,7 @@ import type {
   EvaluateEigenPolicyInput,
   EvaluateEigenPolicyResult,
 } from '../../types/eigen/policy-engine.js';
+import { ROLE_HIERARCHY } from '../../types/shared/roles.js';
 
 export interface DbEigenPolicyRuleRow {
   id: string;
@@ -53,11 +54,10 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
   };
 }
 
-const ROLE_HIERARCHY = ['member', 'reviewer', 'operator', 'counsel', 'admin'] as const;
 type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
 
 function isHierarchicalRole(value: string): value is HierarchicalRole {
-  return ROLE_HIERARCHY.includes(value as HierarchicalRole);
+  return (ROLE_HIERARCHY as readonly string[]).includes(value);
 }
 
 function hasRequiredRole(callerRoles: string[], requiredRole: string | null): boolean {

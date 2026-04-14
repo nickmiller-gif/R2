@@ -1,11 +1,10 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { fetchSourceInventory } from '../_shared/source-inventory.ts';
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'GET') return errorResponse('Method not allowed', 405);
 

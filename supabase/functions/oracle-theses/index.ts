@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
@@ -14,7 +13,7 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   return null;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }

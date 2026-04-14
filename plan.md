@@ -29,7 +29,6 @@ This plan defines the incremental import path from the old source repository int
 
 ## Next Slices (not yet started)
 
-- Supabase client injection pattern (DI-friendly client factory)
 - Eigen policy engine + capability registry (EigenX/KOS upgrade)
 
 ## Recently landed (still iterate in follow-ups)
@@ -37,6 +36,12 @@ This plan defines the incremental import path from the old source repository int
 - Oracle publication + governance boundary (signals + theses publication workflow, `oracle_publication_events`, RLS for published vs operator roles) — see `202604090004_oracle_publication_boundary_and_read_models.sql`
 - Oracle briefing / theme map / feed history read models — DB views + `oracle-read-models` edge function + `202604100003_oracle_read_model_view_grants.sql`
 - Eigen rollout: oracle-read-models edge function, MEG cross-domain identity, knowledge-chunk policy extensions, CI enforcement, ecosystem-wide ingest verification — PR #85
+- Supabase client injection pattern (DI-friendly client factory) — ✅ complete; `createSupabaseClientFactory()` in `_shared/supabase.ts`
+- Autonomous capture ingest — ✅ complete; `autonomous-capture-ingest` edge function + `autonomous_captures` table + service layer + tests
+- Deno.serve() migration — ✅ complete; all 39 edge functions migrated from deprecated `std/http` `serve()` to native `Deno.serve()`
+- RLS `{public}` role hygiene fix — ✅ complete; `202604150001_tighten_rls_public_role_write_policies.sql` tightens 5 MEG/Oracle write policies from implicit `{public}` to explicit `{authenticated}`
+- Admin bootstrap seed — ✅ complete; `202604150002_charter_admin_bootstrap_seed.sql` adds `bootstrap_admin_role(uuid)` procedure callable only by service_role
+- `ROLE_HIERARCHY` deduplication — ✅ complete; canonical definition in `_shared/roles.ts` (Deno) + `src/types/shared/roles.ts` (Node); both `rbac.ts` and `eigen-policy-engine.ts` import from the shared module
 
 ## Active Slice Specification
 

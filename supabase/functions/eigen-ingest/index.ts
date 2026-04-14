@@ -8,7 +8,7 @@ import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { extractDocumentText } from '../_shared/extract-document.ts';
-import { inferCorpusTier, normalizeCorpusPolicyTags } from '../_shared/eigen-policy.ts';
+import { inferCorpusTier, normalizeCorpusPolicyTags, POLICY_TAG_RAY_VOICE } from '../_shared/eigen-policy.ts';
 
 interface IngestDocumentPayload {
   title?: string;
@@ -33,6 +33,34 @@ interface IngestRequestBody {
   policy_tags?: string[];
   entity_ids?: string[];
   embedding_model?: string;
+}
+
+interface IngestIdentity {
+  userId: string;
+}
+
+const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
+
+function resolveIngestIdentity(req: Request): IngestIdentity | null {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const ingestTokenHeader = req.headers.get('x-eigen-ingest-token') ?? '';
+  const configuredIngestToken = Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '';
+  if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
+    return { userId: SERVICE_ROLE_OWNER_ID };
+  }
+
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  // Optional controlled bypass for backend jobs that hold the service role key.
+  // Keep disabled by default.
+  const allowServiceRole = (Deno.env.get('EIGEN_INGEST_ALLOW_SERVICE_ROLE') ?? 'false') === 'true';
+  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (allowServiceRole && serviceRole && token === serviceRole) {
+    return { userId: SERVICE_ROLE_OWNER_ID };
+  }
+  return null;
 }
 
 function readMaxBodyChars(): number {
@@ -300,11 +328,17 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
-
-  const roleCheck = await requireRole(auth.claims.userId, 'member');
-  if (!roleCheck.ok) return roleCheck.response;
+  const serviceIdentity = resolveIngestIdentity(req);
+  let ownerUserId: string;
+  if (serviceIdentity) {
+    ownerUserId = serviceIdentity.userId;
+  } else {
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
+    const roleCheck = await requireRole(auth.claims.userId, 'member');
+    if (!roleCheck.ok) return roleCheck.response;
+    ownerUserId = auth.claims.userId;
+  }
 
   const idemError = requireIdempotencyKey(req);
   if (idemError) return idemError;
@@ -329,6 +363,16 @@ serve(async (req) => {
     ) {
       if (!policyTags.includes('user_upload')) {
         policyTags.push('user_upload');
+      }
+    }
+    if (sourceSystemLower.includes('ray_voice') || sourceSystemLower.includes('ray-podcast')) {
+      if (!policyTags.includes(POLICY_TAG_RAY_VOICE)) {
+        policyTags.push(POLICY_TAG_RAY_VOICE);
+      }
+      // Keep voice docs highly trusted for style guidance, while topic selection
+      // is still constrained by retrieval relevance controls.
+      if (!policyTags.includes('voice_style')) {
+        policyTags.push('voice_style');
       }
     }
 
@@ -483,7 +527,7 @@ serve(async (req) => {
         {
           source_system: requestBody.source_system,
           source_ref: requestBody.source_ref,
-          owner_id: auth.claims.userId,
+          owner_id: ownerUserId,
           title: requestBody.document.title,
           body: requestBody.document.body,
           content_type: requestBody.document.content_type,

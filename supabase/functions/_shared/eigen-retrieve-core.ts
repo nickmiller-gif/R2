@@ -9,6 +9,10 @@ import {
   oracleCompositeBoost as computeOracleCompositeBoost,
   parseOracleRetrievalBoostCap,
 } from '../../../src/lib/eigen/oracle-retrieval-boost.ts';
+import {
+  applySiteRelevanceGate,
+  limitCrossSourceRatio,
+} from '../../../src/lib/eigen/source-relevance-gating.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
@@ -18,6 +22,11 @@ export interface EigenRetrieveRequest {
   site_source_systems?: string[];
   site_boost?: number;
   global_penalty?: number;
+  site_relevance_min?: number;
+  cross_source_max_ratio?: number;
+  allow_cross_source_when_low_confidence?: boolean;
+  outside_domain_intent?: boolean;
+  disallowed_source_systems?: string[];
   budget_profile?: {
     max_chunks?: number;
     max_tokens?: number;
@@ -184,6 +193,11 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     site_source_systems: normalizeList(payload.site_source_systems),
     site_boost: parseNumber(payload.site_boost),
     global_penalty: parseNumber(payload.global_penalty),
+    site_relevance_min: parseNumber(payload.site_relevance_min),
+    cross_source_max_ratio: parseNumber(payload.cross_source_max_ratio),
+    allow_cross_source_when_low_confidence: payload.allow_cross_source_when_low_confidence === true,
+    outside_domain_intent: payload.outside_domain_intent === true,
+    disallowed_source_systems: normalizeList(payload.disallowed_source_systems),
     budget_profile:
       payload.budget_profile && typeof payload.budget_profile === 'object'
         ? {
@@ -272,6 +286,11 @@ export async function executeEigenRetrieve(
               policy_scope: effectivePolicyScope ?? [],
               site_id: payload.site_id ?? null,
               site_source_systems: effectiveSiteSources ?? [],
+              site_relevance_min: payload.site_relevance_min ?? null,
+              cross_source_max_ratio: payload.cross_source_max_ratio ?? null,
+              allow_cross_source_when_low_confidence: payload.allow_cross_source_when_low_confidence ?? false,
+              outside_domain_intent: payload.outside_domain_intent ?? false,
+              disallowed_source_systems: payload.disallowed_source_systems ?? [],
             },
             budget_profile: payload.budget_profile ?? {},
             status: 'running',
@@ -385,13 +404,44 @@ export async function executeEigenRetrieve(
       );
     }
 
+    const relevanceGate = applySiteRelevanceGate(temporalFiltered, {
+      siteSources,
+      siteRelevanceMin: payload.site_relevance_min,
+      allowCrossSourceWhenLowConfidence: payload.allow_cross_source_when_low_confidence,
+      outsideDomainIntent: payload.outside_domain_intent,
+    });
+    if (siteSources.size > 0) {
+      droppedReasons.push(
+        `site_relevance_gate: site=${relevanceGate.siteCandidateCount} cross=${relevanceGate.crossCandidateCount} best_site_similarity=${relevanceGate.bestSiteSimilarity.toFixed(4)}`,
+      );
+    }
+    if (relevanceGate.crossSuppressedCount > 0) {
+      droppedReasons.push(`cross_source_suppressed: ${relevanceGate.crossSuppressedCount} chunks`);
+    }
+    if (relevanceGate.crossSourceFallbackEnabled) {
+      droppedReasons.push('cross_source_fallback_enabled');
+    }
+
+    const disallowedSourceSystems = new Set(
+      (payload.disallowed_source_systems ?? []).map((value) => value.trim()).filter((value) => value.length > 0),
+    );
+    const filteredByDisallowed = disallowedSourceSystems.size > 0
+      ? relevanceGate.candidates.filter((candidate) => !disallowedSourceSystems.has(candidate.source_system))
+      : relevanceGate.candidates;
+    if (disallowedSourceSystems.size > 0) {
+      const disallowedDroppedCount = relevanceGate.candidates.length - filteredByDisallowed.length;
+      if (disallowedDroppedCount > 0) {
+        droppedReasons.push(`disallowed_source_system_dropped: ${disallowedDroppedCount} chunks`);
+      }
+    }
+
     // rerank defaults to true; only skipped when caller explicitly passes rerank: false
     const applyRerank = payload.rerank !== false;
     const hasSiteSources = siteSources.size > 0;
     const oracleBoostCap = readOracleRelevanceBoostCap();
     const uploadSourceBoost = readUploadSourceBoost();
 
-    const scoredDescending = temporalFiltered
+    const scoredDescending = filteredByDisallowed
       .map((candidate) => {
         const baseScore = applyRerank
           ? scoreCandidate({
@@ -434,14 +484,20 @@ export async function executeEigenRetrieve(
       })
       .sort((left, right) => right.composite_score - left.composite_score);
 
-    const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(
-      scoredDescending,
-      {
-        maxChunks,
-        maxTokens: payload.budget_profile?.max_tokens,
-        strataWeights: payload.budget_profile?.strata_weights,
-      },
-    );
+    const ratioLimited = limitCrossSourceRatio(scoredDescending, {
+      siteSources,
+      crossSourceMaxRatio: payload.cross_source_max_ratio,
+      maxChunks,
+    });
+    if (ratioLimited.droppedCrossSourceCount > 0) {
+      droppedReasons.push(`cross_source_ratio_dropped: ${ratioLimited.droppedCrossSourceCount} chunks`);
+    }
+
+    const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(ratioLimited.candidates, {
+      maxChunks,
+      maxTokens: payload.budget_profile?.max_tokens,
+      strataWeights: payload.budget_profile?.strata_weights,
+    });
 
     if (skippedDueToTokenBudget > 0) {
       droppedReasons.push(`token_budget_skipped: ${skippedDueToTokenBudget} chunks`);

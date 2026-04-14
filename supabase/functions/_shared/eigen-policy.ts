@@ -1,5 +1,6 @@
 export const POLICY_TAG_EIGEN_PUBLIC = 'eigen_public';
 export const POLICY_TAG_EIGENX = 'eigenx';
+export const POLICY_TAG_RAY_VOICE = 'ray_voice';
 
 /** Per-user private supplements in `knowledge_chunks.policy_tags` (see eigenx-scope.ts). */
 export function policyTagEigenxUser(userId: string): string {

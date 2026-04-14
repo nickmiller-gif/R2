@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "R2",
+      "runtimeExecutable": "supabase",
+      "runtimeArgs": ["start"],
+      "port": 54321,
+      "cwd": "/Users/nick/Desktop/R2 Complete/R2"
+    }
+  ]
+}

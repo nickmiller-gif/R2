@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_REF="${PROJECT_REF:-zudslxucibosjwefojtm}"
-SUPABASE_URL="${SUPABASE_URL:-https://${PROJECT_REF}.supabase.co}"
-FUNCTIONS_URL="${FUNCTIONS_URL:-https://${PROJECT_REF}.functions.supabase.co}"
+PROJECT_REF="${PROJECT_REF:-}"
+SUPABASE_URL="${SUPABASE_URL:-}"
+FUNCTIONS_URL="${FUNCTIONS_URL:-}"
 ANON_KEY="${SUPABASE_ANON_KEY:-}"
 MEMBER_EMAIL="${MEMBER_EMAIL:-}"
 MEMBER_PASSWORD="${MEMBER_PASSWORD:-}"
@@ -20,6 +20,16 @@ need_var() {
     exit 1
   fi
 }
+
+need_var "PROJECT_REF"
+
+if [[ -z "${SUPABASE_URL}" ]]; then
+  SUPABASE_URL="https://${PROJECT_REF}.supabase.co"
+fi
+
+if [[ -z "${FUNCTIONS_URL}" ]]; then
+  FUNCTIONS_URL="https://${PROJECT_REF}.functions.supabase.co"
+fi
 
 need_var "ANON_KEY"
 need_var "MEMBER_EMAIL"
@@ -40,7 +50,9 @@ mint_token() {
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))'
 }
 
-request_code() {
+# Sends an authenticated request, writes the response body to /tmp/r2_smoke_body.txt,
+# and prints only the HTTP status code to stdout for assertions.
+request_status_code_and_capture_body() {
   local method="$1"
   local token="$2"
   local url="$3"
@@ -85,28 +97,28 @@ main() {
   local failures=0
   local code
 
-  code="$(request_code GET "${member_token}" "${FUNCTIONS_URL}/eigen-tool-capabilities")" || true
+  code="$(request_status_code_and_capture_body GET "${member_token}" "${FUNCTIONS_URL}/eigen-tool-capabilities")" || true
   check_code "member eigen list" "200" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code GET "${member_token}" "${FUNCTIONS_URL}/eigen-tool-capabilities?id=${BLOCKED_CAPABILITY_ID}")" || true
+  code="$(request_status_code_and_capture_body GET "${member_token}" "${FUNCTIONS_URL}/eigen-tool-capabilities?id=${BLOCKED_CAPABILITY_ID}")" || true
   check_code "member blocked capability by id" "404" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"id\":\"${THESIS_ID}\",\"title\":\"Smoke Title $(date +%s)\"}" "smoke-thesis-allow-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"id\":\"${THESIS_ID}\",\"title\":\"Smoke Title $(date +%s)\"}" "smoke-thesis-allow-$(date +%s)")" || true
   check_code "oracle-theses allowlisted patch" "200" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"id\":\"${THESIS_ID}\",\"profile_id\":\"00000000-0000-0000-0000-000000000000\"}" "smoke-thesis-deny-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"id\":\"${THESIS_ID}\",\"profile_id\":\"00000000-0000-0000-0000-000000000000\"}" "smoke-thesis-deny-$(date +%s)")" || true
   check_code "oracle-theses non-allowlisted patch" "400" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"title\":\"No id\"}" "smoke-thesis-missing-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-theses" "{\"title\":\"No id\"}" "smoke-thesis-missing-$(date +%s)")" || true
   check_code "oracle-theses missing id" "400" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"id\":\"${EVIDENCE_ID}\",\"content_summary\":\"Smoke Summary $(date +%s)\"}" "smoke-evidence-allow-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"id\":\"${EVIDENCE_ID}\",\"content_summary\":\"Smoke Summary $(date +%s)\"}" "smoke-evidence-allow-$(date +%s)")" || true
   check_code "oracle-evidence allowlisted patch" "200" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"id\":\"${EVIDENCE_ID}\",\"profile_id\":\"00000000-0000-0000-0000-000000000000\"}" "smoke-evidence-deny-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"id\":\"${EVIDENCE_ID}\",\"profile_id\":\"00000000-0000-0000-0000-000000000000\"}" "smoke-evidence-deny-$(date +%s)")" || true
   check_code "oracle-evidence non-allowlisted patch" "400" "${code}" || failures=$((failures + 1))
 
-  code="$(request_code PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"content_summary\":\"No id\"}" "smoke-evidence-missing-$(date +%s)")" || true
+  code="$(request_status_code_and_capture_body PATCH "${operator_token}" "${FUNCTIONS_URL}/oracle-evidence-items" "{\"content_summary\":\"No id\"}" "smoke-evidence-missing-$(date +%s)")" || true
   check_code "oracle-evidence missing id" "400" "${code}" || failures=$((failures + 1))
 
   if [[ "${failures}" -gt 0 ]]; then

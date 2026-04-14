@@ -6,8 +6,11 @@ interface EigenPolicyRule {
   policyTag: string;
   capabilityTagPattern: string;
   effect: 'allow' | 'deny';
-  requiredRole: string | null;
+  requiredRole: CharterRole | null;
   rationale: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface DbEigenPolicyRuleRow {
@@ -15,7 +18,7 @@ interface DbEigenPolicyRuleRow {
   policy_tag: string;
   capability_tag_pattern: string;
   effect: 'allow' | 'deny';
-  required_role: string | null;
+  required_role: CharterRole | null;
   rationale: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -36,18 +39,11 @@ export interface ResolveEigenCapabilityAccessResult {
 }
 
 const ROLE_HIERARCHY = ['member', 'reviewer', 'operator', 'counsel', 'admin'] as const;
-type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
-
-function isHierarchicalRole(value: string): value is HierarchicalRole {
-  return ROLE_HIERARCHY.includes(value as HierarchicalRole);
-}
-
-function hasRequiredRole(callerRoles: string[], requiredRole: string | null): boolean {
+function hasRequiredRole(callerRoles: CharterRole[], requiredRole: CharterRole | null): boolean {
   if (!requiredRole) return true;
   if (callerRoles.includes(requiredRole)) return true;
-  if (!isHierarchicalRole(requiredRole)) return false;
   const minimumIndex = ROLE_HIERARCHY.indexOf(requiredRole);
-  return callerRoles.some((role) => isHierarchicalRole(role) && ROLE_HIERARCHY.indexOf(role) >= minimumIndex);
+  return callerRoles.some((role) => ROLE_HIERARCHY.indexOf(role) >= minimumIndex);
 }
 
 function matchWildcard(pattern: string, value: string): boolean {
@@ -59,7 +55,7 @@ function matchWildcard(pattern: string, value: string): boolean {
 
 function matchesRule(
   rule: EigenPolicyRule,
-  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: string[] },
+  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
 ): boolean {
   const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));
   if (!policyTagMatch) return false;
@@ -70,7 +66,7 @@ function matchesRule(
 
 function evaluateEigenPolicyRules(
   rules: EigenPolicyRule[],
-  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: string[] },
+  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
 ): { allowed: boolean; denyReasons: string[] } {
   const matching = rules.filter((rule) => matchesRule(rule, input));
   const denying = matching.filter((rule) => rule.effect === 'deny');
@@ -94,8 +90,8 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
     requiredRole: row.required_role,
     rationale: row.rationale,
     metadata: row.metadata ?? {},
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 

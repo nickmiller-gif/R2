@@ -2892,10 +2892,6 @@ export type Database = {
           entity_asset_id: string
           id: string
           producer_ref: string
-          publication_notes: string | null
-          publication_state: Database["public"]["Enums"]["oracle_publication_state"]
-          published_at: string | null
-          published_by: string | null
           reasons: string[]
           score: number
           scored_at: string
@@ -2912,10 +2908,6 @@ export type Database = {
           entity_asset_id: string
           id?: string
           producer_ref: string
-          publication_notes?: string | null
-          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
-          published_at?: string | null
-          published_by?: string | null
           reasons?: string[]
           score: number
           scored_at?: string
@@ -2932,10 +2924,6 @@ export type Database = {
           entity_asset_id?: string
           id?: string
           producer_ref?: string
-          publication_notes?: string | null
-          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
-          published_at?: string | null
-          published_by?: string | null
           reasons?: string[]
           score?: number
           scored_at?: string

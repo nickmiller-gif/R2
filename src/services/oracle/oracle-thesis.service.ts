@@ -15,7 +15,7 @@ import type {
 } from '../../types/oracle/thesis.js';
 import type { OracleGovernanceMetadata } from '../../types/oracle/shared.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.js';
 import { assertConfidence } from '../../lib/charter/validate.js';
 
 const THESIS_STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -83,10 +83,10 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
     noveltyStatus: row.novelty_status as OracleThesis['noveltyStatus'],
     duplicateOfThesisId: row.duplicate_of_thesis_id,
     supersededByThesisId: row.superseded_by_thesis_id,
-    inspirationSignalIds: parseJsonbField(row.inspiration_signal_ids) as unknown as string[],
-    inspirationEvidenceItemIds: parseJsonbField(row.inspiration_evidence_item_ids) as unknown as string[],
-    validationEvidenceItemIds: parseJsonbField(row.validation_evidence_item_ids) as unknown as string[],
-    contradictionEvidenceItemIds: parseJsonbField(row.contradiction_evidence_item_ids) as unknown as string[],
+    inspirationSignalIds: parseJsonbArray(row.inspiration_signal_ids) as string[],
+    inspirationEvidenceItemIds: parseJsonbArray(row.inspiration_evidence_item_ids) as string[],
+    validationEvidenceItemIds: parseJsonbArray(row.validation_evidence_item_ids) as string[],
+    contradictionEvidenceItemIds: parseJsonbArray(row.contradiction_evidence_item_ids) as string[],
     confidence: row.confidence,
     evidenceStrength: row.evidence_strength,
     uncertaintySummary: row.uncertainty_summary,

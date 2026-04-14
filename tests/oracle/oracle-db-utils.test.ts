@@ -1,8 +1,10 @@
 /**
  * Tests for shared Oracle DB utility helpers (services/oracle/oracle-db-utils.ts).
  *
- * Covers both the already-parsed (object/array) and string-encoded JSON paths,
- * plus the error-fallback paths when JSON.parse fails.
+ * Covers the already-parsed object path (parseJsonbField) and the already-parsed
+ * array path (parseJsonbArray), the string-encoded JSON paths for both, and the
+ * error/fallback paths when JSON.parse fails or the parsed value has an
+ * unexpected shape.
  */
 import { describe, it, expect } from 'vitest';
 import { parseJsonbField, parseJsonbArray } from '../../src/services/oracle/oracle-db-utils.js';
@@ -35,9 +37,20 @@ describe('parseJsonbField', () => {
     expect(parseJsonbField(undefined)).toEqual({});
   });
 
-  it('treats a number as an already-parsed value (cast)', () => {
-    // Non-string, non-null values are cast via `?? {}`. A number coerces to itself.
-    expect(parseJsonbField(42)).toEqual(42);
+  it('returns an empty object for a non-object value (number)', () => {
+    expect(parseJsonbField(42)).toEqual({});
+  });
+
+  it('returns an empty object when the JSON string parses to a non-object (array)', () => {
+    expect(parseJsonbField('[1,2,3]')).toEqual({});
+  });
+
+  it('returns an empty object when the JSON string parses to a non-object (number)', () => {
+    expect(parseJsonbField('42')).toEqual({});
+  });
+
+  it('returns an empty object for an already-parsed array', () => {
+    expect(parseJsonbField([1, 2, 3])).toEqual({});
   });
 });
 

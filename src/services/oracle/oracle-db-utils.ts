@@ -11,12 +11,17 @@
 export function parseJsonbField(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value) as Record<string, unknown>;
+      const parsed = JSON.parse(value);
+      return isPlainObject(parsed) ? (parsed as Record<string, unknown>) : {};
     } catch {
       return {};
     }
   }
-  return (value ?? {}) as Record<string, unknown>;
+  return isPlainObject(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

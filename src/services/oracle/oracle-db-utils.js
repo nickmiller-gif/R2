@@ -5,12 +5,17 @@
 export function parseJsonbField(value) {
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value);
+      const parsed = JSON.parse(value);
+      return isPlainObject(parsed) ? parsed : {};
     } catch {
       return {};
     }
   }
-  return value ?? {};
+  return isPlainObject(value) ? value : {};
+}
+
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function parseJsonbArray(value) {

@@ -25,7 +25,7 @@ CREATE TABLE public.eigen_chat_turns (
 CREATE INDEX idx_eigen_chat_turns_session_id ON public.eigen_chat_turns(session_id);
 CREATE INDEX idx_eigen_chat_turns_owner_id ON public.eigen_chat_turns(owner_id);
 CREATE INDEX idx_eigen_chat_turns_session_created
-  ON public.eigen_chat_turns(session_id, created_at DESC);
+  ON public.eigen_chat_turns(session_id, created_at DESC, turn_index DESC);
 
 ALTER TABLE public.eigen_chat_turns ENABLE ROW LEVEL SECURITY;
 

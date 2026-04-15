@@ -1,5 +1,8 @@
 import type { LlmProvider } from './eigen-chat-contract.ts';
 import type { ConfidenceLabel } from './eigen-chat-contract.ts';
+import type { ConversationTurn } from '../../../src/lib/eigen/chat-history-utils.ts';
+
+export type { ConversationTurn };
 
 export interface LlmChatRequest {
   provider?: LlmProvider;
@@ -8,6 +11,8 @@ export interface LlmChatRequest {
   userContent: string;
   maxTokens: number;
   temperature: number;
+  /** Prior conversation turns to include as multi-turn context (oldest first). */
+  conversationHistory?: ConversationTurn[];
   critic?: {
     enabled?: boolean;
     confidence_label?: ConfidenceLabel;
@@ -76,9 +81,9 @@ function resolveCriticProvider(primaryProvider: LlmProvider): LlmProvider | null
   return null;
 }
 
-async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 45000): Promise<Response> {
+async function fetchWithStreamTimeout(url: string, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -86,10 +91,29 @@ async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 
   }
 }
 
+function buildOpenAiMessages(
+  request: LlmChatRequest,
+): Array<{ role: string; content: string }> {
+  return [
+    { role: 'system', content: request.systemPrompt },
+    ...(request.conversationHistory ?? []),
+    { role: 'user', content: request.userContent },
+  ];
+}
+
+function buildAnthropicMessages(
+  request: LlmChatRequest,
+): Array<{ role: string; content: string }> {
+  return [
+    ...(request.conversationHistory ?? []),
+    { role: 'user', content: request.userContent },
+  ];
+}
+
 async function completeOpenAi(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('openai');
   if (!apiKey) throw new Error('OPENAI_API_KEY is missing');
-  const response = await fetchJsonWithTimeout('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithStreamTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -99,10 +123,7 @@ async function completeOpenAi(request: LlmChatRequest, model: string): Promise<s
       model,
       max_tokens: request.maxTokens,
       temperature: request.temperature,
-      messages: [
-        { role: 'system', content: request.systemPrompt },
-        { role: 'user', content: request.userContent },
-      ],
+      messages: buildOpenAiMessages(request),
     }),
   });
   if (!response.ok) {
@@ -115,7 +136,7 @@ async function completeOpenAi(request: LlmChatRequest, model: string): Promise<s
 async function completeAnthropic(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('anthropic');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is missing');
-  const response = await fetchJsonWithTimeout('https://api.anthropic.com/v1/messages', {
+  const response = await fetchWithStreamTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -127,7 +148,7 @@ async function completeAnthropic(request: LlmChatRequest, model: string): Promis
       max_tokens: request.maxTokens,
       temperature: request.temperature,
       system: request.systemPrompt,
-      messages: [{ role: 'user', content: request.userContent }],
+      messages: buildAnthropicMessages(request),
     }),
   });
   if (!response.ok) {
@@ -144,7 +165,7 @@ async function completeAnthropic(request: LlmChatRequest, model: string): Promis
 async function completePerplexity(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('perplexity');
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY is missing');
-  const response = await fetchJsonWithTimeout('https://api.perplexity.ai/chat/completions', {
+  const response = await fetchWithStreamTimeout('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -154,10 +175,7 @@ async function completePerplexity(request: LlmChatRequest, model: string): Promi
       model,
       temperature: request.temperature,
       max_tokens: request.maxTokens,
-      messages: [
-        { role: 'system', content: request.systemPrompt },
-        { role: 'user', content: request.userContent },
-      ],
+      messages: buildOpenAiMessages(request),
     }),
   });
   if (!response.ok) {
@@ -165,6 +183,138 @@ async function completePerplexity(request: LlmChatRequest, model: string): Promi
   }
   const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Streams tokens from an OpenAI-compatible SSE endpoint (OpenAI, Perplexity).
+ * Yields each text delta as it arrives from the provider.
+ */
+async function* streamOpenAiCompatibleDeltas(
+  url: string,
+  headers: Record<string, string>,
+  request: LlmChatRequest,
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+): AsyncGenerator<string, void, void> {
+  const response = await fetchWithStreamTimeout(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      max_tokens: request.maxTokens,
+      temperature: request.temperature,
+      stream: true,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Streaming request failed (${response.status}): ${await response.text()}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body from provider');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const delta = parsed.choices?.[0]?.delta?.content ?? '';
+          if (delta) yield delta;
+        } catch {
+          // Skip malformed SSE lines.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Streams tokens from Anthropic's messages SSE endpoint.
+ * Yields each text_delta as it arrives from the provider.
+ */
+async function* streamAnthropicDeltas(
+  request: LlmChatRequest,
+  model: string,
+): AsyncGenerator<string, void, void> {
+  const apiKey = apiKeyForProvider('anthropic');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is missing');
+
+  const response = await fetchWithStreamTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: request.maxTokens,
+      temperature: request.temperature,
+      stream: true,
+      system: request.systemPrompt,
+      messages: buildAnthropicMessages(request),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Anthropic streaming failed (${response.status}): ${await response.text()}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body from Anthropic');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        try {
+          const parsed = JSON.parse(payload) as {
+            type?: string;
+            delta?: { type?: string; text?: string };
+          };
+          if (
+            parsed.type === 'content_block_delta' &&
+            parsed.delta?.type === 'text_delta' &&
+            parsed.delta.text
+          ) {
+            yield parsed.delta.text;
+          }
+        } catch {
+          // Skip malformed SSE lines.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function completeWithProvider(

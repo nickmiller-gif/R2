@@ -4631,6 +4631,7 @@ export type Database = {
           total_rows: number
         }[]
       }
+      bootstrap_admin_role: { Args: { p_user_id: string }; Returns: string }
       bump_eigen_public_rate: {
         Args: { p_bucket_key: string; p_window_start?: string }
         Returns: number

@@ -102,6 +102,18 @@ describe('trimHistoryToBudget', () => {
     expect(trimmed[trimmed.length - 1]?.content).toBe(turns[turns.length - 1]?.content);
   });
 
+  it('drops a trailing unpaired user turn after trim so length is even', () => {
+    // 7 turns: window from index 4 would be [u,a,u] (invalid for Anthropic); trim last user
+    const turns = makeTurns(7);
+    const trimmed = trimHistoryToBudget(turns, 4);
+    expect(trimmed).toEqual([
+      { role: 'user', content: 'turn-4' },
+      { role: 'assistant', content: 'turn-5' },
+    ]);
+    expect(trimmed.length % 2).toBe(0);
+    expect(trimmed[trimmed.length - 1]?.role).toBe('assistant');
+  });
+
   it('always starts on a user turn after trimming', () => {
     const turns = makeTurns(10);
     const trimmed = trimHistoryToBudget(turns, 5);

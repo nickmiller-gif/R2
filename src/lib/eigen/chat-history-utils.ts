@@ -55,8 +55,9 @@ export function formatHistoryForContext(
 }
 
 /**
- * Selects up to `maxTurns` of the most recent history entries and ensures the
- * result always starts with a user turn (pairs are preserved).
+ * Selects up to `maxTurns` of the most recent history entries, starts on a
+ * user turn, and keeps an even number of turns so the slice ends on an
+ * assistant (valid user/assistant pairs for Anthropic-style APIs).
  */
 export function trimHistoryToBudget(
   turns: ConversationTurn[],
@@ -64,9 +65,9 @@ export function trimHistoryToBudget(
 ): ConversationTurn[] {
   const limit = Math.max(2, maxTurns);
   if (turns.length <= limit) return turns;
-  // Trim from the front; always keep paired turns (even count).
   let start = turns.length - limit;
-  // Ensure we start on a user turn
   if (start < turns.length && turns[start]?.role === 'assistant') start += 1;
-  return turns.slice(start);
+  const sliced = turns.slice(start);
+  if (sliced.length % 2 !== 0) return sliced.slice(0, -1);
+  return sliced;
 }

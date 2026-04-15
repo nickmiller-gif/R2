@@ -394,3 +394,120 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./declarative"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Edge Functions: explicit entries so Supabase for Git branch previews deploy every slug.
+# verify_jwt matches whether the handler uses guardAuth (JWT); public/widget paths use false.
+
+[functions.autonomous-capture-ingest]
+verify_jwt = true
+
+[functions.charter-asset-valuations]
+verify_jwt = true
+
+[functions.charter-audit-read]
+verify_jwt = true
+
+[functions.charter-decisions]
+verify_jwt = true
+
+[functions.charter-entities]
+verify_jwt = true
+
+[functions.charter-evidence]
+verify_jwt = true
+
+[functions.charter-governance]
+verify_jwt = true
+
+[functions.charter-obligations]
+verify_jwt = true
+
+[functions.charter-payouts]
+verify_jwt = true
+
+[functions.charter-provenance]
+verify_jwt = true
+
+[functions.charter-rights]
+verify_jwt = true
+
+[functions.charter-roles]
+verify_jwt = true
+
+[functions.eigen-chat]
+verify_jwt = true
+
+[functions.eigen-chat-public]
+verify_jwt = false
+
+[functions.eigen-fetch-ingest]
+verify_jwt = true
+
+[functions.eigen-ingest]
+verify_jwt = true
+
+[functions.eigen-knowledge-chunks]
+verify_jwt = true
+
+[functions.eigen-memory-entries]
+verify_jwt = true
+
+[functions.eigen-oracle-outbox-drain]
+verify_jwt = true
+
+[functions.eigen-public-sources]
+verify_jwt = false
+
+[functions.eigen-retrieval-runs]
+verify_jwt = true
+
+[functions.eigen-retrieve]
+verify_jwt = true
+
+[functions.eigen-source-inventory]
+verify_jwt = true
+
+[functions.eigen-tool-capabilities]
+verify_jwt = true
+
+[functions.eigen-widget-chat]
+verify_jwt = false
+
+[functions.eigen-widget-session]
+verify_jwt = true
+
+[functions.foundation-asset-registry]
+verify_jwt = true
+
+[functions.foundation-documents]
+verify_jwt = true
+
+[functions.meg-entities]
+verify_jwt = true
+
+[functions.meg-entity-aliases]
+verify_jwt = true
+
+[functions.meg-entity-edges]
+verify_jwt = true
+
+[functions.oracle-evidence-items]
+verify_jwt = true
+
+[functions.oracle-read-models]
+verify_jwt = true
+
+[functions.oracle-signals]
+verify_jwt = true
+
+[functions.oracle-source-packs]
+verify_jwt = true
+
+[functions.oracle-theses]
+verify_jwt = true
+
+[functions.oracle-thesis-evidence-links]
+verify_jwt = true
+
+[functions.oracle-whitespace-runs]
+verify_jwt = true

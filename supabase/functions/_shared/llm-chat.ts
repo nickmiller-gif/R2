@@ -356,6 +356,7 @@ export async function completeLlmChat(request: LlmChatRequest): Promise<LlmChatR
           selectedCriticProvider,
           {
             ...request,
+            conversationHistory: undefined,
             provider: selectedCriticProvider,
             model: selectedCriticModel,
             systemPrompt: criticPrompt,

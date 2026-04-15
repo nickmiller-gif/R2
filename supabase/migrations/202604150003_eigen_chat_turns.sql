@@ -1,7 +1,8 @@
 -- Additive: per-turn conversation history for multi-turn context and metrics.
 -- Each session owns an ordered sequence of user + assistant turn records.
 -- Replaces the lossy chat:last_turn memory pattern with a durable log.
--- Ordering is by created_at; turn_index is reserved for future explicit sequencing.
+-- Ordering is primarily by created_at; turn_index is used for deterministic
+-- within-pair tie-breaking and supports explicit sequencing when needed.
 
 CREATE TABLE public.eigen_chat_turns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

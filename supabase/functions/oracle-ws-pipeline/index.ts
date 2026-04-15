@@ -141,17 +141,25 @@ async function gatherEvidence(
 
   await updateRunStatus(serviceClient, runId, 'gathering_evidence');
 
-  // Tier 1: Semantic retrieval from knowledge_chunks
   const evidenceRows: Record<string, unknown>[] = [];
 
-  // Query knowledge_chunks by matching policy tags or domain keywords
-  const { data: chunks, error: chunkErr } = await serviceClient
-    .from('knowledge_chunks')
-    .select('id, content, authority_score, policy_tags, source_document_id')
-    .textSearch('content', domain.split(/\s+/).join(' & '), { type: 'websearch' })
-    .limit(50);
+  // Tier 1: Semantic retrieval from knowledge_chunks
+  // Only query if knowledge_chunks is in the allowed sources (or no filter set)
+  const chunkSourceAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('knowledge_chunks');
+  const searchTerms = domain.split(/\s+/).filter(Boolean).join(' & ');
 
-  if (!chunkErr && chunks) {
+  let chunks: Record<string, unknown>[] | null = null;
+  if (chunkSourceAllowed && searchTerms) {
+    const { data, error: chunkErr } = await serviceClient
+      .from('knowledge_chunks')
+      .select('id, content, authority_score, policy_tags, source_document_id')
+      .textSearch('content', searchTerms, { type: 'websearch' })
+      .limit(50);
+    if (chunkErr) console.error('Chunk retrieval error:', chunkErr.message);
+    chunks = data;
+  }
+
+  if (chunks) {
     for (const chunk of chunks) {
       evidenceRows.push({
         run_id: runId,
@@ -164,17 +172,18 @@ async function gatherEvidence(
         content_excerpt: typeof chunk.content === 'string'
           ? chunk.content.substring(0, 500)
           : null,
-        provenance_chain: JSON.stringify([{
+        provenance_chain: [{
           source: 'knowledge_chunks',
           document_id: chunk.source_document_id,
           retrieved_at: new Date().toISOString(),
-        }]),
+        }],
       });
     }
   }
 
   // Tier 2: Structured data from Oracle signals related to target entities
-  if (targetEntities.length > 0) {
+  const signalsAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_signals');
+  if (signalsAllowed && targetEntities.length > 0) {
     const { data: signals, error: sigErr } = await serviceClient
       .from('oracle_signals')
       .select('id, entity_asset_id, score, confidence_band, reasons, tags')
@@ -194,17 +203,20 @@ async function gatherEvidence(
           content_excerpt: Array.isArray(signal.reasons)
             ? signal.reasons.join('; ').substring(0, 500)
             : null,
-          provenance_chain: JSON.stringify([{
+          provenance_chain: [{
             source: 'oracle_signals',
             signal_id: signal.id,
             retrieved_at: new Date().toISOString(),
-          }]),
+          }],
         });
       }
     }
   }
 
   // Tier 3: Existing theses for context
+  const thesesAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_theses');
+  if (!thesesAllowed) return evidenceRows.length;
+
   const { data: theses, error: thErr } = await serviceClient
     .from('oracle_theses')
     .select('id, title, thesis_statement, confidence, evidence_strength')
@@ -222,11 +234,11 @@ async function gatherEvidence(
         authority_score: AUTHORITY_SCORES.curated_database,
         relevance_score: (thesis.confidence ?? 50) / 100,
         content_excerpt: `${thesis.title}: ${thesis.thesis_statement}`.substring(0, 500),
-        provenance_chain: JSON.stringify([{
+        provenance_chain: [{
           source: 'oracle_theses',
           thesis_id: thesis.id,
           retrieved_at: new Date().toISOString(),
-        }]),
+        }],
       });
     }
   }

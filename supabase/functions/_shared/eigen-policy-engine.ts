@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import type { CharterRole } from './rbac.ts';
+import { ROLE_HIERARCHY } from './roles.ts';
 
 interface EigenPolicyRule {
   id: string;
@@ -38,7 +39,6 @@ export interface ResolveEigenCapabilityAccessResult {
   deniedReasonsByCapability: Record<string, string[]>;
 }
 
-const ROLE_HIERARCHY = ['member', 'reviewer', 'operator', 'counsel', 'admin'] as const;
 function hasRequiredRole(callerRoles: CharterRole[], requiredRole: CharterRole | null): boolean {
   if (!requiredRole) return true;
   if (callerRoles.includes(requiredRole)) return true;

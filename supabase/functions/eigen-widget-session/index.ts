@@ -1,12 +1,10 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-session.ts';
-import { POLICY_TAG_EIGENX, POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
-import { readEigenxEnvDefaultPolicyScope, widgetEigenxInitialPolicyScope } from '../_shared/eigenx-scope.ts';
+import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 
 interface WidgetSessionRequest {
   site_id: string;
@@ -96,7 +94,7 @@ async function loadRegistryConfig(
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -121,20 +119,12 @@ serve(async (req) => {
       const roleCheck = await requireRole(auth.claims.userId, 'member');
       if (!roleCheck.ok) return roleCheck.response;
 
-      const siteScope = config.default_policy_scope.length > 0
-        ? config.default_policy_scope
-        : [POLICY_TAG_EIGENX];
-      const requestedScope = widgetEigenxInitialPolicyScope(
-        auth.claims.userId,
-        roleCheck.roles,
-        siteScope,
-      );
-      const scopeResolution = await resolveEigenxPolicyScope(getServiceClient(), {
+      const scopeResolution = await resolveEffectiveEigenxScope({
+        client: getServiceClient(),
         userId: auth.claims.userId,
-        requestedPolicyScope: requestedScope,
-        defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
+        roles: roleCheck.roles,
       });
-      if (scopeResolution.grantsConfigured && scopeResolution.effectivePolicyScope.length === 0) {
+      if (scopeResolution.emptyAfterGrantIntersection) {
         return errorResponse('No private policy scope access for this user', 403);
       }
       const scope = scopeResolution.effectivePolicyScope;

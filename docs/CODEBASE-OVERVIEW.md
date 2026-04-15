@@ -32,7 +32,7 @@ R2/
 │   ├── services/               # Service factories per domain
 │   │   ├── charter/            # Governance: governance-kernel, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations
 │   │   ├── oracle/             # Intelligence: signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace, service-layer, read-models, publication
-│   │   ├── eigen/              # Knowledge OS: knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries, policy-engine, whitespace-intelligence
+│   │   ├── eigen/              # Knowledge OS: knowledge-chunks, retrieval-runs, tool-capabilities, memory-entries, policy-engine, whitespace-intelligence, autonomous-capture
 │   │   ├── meg/                # Master Entity Graph: entities, aliases, edges
 │   │   ├── foundation/         # Asset registry, shared foundation services
 │   │   ├── documents/          # Document service
@@ -51,19 +51,20 @@ R2/
 │
 ├── supabase/
 │   ├── migrations/             # Additive-only SQL migrations (numbered by date)
-│   └── functions/              # 36 Deno Edge Function entrypoints
+│   └── functions/              # 39 Deno Edge Function entrypoints
 │       ├── _shared/            # Shared modules used across functions
 │       │   ├── auth.ts         # guardAuth() — offline JWT verification via jose/JWKS
 │       │   ├── supabase.ts     # DI-friendly Supabase client factory
 │       │   ├── cors.ts         # CORS headers
 │       │   ├── validate.ts     # Zod validation + idempotency key enforcement
 │       │   ├── correlation.ts  # x-correlation-id / x-idempotency-key headers
-│       │   ├── rbac.ts         # Role-based access control
+│       │   ├── rbac.ts         # Role-based access control (imports from roles.ts)
+│       │   ├── roles.ts        # Canonical ROLE_HIERARCHY + CharterRole type
 │       │   ├── eigenx-scope.ts # EigenX policy scope defaults/clamping
 │       │   └── ...             # Other shared helpers
 │       ├── charter-*/          # 11 Charter edge functions
 │       ├── oracle-*/           # 5 Oracle edge functions
-│       ├── eigen-*/            # 14 Eigen edge functions
+│       ├── eigen-*/            # 15 Eigen edge functions (incl. autonomous-capture-ingest)
 │       ├── meg-*/              # 3 MEG edge functions
 │       └── foundation-*/       # 2 Foundation edge functions
 │

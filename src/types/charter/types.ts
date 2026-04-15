@@ -3,9 +3,9 @@
  * Mirrors the charter_* Postgres schema with R2-convention camelCase domain objects.
  */
 
-// ─── Enums / Union Types ───────────────────────────────────────
+import type { CharterRole } from '../shared/roles.js';
 
-export type CharterRole = 'member' | 'reviewer' | 'operator' | 'counsel' | 'admin';
+// ─── Enums / Union Types ───────────────────────────────────────
 
 /** Aligned with MEG meg_entity_type (including IP and abstract nodes). */
 export type EntityType =

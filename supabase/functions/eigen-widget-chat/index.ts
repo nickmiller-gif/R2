@@ -1,10 +1,8 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
-import { POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -184,7 +182,7 @@ async function synthesize(
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -200,12 +198,12 @@ serve(async (req) => {
     const client = getServiceClient();
     let effectivePolicyScope = claims.default_policy_scope;
     if (claims.mode === 'eigenx' && claims.user_id) {
-      const scopeResolution = await resolveEigenxPolicyScope(client, {
+      const scopeResolution = await resolveEffectiveEigenxScope({
+        client,
         userId: claims.user_id,
-        requestedPolicyScope: claims.default_policy_scope,
-        defaultPolicyScope: [POLICY_TAG_EIGENX],
+        explicitScope: claims.default_policy_scope,
       });
-      if (scopeResolution.grantsConfigured && scopeResolution.effectivePolicyScope.length === 0) {
+      if (scopeResolution.emptyAfterGrantIntersection) {
         return errorResponse('No private policy scope access for this user', 403);
       }
       effectivePolicyScope = scopeResolution.effectivePolicyScope;

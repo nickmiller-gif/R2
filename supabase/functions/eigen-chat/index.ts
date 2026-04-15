@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
@@ -7,12 +6,7 @@ import {
   executeEigenRetrieve,
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
-import {
-  clampExplicitEigenxPolicyScope,
-  defaultEigenxRetrievePolicyScope,
-  readEigenxEnvDefaultPolicyScope,
-} from '../_shared/eigenx-scope.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -166,7 +160,7 @@ function buildUserMessageWithContext(
   return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}${buildContextHandlesMessage(body)}`;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -178,15 +172,13 @@ serve(async (req) => {
   try {
     const body = parseRequest(await req.json());
     const client = supabaseClients.service();
-    const preScope = body.policy_scope_explicit
-      ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, body.policy_scope)
-      : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);
-    const resolvedScope = await resolveEigenxPolicyScope(client, {
+    const resolvedScope = await resolveEffectiveEigenxScope({
+      client,
       userId: auth.claims.userId,
-      requestedPolicyScope: preScope,
-      defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
+      roles: roleCheck.roles,
+      explicitScope: body.policy_scope_explicit ? body.policy_scope : undefined,
     });
-    if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
+    if (resolvedScope.emptyAfterGrantIntersection) {
       return errorResponse('No private policy scope access for this user', 403);
     }
     body.policy_scope = resolvedScope.effectivePolicyScope;

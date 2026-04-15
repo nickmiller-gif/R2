@@ -2,7 +2,6 @@
  * Drains eigen_oracle_outbox pending rows into oracle_signals and links knowledge_chunks.
  * Invoke with Authorization: Bearer <service_role JWT> (e.g. Supabase cron + service key).
  */
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
@@ -21,7 +20,7 @@ function clampScore(value: unknown): number {
   return 52;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 

@@ -32,35 +32,35 @@ ALTER TABLE public.eigen_chat_turns ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can read their own chat turns"
   ON public.eigen_chat_turns FOR SELECT
   USING (
-    ((SELECT auth.uid()) = owner_id)
+    (auth.uid() = owner_id)
     AND EXISTS (
       SELECT 1
       FROM public.eigen_chat_sessions
       WHERE public.eigen_chat_sessions.id = eigen_chat_turns.session_id
-        AND public.eigen_chat_sessions.owner_id = (SELECT auth.uid())
+        AND public.eigen_chat_sessions.owner_id = auth.uid()
     )
   );
 
 CREATE POLICY "Users can insert their own chat turns"
   ON public.eigen_chat_turns FOR INSERT
   WITH CHECK (
-    ((SELECT auth.uid()) = owner_id)
+    (auth.uid() = owner_id)
     AND EXISTS (
       SELECT 1
       FROM public.eigen_chat_sessions
       WHERE public.eigen_chat_sessions.id = eigen_chat_turns.session_id
-        AND public.eigen_chat_sessions.owner_id = (SELECT auth.uid())
+        AND public.eigen_chat_sessions.owner_id = auth.uid()
     )
   );
 
 CREATE POLICY "Users can delete their own chat turns"
   ON public.eigen_chat_turns FOR DELETE
   USING (
-    ((SELECT auth.uid()) = owner_id)
+    (auth.uid() = owner_id)
     AND EXISTS (
       SELECT 1
       FROM public.eigen_chat_sessions
       WHERE public.eigen_chat_sessions.id = eigen_chat_turns.session_id
-        AND public.eigen_chat_sessions.owner_id = (SELECT auth.uid())
+        AND public.eigen_chat_sessions.owner_id = auth.uid()
     )
   );

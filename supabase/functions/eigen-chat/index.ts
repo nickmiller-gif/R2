@@ -360,6 +360,16 @@ Deno.serve(async (req) => {
               return;
             }
 
+            const usedLlmForTurn = retrievedChunks.length !== 0;
+            const resolvedLlmProvider = usedLlmForTurn
+              ? (providerUsed ?? body.llm_provider ?? 'openai')
+              : null;
+            const resolvedLlmModel = usedLlmForTurn
+              ? (modelUsed ?? body.llm_model ?? null)
+              : null;
+            const resolvedLlmFallbackUsed = usedLlmForTurn ? fallbackUsed : false;
+            const resolvedLlmCriticUsed = usedLlmForTurn ? criticUsed : false;
+
             const persistResult = await persistTurnPair(client, {
               sessionId,
               ownerId: auth.claims.userId,
@@ -368,11 +378,10 @@ Deno.serve(async (req) => {
               retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
               citations,
               confidence,
-              llmProvider:
-                retrievedChunks.length === 0 ? null : (providerUsed ?? body.llm_provider ?? 'openai'),
-              llmModel: retrievedChunks.length === 0 ? null : (modelUsed ?? body.llm_model ?? null),
-              llmFallbackUsed: retrievedChunks.length === 0 ? false : fallbackUsed,
-              llmCriticUsed: retrievedChunks.length === 0 ? false : criticUsed,
+              llmProvider: resolvedLlmProvider,
+              llmModel: resolvedLlmModel,
+              llmFallbackUsed: resolvedLlmFallbackUsed,
+              llmCriticUsed: resolvedLlmCriticUsed,
               latencyMs: turnLatencyMs,
             });
             if (!persistResult.ok) {
@@ -387,10 +396,10 @@ Deno.serve(async (req) => {
               retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
               memory_updated: true,
               session_id: sessionId,
-              llm_provider: providerUsed ?? body.llm_provider ?? 'openai',
-              llm_model: modelUsed ?? body.llm_model ?? null,
-              llm_fallback_used: fallbackUsed,
-              llm_critic_used: criticUsed,
+              llm_provider: resolvedLlmProvider,
+              llm_model: resolvedLlmModel,
+              llm_fallback_used: resolvedLlmFallbackUsed,
+              llm_critic_used: resolvedLlmCriticUsed,
               llm_critic_provider: criticProvider ?? null,
               llm_critic_model: criticModel ?? null,
               effective_policy_scope: resolvedScope.effectivePolicyScope,

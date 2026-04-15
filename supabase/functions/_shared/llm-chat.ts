@@ -93,13 +93,44 @@ function sanitizeConversationHistory(history?: ConversationTurn[]): Conversation
     .map((turn) => ({ role: turn.role, content: turn.content }));
 }
 
+const DEFAULT_COMPLETION_TIMEOUT_MS = Number(
+  Deno.env.get('LLM_COMPLETION_TIMEOUT_MS') ?? '45000',
+);
+
+function resolveRequestTimeoutMs(
+  init: RequestInit,
+  timeoutMs?: number,
+): number {
+  if (typeof timeoutMs === 'number') return timeoutMs;
+
+  const headers = new Headers(init.headers);
+  const accept = headers.get('accept')?.toLowerCase() ?? '';
+  if (accept.includes('text/event-stream')) {
+    return DEFAULT_STREAM_TIMEOUT_MS;
+  }
+
+  if (typeof init.body === 'string') {
+    try {
+      const parsed = JSON.parse(init.body) as { stream?: boolean };
+      if (parsed.stream === true) {
+        return DEFAULT_STREAM_TIMEOUT_MS;
+      }
+    } catch {
+      // Ignore non-JSON bodies and fall back to the completion timeout.
+    }
+  }
+
+  return DEFAULT_COMPLETION_TIMEOUT_MS;
+}
+
 async function fetchWithStreamTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs: number = DEFAULT_STREAM_TIMEOUT_MS,
+  timeoutMs?: number,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const resolvedTimeoutMs = resolveRequestTimeoutMs(init, timeoutMs);
+  const timer = setTimeout(() => controller.abort(), resolvedTimeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {

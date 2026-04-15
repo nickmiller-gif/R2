@@ -4700,6 +4700,7 @@ export type Database = {
           total_rows: number
         }[]
       }
+      bootstrap_admin_role: { Args: { p_user_id: string }; Returns: string }
       bump_eigen_public_rate: {
         Args: { p_bucket_key: string; p_window_start?: string }
         Returns: number
@@ -4710,6 +4711,19 @@ export type Database = {
       }
       can_read_centralr2: { Args: { _user_id: string }; Returns: boolean }
       dispatch_embedding_jobs: { Args: never; Returns: undefined }
+      entity_neighborhood: {
+        Args: {
+          p_entity_id: string
+          p_max_depth?: number
+          p_min_weight?: number
+        }
+        Returns: {
+          direction: string
+          entity_id: string
+          relation_type: Database["public"]["Enums"]["entity_relation_type"]
+          weight: number
+        }[]
+      }
       has_platform_access: {
         Args: { _platform: string; _user_id: string }
         Returns: boolean

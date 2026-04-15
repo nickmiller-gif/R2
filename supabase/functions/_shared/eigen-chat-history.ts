@@ -33,7 +33,7 @@ export async function loadRecentTurns(
     .eq('session_id', sessionId)
     .eq('owner_id', userId)
     .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
+    .order('turn_index', { ascending: false })
     .limit(limit);
 
   if (error || !data) return [];

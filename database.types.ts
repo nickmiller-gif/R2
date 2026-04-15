@@ -4635,6 +4635,10 @@ export type Database = {
         Args: { p_bucket_key: string; p_window_start?: string }
         Returns: number
       }
+      bootstrap_admin_role: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
       can_access_area: {
         Args: { _area: string; _user_id: string }
         Returns: boolean

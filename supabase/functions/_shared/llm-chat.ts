@@ -93,8 +93,31 @@ function sanitizeConversationHistory(history?: ConversationTurn[]): Conversation
     .map((turn) => ({ role: turn.role, content: turn.content }));
 }
 
-const DEFAULT_COMPLETION_TIMEOUT_MS = Number(
-  Deno.env.get('LLM_COMPLETION_TIMEOUT_MS') ?? '45000',
+const DEFAULT_COMPLETION_TIMEOUT_FALLBACK_MS = 45000;
+const MIN_COMPLETION_TIMEOUT_MS = 1;
+
+function parseTimeoutMs(
+  value: string | undefined,
+  fallbackMs: number,
+  minimumMs: number,
+): number {
+  if (typeof value !== 'string') return fallbackMs;
+
+  const trimmedValue = value.trim();
+  if (trimmedValue.length === 0) return fallbackMs;
+
+  const parsedValue = Number.parseInt(trimmedValue, 10);
+  if (!Number.isFinite(parsedValue) || parsedValue < minimumMs) {
+    return fallbackMs;
+  }
+
+  return parsedValue;
+}
+
+const DEFAULT_COMPLETION_TIMEOUT_MS = parseTimeoutMs(
+  Deno.env.get('LLM_COMPLETION_TIMEOUT_MS'),
+  DEFAULT_COMPLETION_TIMEOUT_FALLBACK_MS,
+  MIN_COMPLETION_TIMEOUT_MS,
 );
 
 function resolveRequestTimeoutMs(

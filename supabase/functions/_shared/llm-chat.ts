@@ -34,6 +34,8 @@ const DEFAULT_PROVIDER: LlmProvider =
   (Deno.env.get('EIGEN_CHAT_DEFAULT_PROVIDER') as LlmProvider | null) ?? 'openai';
 
 const PROVIDER_ORDER: LlmProvider[] = ['openai', 'anthropic', 'perplexity'];
+const DEFAULT_STREAM_TIMEOUT_MS =
+  Number.parseInt(Deno.env.get('LLM_STREAM_TIMEOUT_MS') ?? '', 10) || 120_000;
 
 function apiKeyForProvider(provider: LlmProvider): string | null {
   if (provider === 'openai') return Deno.env.get('OPENAI_API_KEY') ?? null;
@@ -81,9 +83,23 @@ function resolveCriticProvider(primaryProvider: LlmProvider): LlmProvider | null
   return null;
 }
 
-async function fetchWithStreamTimeout(url: string, init: RequestInit): Promise<Response> {
+function sanitizeConversationHistory(history?: ConversationTurn[]): ConversationTurn[] {
+  if (!history) return [];
+  return history
+    .filter(
+      (turn): turn is ConversationTurn =>
+        Boolean(turn) && (turn.role === 'user' || turn.role === 'assistant'),
+    )
+    .map((turn) => ({ role: turn.role, content: turn.content }));
+}
+
+async function fetchWithStreamTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_STREAM_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -94,9 +110,10 @@ async function fetchWithStreamTimeout(url: string, init: RequestInit): Promise<R
 function buildOpenAiMessages(
   request: LlmChatRequest,
 ): Array<{ role: string; content: string }> {
+  const history = sanitizeConversationHistory(request.conversationHistory);
   return [
     { role: 'system', content: request.systemPrompt },
-    ...(request.conversationHistory ?? []),
+    ...history,
     { role: 'user', content: request.userContent },
   ];
 }
@@ -104,10 +121,8 @@ function buildOpenAiMessages(
 function buildAnthropicMessages(
   request: LlmChatRequest,
 ): Array<{ role: string; content: string }> {
-  return [
-    ...(request.conversationHistory ?? []),
-    { role: 'user', content: request.userContent },
-  ];
+  const history = sanitizeConversationHistory(request.conversationHistory);
+  return [...history, { role: 'user', content: request.userContent }];
 }
 
 async function completeOpenAi(request: LlmChatRequest, model: string): Promise<string> {
@@ -327,71 +342,147 @@ async function completeWithProvider(
   return completePerplexity(request, model);
 }
 
+async function applyCriticIfNeeded(
+  request: LlmChatRequest,
+  primaryProvider: LlmProvider,
+  draft: string,
+): Promise<{
+  text: string;
+  criticUsed: boolean;
+  criticProvider?: LlmProvider;
+  criticModel?: string;
+}> {
+  if (!shouldRunCritic(request.critic)) {
+    return { text: draft, criticUsed: false };
+  }
+
+  const selectedCriticProvider = resolveCriticProvider(primaryProvider);
+  if (!selectedCriticProvider) {
+    return { text: draft, criticUsed: false };
+  }
+
+  const selectedCriticModel = defaultModelForProvider(selectedCriticProvider);
+  const criticPrompt = [
+    'You are a response quality reviewer.',
+    'Improve the draft for clarity and coherence, while preserving factual grounding.',
+    'Do not introduce new facts not already present in context.',
+    'Do not change the answer topic.',
+  ].join(' ');
+  const criticUserContent = [
+    `Original user/context message:\n${request.userContent}`,
+    `\nDraft answer:\n${draft}`,
+    '\nReturn only the revised answer text.',
+  ].join('\n');
+
+  try {
+    const revised = await completeWithProvider(
+      selectedCriticProvider,
+      {
+        ...request,
+        conversationHistory: undefined,
+        provider: selectedCriticProvider,
+        model: selectedCriticModel,
+        systemPrompt: criticPrompt,
+        userContent: criticUserContent,
+        temperature: Math.min(0.4, Math.max(0, request.temperature)),
+      },
+      selectedCriticModel,
+    );
+    const trimmed = revised.trim();
+    if (trimmed.length > 0) {
+      return {
+        text: trimmed,
+        criticUsed: true,
+        criticProvider: selectedCriticProvider,
+        criticModel: selectedCriticModel,
+      };
+    }
+  } catch (_criticError) {
+    // Fail-soft: keep primary answer if critic provider is unavailable.
+  }
+
+  return { text: draft, criticUsed: false };
+}
+
+async function* streamProviderDeltas(
+  provider: LlmProvider,
+  request: LlmChatRequest,
+  model: string,
+): AsyncGenerator<string, void, void> {
+  if (provider === 'openai') {
+    const apiKey = apiKeyForProvider('openai');
+    if (!apiKey) throw new Error('OPENAI_API_KEY is missing');
+    yield* streamOpenAiCompatibleDeltas(
+      'https://api.openai.com/v1/chat/completions',
+      { Authorization: `Bearer ${apiKey}` },
+      request,
+      model,
+      buildOpenAiMessages(request),
+    );
+    return;
+  }
+
+  if (provider === 'perplexity') {
+    const apiKey = apiKeyForProvider('perplexity');
+    if (!apiKey) throw new Error('PERPLEXITY_API_KEY is missing');
+    yield* streamOpenAiCompatibleDeltas(
+      'https://api.perplexity.ai/chat/completions',
+      { Authorization: `Bearer ${apiKey}` },
+      request,
+      model,
+      buildOpenAiMessages(request),
+    );
+    return;
+  }
+
+  yield* streamAnthropicDeltas(request, model);
+}
+
 export async function completeLlmChat(request: LlmChatRequest): Promise<LlmChatResult> {
   const { provider, fallbackUsed } = resolveProvider(request.provider);
   const model = request.model?.trim() || defaultModelForProvider(provider);
   let text = await completeWithProvider(provider, request, model);
   if (!text) throw new Error('LLM provider returned empty content');
 
-  let criticUsed = false;
-  let criticProvider: LlmProvider | undefined;
-  let criticModel: string | undefined;
-  if (shouldRunCritic(request.critic)) {
-    const selectedCriticProvider = resolveCriticProvider(provider);
-    if (selectedCriticProvider) {
-      const selectedCriticModel = defaultModelForProvider(selectedCriticProvider);
-      const criticPrompt = [
-        'You are a response quality reviewer.',
-        'Improve the draft for clarity and coherence, while preserving factual grounding.',
-        'Do not introduce new facts not already present in context.',
-        'Do not change the answer topic.',
-      ].join(' ');
-      const criticUserContent = [
-        `Original user/context message:\n${request.userContent}`,
-        `\nDraft answer:\n${text}`,
-        '\nReturn only the revised answer text.',
-      ].join('\n');
-      try {
-        const revised = await completeWithProvider(
-          selectedCriticProvider,
-          {
-            ...request,
-            conversationHistory: undefined,
-            provider: selectedCriticProvider,
-            model: selectedCriticModel,
-            systemPrompt: criticPrompt,
-            userContent: criticUserContent,
-            temperature: Math.min(0.4, Math.max(0, request.temperature)),
-          },
-          selectedCriticModel,
-        );
-        if (revised.trim().length > 0) {
-          text = revised.trim();
-          criticUsed = true;
-          criticProvider = selectedCriticProvider;
-          criticModel = selectedCriticModel;
-        }
-      } catch (_criticError) {
-        // Fail-soft: keep primary answer if critic provider is unavailable.
-      }
-    }
-  }
+  const criticOutcome = await applyCriticIfNeeded(request, provider, text);
   return {
-    text,
+    text: criticOutcome.text,
     provider,
     model,
     fallback_used: fallbackUsed,
-    critic_used: criticUsed,
-    critic_provider: criticProvider,
-    critic_model: criticModel,
+    critic_used: criticOutcome.criticUsed,
+    critic_provider: criticOutcome.criticProvider,
+    critic_model: criticOutcome.criticModel,
   };
 }
 
-export async function* streamLlmChatDeltas(request: LlmChatRequest): AsyncGenerator<string, LlmChatResult, void> {
-  const result = await completeLlmChat(request);
-  const words = result.text.split(/(\s+)/).filter(Boolean);
-  for (const piece of words) {
-    yield piece;
+export async function* streamLlmChatDeltas(
+  request: LlmChatRequest,
+): AsyncGenerator<string, LlmChatResult, void> {
+  const { provider, fallbackUsed } = resolveProvider(request.provider);
+  const model = request.model?.trim() || defaultModelForProvider(provider);
+
+  let draft = '';
+  for await (const delta of streamProviderDeltas(provider, request, model)) {
+    draft += delta;
+    yield delta;
   }
-  return result;
+
+  if (!draft.trim()) {
+    draft = await completeWithProvider(provider, request, model);
+  }
+
+  if (!draft) throw new Error('LLM provider returned empty content');
+
+  const criticOutcome = await applyCriticIfNeeded(request, provider, draft.trim());
+
+  return {
+    text: criticOutcome.text,
+    provider,
+    model,
+    fallback_used: fallbackUsed,
+    critic_used: criticOutcome.criticUsed,
+    critic_provider: criticOutcome.criticProvider,
+    critic_model: criticOutcome.criticModel,
+  };
 }

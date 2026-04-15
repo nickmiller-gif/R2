@@ -124,6 +124,6 @@ describe('trimHistoryToBudget', () => {
   it('enforces a minimum of 2 turns', () => {
     const turns = makeTurns(6);
     const trimmed = trimHistoryToBudget(turns, 0);
-    expect(trimmed.length).toBeGreaterThanOrEqual(1);
+    expect(trimmed.length).toBeGreaterThanOrEqual(2);
   });
 });

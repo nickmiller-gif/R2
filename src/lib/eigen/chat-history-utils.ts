@@ -64,10 +64,14 @@ export function trimHistoryToBudget(
   maxTurns: number,
 ): ConversationTurn[] {
   const limit = Math.max(2, maxTurns);
-  if (turns.length <= limit) return turns;
-  let start = turns.length - limit;
+  let start = turns.length <= limit ? 0 : turns.length - limit;
+
+  // Trim from the front and keep only complete user/assistant pairs.
+  // Ensure we start on a user turn.
   if (start < turns.length && turns[start]?.role === 'assistant') start += 1;
-  const sliced = turns.slice(start);
-  if (sliced.length % 2 !== 0) return sliced.slice(0, -1);
-  return sliced;
+
+  let end = turns.length;
+  if ((end - start) % 2 !== 0) end -= 1;
+
+  return turns.slice(start, end);
 }

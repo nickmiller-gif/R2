@@ -23,6 +23,11 @@ if [ ! -f "$TYPES_FILE" ]; then
   exit 1
 fi
 
+if [ "$REQUIRE_REMOTE_CHECKS" != "true" ]; then
+  echo "Skipping typegen check: REQUIRE_SUPABASE_REMOTE_CHECKS is not true."
+  exit 0
+fi
+
 SUPABASE_CLI_VERSION="2.89.0"
 
 GENERATED_FILE="$(mktemp)"

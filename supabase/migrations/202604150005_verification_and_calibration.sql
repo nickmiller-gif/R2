@@ -100,7 +100,7 @@ CREATE TABLE oracle_calibration_log (
     CHECK (predicted_evidence_strength >= 0 AND predicted_evidence_strength <= 1),
 
   -- Actual result
-  actual_verdict text NOT NULL,  -- mirrors oracle_outcomes.verdict
+  actual_verdict oracle_outcome_verdict NOT NULL,
   accuracy_score numeric(4,3)
     CHECK (accuracy_score IS NULL OR (accuracy_score >= 0 AND accuracy_score <= 1)),
 
@@ -153,7 +153,9 @@ CREATE POLICY insert_ocl ON oracle_calibration_log
 -- Aggregated calibration metrics for model/prompt performance monitoring.
 -- Drives the "are we getting better?" dashboard.
 
-CREATE OR REPLACE VIEW oracle_calibration_summary AS
+CREATE OR REPLACE VIEW oracle_calibration_summary
+WITH (security_invoker = true)
+AS
 SELECT
   model_version,
   prompt_version,

@@ -474,15 +474,15 @@ export async function* streamLlmChatDeltas(
 
   if (!draft) throw new Error('LLM provider returned empty content');
 
-  const criticOutcome = await applyCriticIfNeeded(request, provider, draft.trim());
-
+  // Critic is intentionally skipped in the streaming path: deltas have already
+  // been sent to the client, so a post-hoc revision would be discarded by the
+  // caller (which uses the accumulated fullText from raw deltas). The
+  // non-streaming completeLlmChat path handles critic correctly.
   return {
-    text: criticOutcome.text,
+    text: draft.trim(),
     provider,
     model,
     fallback_used: fallbackUsed,
-    critic_used: criticOutcome.criticUsed,
-    critic_provider: criticOutcome.criticProvider,
-    critic_model: criticOutcome.criticModel,
+    critic_used: false,
   };
 }

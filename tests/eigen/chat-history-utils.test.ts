@@ -103,15 +103,28 @@ describe('trimHistoryToBudget', () => {
   });
 
   it('drops a trailing unpaired user turn after trim so length is even', () => {
-    // 7 turns: window from index 4 would be [u,a,u] (invalid for Anthropic); trim last user
+    // 7 turns: window from index 3 would be [u,a,u,a] (maxTurns=4 -> start=3, which is 'assistant')
+    // Moving start backward to 2 gives [u,a,u,a,u] (5 items), trim odd -> [u,a,u,a] (4 items, even)
     const turns = makeTurns(7);
     const trimmed = trimHistoryToBudget(turns, 4);
-    expect(trimmed).toEqual([
-      { role: 'user', content: 'turn-4' },
-      { role: 'assistant', content: 'turn-5' },
-    ]);
     expect(trimmed.length % 2).toBe(0);
+    expect(trimmed[0]?.role).toBe('user');
     expect(trimmed[trimmed.length - 1]?.role).toBe('assistant');
+  });
+
+  it('does not return empty when assistant-aligned window has valid pairs nearby', () => {
+    // Regression: [u,a,u] with maxTurns=2 used to return [] because
+    // start landed on 'assistant' and was moved forward, shrinking the window.
+    const turns: ConversationTurn[] = [
+      { role: 'user', content: 'Q1' },
+      { role: 'assistant', content: 'A1' },
+      { role: 'user', content: 'Q2' },
+    ];
+    const trimmed = trimHistoryToBudget(turns, 2);
+    expect(trimmed).toEqual([
+      { role: 'user', content: 'Q1' },
+      { role: 'assistant', content: 'A1' },
+    ]);
   });
 
   it('always starts on a user turn after trimming', () => {

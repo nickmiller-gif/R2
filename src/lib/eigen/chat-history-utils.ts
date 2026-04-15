@@ -67,8 +67,13 @@ export function trimHistoryToBudget(
   let start = turns.length <= limit ? 0 : turns.length - limit;
 
   // Trim from the front and keep only complete user/assistant pairs.
-  // Ensure we start on a user turn by moving forward (shrinks window to stay within budget).
-  if (start < turns.length && turns[start]?.role === 'assistant') start += 1;
+  // If the nominal window starts on an assistant, prefer shifting start backward
+  // (when possible) so we keep a complete pair — e.g. [u,a,u] with maxTurns=2
+  // must yield [u,a], not [] from shifting forward off the end.
+  if (start < turns.length && turns[start]?.role === 'assistant') {
+    if (start > 0) start -= 1;
+    else start += 1;
+  }
 
   let end = turns.length;
   if ((end - start) % 2 !== 0) end -= 1;

@@ -35,6 +35,14 @@ interface PublicChatRequest {
   };
 }
 
+function buildEvidenceNotice(confidence: ReturnType<typeof buildCompositeConfidence>): string | null {
+  if (confidence.overall === 'high') return null;
+  if (confidence.overall === 'medium') {
+    return 'Some parts are weakly supported; use citations for confirmation.';
+  }
+  return 'Limited public evidence was retrieved for this answer.';
+}
+
 function readMaxMessageChars(): number {
   const raw = Deno.env.get('EIGEN_PUBLIC_MAX_MESSAGE_CHARS') ?? '12000';
   const n = Number.parseInt(raw, 10);
@@ -272,6 +280,7 @@ Deno.serve(async (req) => {
       response: synthesis.text,
       citations,
       confidence,
+      evidence_notice: buildEvidenceNotice(confidence),
       llm_provider: body.llm_provider ?? 'openai',
       llm_model: body.llm_model ?? null,
       llm_critic_used: synthesis.critic_used,
@@ -279,6 +288,7 @@ Deno.serve(async (req) => {
       llm_critic_model: synthesis.critic_model ?? null,
       retrieval_run_id: retrieveResult.body.retrieval_run_id,
       policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
+      policy_scope_mode: 'public_only',
       rate_limit: {
         limit_per_minute: rate.limit,
         remaining: rate.remaining,

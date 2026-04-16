@@ -123,6 +123,8 @@ Verification for each repo:
 - Confirm request latency remains acceptable.
 - Confirm ingest logs show success and no retry exhaustion spikes.
 - Confirm chunks are queryable in R2 by `source_system` and `source_ref`.
+- Confirm each payload carries exactly one corpus boundary tag (`eigen_public` or `eigenx`).
+- Confirm requests include `x-idempotency-key` and duplicate retries do not create duplicate chunk sets.
 
 ### Stage 3 — UI path switches
 
@@ -135,6 +137,7 @@ Verification for each repo:
 - Auth transition works (public to eigenx where applicable).
 - No cross-site data leakage in prompt evals.
 - No new 5xx spikes in app edge functions.
+- Oracle whitespace run produces a pending graph extraction job and worker completion updates `stage_progress`.
 
 ## Fast rollback
 

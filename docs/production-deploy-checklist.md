@@ -28,7 +28,7 @@ This runs `npm run check`, verifies Supabase linkability, and prints linked migr
 
 When shipping `oracle-ws-pipeline` or graph extraction changes, include:
 
-1. Apply migration `supabase/migrations/202604160001_eigen_governance_audit_log.sql`.
+1. Apply migration `supabase/migrations/202604160002_eigen_governance_audit_log.sql`.
 2. Deploy edge functions:
    - `oracle-ws-pipeline`
    - `oracle-graph-extraction-worker`

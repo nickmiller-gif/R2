@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS verification_results (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE verification_results
+  ADD COLUMN IF NOT EXISTS verified_at timestamptz NOT NULL DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_vr_hypothesis ON verification_results (hypothesis_id) WHERE hypothesis_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_vr_run ON verification_results (run_id) WHERE run_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_vr_verdict ON verification_results (verdict);

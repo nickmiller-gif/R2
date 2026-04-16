@@ -141,12 +141,15 @@ async function gatherEvidence(
 
   await updateRunStatus(serviceClient, runId, 'gathering_evidence');
 
-  const evidenceRows: Record<string, unknown>[] = [];
-
   // Tier 1: Semantic retrieval from knowledge_chunks
-  // Only query if knowledge_chunks is in the allowed sources (or no filter set)
-  const chunkSourceAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('knowledge_chunks');
-  const searchTerms = domain.split(/\s+/).filter(Boolean).join(' & ');
+  const evidenceRows: Record<string, unknown>[] = [];
+  const chunkSourceAllowed = sourcesAllowed.length === 0
+    || sourcesAllowed.includes('knowledge_chunks')
+    || sourcesAllowed.includes('curated_database');
+  const searchTerms = [domain, ...targetEntities]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .join(' & ');
 
   let chunks: Record<string, unknown>[] | null = null;
   if (chunkSourceAllowed && searchTerms) {
@@ -172,18 +175,17 @@ async function gatherEvidence(
         content_excerpt: typeof chunk.content === 'string'
           ? chunk.content.substring(0, 500)
           : null,
-        provenance_chain: [{
+        provenance_chain: JSON.stringify([{
           source: 'knowledge_chunks',
           document_id: chunk.document_id,
           retrieved_at: new Date().toISOString(),
-        }],
+        }]),
       });
     }
   }
 
   // Tier 2: Structured data from Oracle signals related to target entities
-  const signalsAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_signals');
-  if (signalsAllowed && targetEntities.length > 0) {
+  if (targetEntities.length > 0) {
     const { data: signals, error: sigErr } = await serviceClient
       .from('oracle_signals')
       .select('id, entity_asset_id, score, confidence_band, reasons, tags')
@@ -203,43 +205,40 @@ async function gatherEvidence(
           content_excerpt: Array.isArray(signal.reasons)
             ? signal.reasons.join('; ').substring(0, 500)
             : null,
-          provenance_chain: [{
+          provenance_chain: JSON.stringify([{
             source: 'oracle_signals',
             signal_id: signal.id,
             retrieved_at: new Date().toISOString(),
-          }],
+          }]),
         });
       }
     }
   }
 
   // Tier 3: Existing theses for context
-  const thesesAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_theses');
-  if (thesesAllowed) {
-    const { data: theses, error: thErr } = await serviceClient
-      .from('oracle_theses')
-      .select('id, title, thesis_statement, confidence, evidence_strength')
-      .eq('publication_state', 'published')
-      .limit(20);
+  const { data: theses, error: thErr } = await serviceClient
+    .from('oracle_theses')
+    .select('id, title, thesis_statement, confidence, evidence_strength')
+    .eq('publication_state', 'published')
+    .limit(20);
 
-    if (!thErr && theses) {
-      for (const thesis of theses) {
-        evidenceRows.push({
-          run_id: runId,
-          chunk_id: null,
-          source_type: 'curated_database',
-          source_ref: `oracle_theses:${thesis.id}`,
-          source_system: 'oracle_theses',
-          authority_score: AUTHORITY_SCORES.curated_database,
-          relevance_score: (thesis.confidence ?? 50) / 100,
-          content_excerpt: `${thesis.title}: ${thesis.thesis_statement}`.substring(0, 500),
-          provenance_chain: [{
-            source: 'oracle_theses',
-            thesis_id: thesis.id,
-            retrieved_at: new Date().toISOString(),
-          }],
-        });
-      }
+  if (!thErr && theses) {
+    for (const thesis of theses) {
+      evidenceRows.push({
+        run_id: runId,
+        chunk_id: null,
+        source_type: 'curated_database',
+        source_ref: `oracle_theses:${thesis.id}`,
+        source_system: 'oracle_theses',
+        authority_score: AUTHORITY_SCORES.curated_database,
+        relevance_score: (thesis.confidence ?? 50) / 100,
+        content_excerpt: `${thesis.title}: ${thesis.thesis_statement}`.substring(0, 500),
+        provenance_chain: JSON.stringify([{
+          source: 'oracle_theses',
+          thesis_id: thesis.id,
+          retrieved_at: new Date().toISOString(),
+        }]),
+      });
     }
   }
 
@@ -501,15 +500,80 @@ async function computeEvaluation(
   const withCitations = hypotheses.filter(
     (h: Record<string, unknown>) => Array.isArray(h.citation_ids) && (h.citation_ids as string[]).length >= 2,
   ).length;
+  const scoreTotal = hypotheses.reduce(
+    (sum: number, hypothesis: Record<string, unknown>) => sum + ((hypothesis.composite_score as number) ?? 0),
+    0,
+  );
+  const { data: verificationRows } = await serviceClient
+    .from('verification_results')
+    .select('sources_checked')
+    .eq('run_id', runId);
+  const verifiedCount = hypotheses.filter((h: Record<string, unknown>) => h.publishable).length;
+  const evidenceDiversity = new Set(
+    (verificationRows ?? [])
+      .map((row: Record<string, unknown>) => Number(row.sources_checked ?? 0))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  ).size;
 
   return {
     hypothesis_count: count,
     published_count: hypotheses.filter((h: Record<string, unknown>) => h.publishable).length,
     citation_coverage: withCitations / count,
+    verified_rate: verifiedCount / count,
+    evidence_diversity: evidenceDiversity,
+    avg_composite_score: scoreTotal / count,
     novelty_score: hypotheses.reduce((s: number, h: Record<string, unknown>) => s + (h.novelty_score as number ?? 0), 0) / count,
     avg_confidence: hypotheses.reduce((s: number, h: Record<string, unknown>) => s + (h.confidence as number ?? 0), 0) / count,
     avg_evidence_strength: hypotheses.reduce((s: number, h: Record<string, unknown>) => s + (h.evidence_strength as number ?? 0), 0) / count,
   };
+}
+
+async function persistRunScorecard(
+  serviceClient: ReturnType<typeof getServiceClient>,
+  runId: string,
+  evaluation: Record<string, unknown>,
+) {
+  const payload = {
+    run_id: runId,
+    model_version: 'oracle-ws-pipeline-v1',
+    hypothesis_count: Number(evaluation.hypothesis_count ?? 0),
+    published_count: Number(evaluation.published_count ?? 0),
+    citation_coverage: Number(evaluation.citation_coverage ?? 0),
+    novelty_score: Number(evaluation.novelty_score ?? 0),
+    avg_confidence: Number(evaluation.avg_confidence ?? 0),
+    avg_evidence_strength: Number(evaluation.avg_evidence_strength ?? 0),
+    verified_rate: Number(evaluation.verified_rate ?? 0),
+    evidence_diversity: Number(evaluation.evidence_diversity ?? 0),
+    avg_composite_score: Number(evaluation.avg_composite_score ?? 0),
+  };
+  const { error } = await serviceClient
+    .from('oracle_run_scorecards')
+    .upsert(payload, { onConflict: 'run_id' });
+  if (error) throw new Error(`Failed to persist run scorecard: ${error.message}`);
+}
+
+async function enqueueGraphExtractionJob(
+  serviceClient: ReturnType<typeof getServiceClient>,
+  run: Record<string, unknown>,
+) {
+  const payload = {
+    run_id: run.id as string,
+    status: 'pending',
+    priority: 50,
+    trigger: 'pipeline_execute',
+    domain: String(run.domain ?? ''),
+    target_entities: Array.isArray(run.target_entities)
+      ? (run.target_entities as unknown[]).map((value) => String(value))
+      : [],
+    metadata: {
+      queued_by: 'oracle-ws-pipeline',
+      queued_at: new Date().toISOString(),
+    },
+  };
+  const { error } = await serviceClient
+    .from('oracle_graph_extraction_jobs')
+    .upsert(payload, { onConflict: 'run_id' });
+  if (error) throw new Error(`Failed to enqueue graph extraction job: ${error.message}`);
 }
 
 // ─── Main handler ────────────────────────────────────────────────────
@@ -693,6 +757,8 @@ Deno.serve(async (req) => {
 
           // Compute evaluation summary
           const evaluation = await computeEvaluation(serviceClient, run.id);
+          await persistRunScorecard(serviceClient, run.id, evaluation);
+          await enqueueGraphExtractionJob(serviceClient, run);
 
           // Mark run as ready for review
           await updateRunStatus(serviceClient, run.id, 'review', {
@@ -704,6 +770,7 @@ Deno.serve(async (req) => {
               hypotheses_generated: hypotheses.length,
               verified: verification.verified,
               total_hypotheses: verification.total,
+              graph_extraction_job: 'pending',
             },
           });
 

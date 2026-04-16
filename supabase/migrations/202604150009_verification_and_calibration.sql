@@ -19,7 +19,7 @@ CREATE TYPE verification_verdict AS ENUM (
 -- Audit log for every verification check run against a claim.
 -- Used by the run engine (Stage 5) and available to operators on-demand.
 
-CREATE TABLE verification_results (
+CREATE TABLE IF NOT EXISTS verification_results (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- What was verified
@@ -52,10 +52,13 @@ CREATE TABLE verification_results (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_vr_hypothesis ON verification_results (hypothesis_id) WHERE hypothesis_id IS NOT NULL;
-CREATE INDEX idx_vr_run ON verification_results (run_id) WHERE run_id IS NOT NULL;
-CREATE INDEX idx_vr_verdict ON verification_results (verdict);
-CREATE INDEX idx_vr_verified_at ON verification_results (verified_at DESC);
+ALTER TABLE verification_results
+  ADD COLUMN IF NOT EXISTS verified_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_vr_hypothesis ON verification_results (hypothesis_id) WHERE hypothesis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vr_run ON verification_results (run_id) WHERE run_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vr_verdict ON verification_results (verdict);
+CREATE INDEX IF NOT EXISTS idx_vr_verified_at ON verification_results (verified_at DESC);
 
 ALTER TABLE verification_results ENABLE ROW LEVEL SECURITY;
 
@@ -72,7 +75,7 @@ CREATE POLICY select_vr ON verification_results
       run_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM oracle_whitespace_runs owr
         WHERE owr.id = verification_results.run_id
-          AND owr.status = 'published'::oracle_run_status
+          AND owr.status::text = 'published'
       )
     )
   );
@@ -86,7 +89,7 @@ CREATE POLICY insert_vr ON verification_results
 -- Records the delta between what the Oracle predicted (thesis confidence)
 -- and what actually happened (outcome verdict). This is the learning loop.
 
-CREATE TABLE oracle_calibration_log (
+CREATE TABLE IF NOT EXISTS oracle_calibration_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- What was predicted vs. observed
@@ -122,14 +125,30 @@ CREATE TABLE oracle_calibration_log (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ocl_thesis ON oracle_calibration_log (thesis_id);
-CREATE INDEX idx_ocl_outcome ON oracle_calibration_log (outcome_id);
-CREATE INDEX idx_ocl_domain ON oracle_calibration_log (domain) WHERE domain IS NOT NULL;
-CREATE INDEX idx_ocl_model ON oracle_calibration_log (model_version) WHERE model_version IS NOT NULL;
-CREATE INDEX idx_ocl_created_at ON oracle_calibration_log (created_at DESC);
+ALTER TABLE oracle_calibration_log
+  ADD COLUMN IF NOT EXISTS thesis_id uuid,
+  ADD COLUMN IF NOT EXISTS outcome_id uuid,
+  ADD COLUMN IF NOT EXISTS predicted_confidence numeric(4,3),
+  ADD COLUMN IF NOT EXISTS predicted_evidence_strength numeric(4,3),
+  ADD COLUMN IF NOT EXISTS actual_verdict oracle_outcome_verdict,
+  ADD COLUMN IF NOT EXISTS accuracy_score numeric(4,3),
+  ADD COLUMN IF NOT EXISTS calibration_error numeric(5,4),
+  ADD COLUMN IF NOT EXISTS confidence_delta numeric(5,4),
+  ADD COLUMN IF NOT EXISTS model_version text,
+  ADD COLUMN IF NOT EXISTS prompt_version text,
+  ADD COLUMN IF NOT EXISTS run_id uuid,
+  ADD COLUMN IF NOT EXISTS domain text,
+  ADD COLUMN IF NOT EXISTS entity_types text[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS idx_ocl_thesis ON oracle_calibration_log (thesis_id);
+CREATE INDEX IF NOT EXISTS idx_ocl_outcome ON oracle_calibration_log (outcome_id);
+CREATE INDEX IF NOT EXISTS idx_ocl_domain ON oracle_calibration_log (domain) WHERE domain IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ocl_model ON oracle_calibration_log (model_version) WHERE model_version IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ocl_created_at ON oracle_calibration_log (created_at DESC);
 
 -- Unique: one calibration entry per thesis-outcome pair
-CREATE UNIQUE INDEX idx_ocl_thesis_outcome ON oracle_calibration_log (thesis_id, outcome_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ocl_thesis_outcome ON oracle_calibration_log (thesis_id, outcome_id);
 
 ALTER TABLE oracle_calibration_log ENABLE ROW LEVEL SECURITY;
 

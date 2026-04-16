@@ -166,7 +166,7 @@ CREATE POLICY select_er ON entity_relations
       WHERE owr.id = entity_relations.discovered_in_run_id
         AND (
           owr.created_by = auth.uid()
-          OR owr.status = 'published'::oracle_run_status
+          OR owr.status::text = 'published'
           OR EXISTS (
             SELECT 1 FROM public.charter_user_roles cur
             WHERE cur.user_id = auth.uid()

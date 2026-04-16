@@ -72,7 +72,7 @@ CREATE POLICY select_vr ON verification_results
       run_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM oracle_whitespace_runs owr
         WHERE owr.id = verification_results.run_id
-          AND owr.status = 'published'::oracle_run_status
+          AND owr.status::text = 'published'
       )
     )
   );

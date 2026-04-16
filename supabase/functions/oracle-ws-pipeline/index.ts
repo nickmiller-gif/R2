@@ -268,7 +268,14 @@ async function resolveEntities(
     .eq('run_id', runId)
     .not('chunk_id', 'is', null);
 
-  if (!evidence || evidence.length === 0) return 0;
+  if (!evidence || evidence.length === 0) {
+    return {
+      uniqueEntities: 0,
+      mentionLinks: 0,
+      chunkCount: 0,
+      unresolvedChunkCount: 0,
+    };
+  }
 
   // Look up existing entity_mentions for these chunks
   const chunkIds = evidence.map((e: Record<string, unknown>) => e.chunk_id).filter(Boolean);
@@ -282,8 +289,16 @@ async function resolveEntities(
   const entitySet = new Set(
     (existingMentions ?? []).map((m: Record<string, unknown>) => m.entity_id as string),
   );
+  const resolvedChunks = new Set(
+    (existingMentions ?? []).map((m: Record<string, unknown>) => String(m.chunk_id ?? '')),
+  );
 
-  return entitySet.size;
+  return {
+    uniqueEntities: entitySet.size,
+    mentionLinks: (existingMentions ?? []).length,
+    chunkCount: chunkIds.length,
+    unresolvedChunkCount: Math.max(0, chunkIds.length - resolvedChunks.size),
+  };
 }
 
 // ─── Stage 4: Generate Hypotheses ────────────────────────────────────
@@ -738,7 +753,7 @@ Deno.serve(async (req) => {
           const evidenceCount = await gatherEvidence(serviceClient, run);
 
           // Stage 3: Resolve Entities
-          const entityCount = await resolveEntities(serviceClient, run.id);
+          const entityResolution = await resolveEntities(serviceClient, run.id);
 
           // Stage 4: Generate Hypotheses
           const hypotheses = await generateHypotheses(
@@ -766,20 +781,36 @@ Deno.serve(async (req) => {
             evaluation,
             stage_progress: {
               evidence_gathered: evidenceCount,
-              entities_resolved: entityCount,
+              entities_resolved: entityResolution.uniqueEntities,
+              entity_mention_links: entityResolution.mentionLinks,
+              unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
               hypotheses_generated: hypotheses.length,
               verified: verification.verified,
               total_hypotheses: verification.total,
               graph_extraction_job: 'pending',
             },
           });
+          await serviceClient.from('eigen_governance_audit_log').insert([{
+            event_type: 'run_review_ready',
+            run_id: run.id,
+            actor_id: auth.claims.userId,
+            details: {
+              evidence_gathered: evidenceCount,
+              entities_resolved: entityResolution.uniqueEntities,
+              hypotheses_generated: hypotheses.length,
+              hypotheses_verified: verification.verified,
+              evaluation,
+            },
+          }]);
 
           return jsonResponse({
             run_id: run.id,
             status: 'review',
             pipeline_summary: {
               evidence_gathered: evidenceCount,
-              entities_resolved: entityCount,
+              entities_resolved: entityResolution.uniqueEntities,
+              entity_mention_links: entityResolution.mentionLinks,
+              unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
               hypotheses_generated: hypotheses.length,
               hypotheses_verified: verification.verified,
               hypotheses_total: verification.total,
@@ -892,6 +923,19 @@ Deno.serve(async (req) => {
               metadata: { source_run_id: body.data.runId },
             }]);
           if (pubEventErr) throw new Error(`Failed to write publication event: ${pubEventErr.message}`);
+          await serviceClient.from('eigen_governance_audit_log').insert([{
+            event_type: 'hypothesis_published',
+            run_id: body.data.runId,
+            thesis_id: thesis!.id,
+            actor_id: auth.claims.userId,
+            details: {
+              hypothesis_id: h.id,
+              publication_notes: body.data.publicationNotes,
+              confidence: h.confidence,
+              evidence_strength: h.evidence_strength,
+              composite_score: h.composite_score,
+            },
+          }]);
 
           publishedThesisIds.push(thesis!.id);
         }
@@ -899,6 +943,16 @@ Deno.serve(async (req) => {
         // Update run to published
         const evaluation = await computeEvaluation(serviceClient, body.data.runId);
         await updateRunStatus(serviceClient, body.data.runId, 'published', { evaluation });
+        await serviceClient.from('eigen_governance_audit_log').insert([{
+          event_type: 'run_published',
+          run_id: body.data.runId,
+          actor_id: auth.claims.userId,
+          details: {
+            thesis_ids: publishedThesisIds,
+            published_count: publishedThesisIds.length,
+            evaluation,
+          },
+        }]);
 
         return jsonResponse({
           published_count: publishedThesisIds.length,
@@ -973,6 +1027,19 @@ Deno.serve(async (req) => {
             model_version: 'oracle-ws-pipeline-v1',
           }]);
         if (calibrationErr) throw new Error(`Failed to write calibration log: ${calibrationErr.message}`);
+        await serviceClient.from('eigen_governance_audit_log').insert([{
+          event_type: 'outcome_recorded',
+          run_id: null,
+          thesis_id: body.data.thesisId,
+          actor_id: auth.claims.userId,
+          details: {
+            verdict: body.data.verdict,
+            outcome_id: outcome!.id,
+            accuracy_score: accuracyScore,
+            calibration_error: calibrationError,
+            confidence_delta: confidenceDelta,
+          },
+        }]);
 
         return jsonResponse({
           outcome_id: outcome!.id,

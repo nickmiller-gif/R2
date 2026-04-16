@@ -49,6 +49,23 @@ interface ChatRequest {
 
 const supabaseClients = createSupabaseClientFactory();
 
+function resolvePolicyScopeMode(scope: string[]): 'none' | 'public_only' | 'eigenx_only' | 'mixed' {
+  const normalized = new Set(scope.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
+  const hasPublic = normalized.has('eigen_public');
+  const hasEigenx = normalized.has('eigenx');
+  if (!hasPublic && !hasEigenx) return 'none';
+  if (hasPublic && hasEigenx) return 'mixed';
+  return hasPublic ? 'public_only' : 'eigenx_only';
+}
+
+function buildEvidenceNotice(confidence: ReturnType<typeof buildCompositeConfidence>): string | null {
+  if (confidence.overall === 'high') return null;
+  if (confidence.overall === 'medium') {
+    return 'Partial evidence coverage: verify critical claims against source citations.';
+  }
+  return 'Low evidence coverage: response is grounded but should be treated as provisional until verified.';
+}
+
 function readMaxMessageChars(): number {
   const raw = Deno.env.get('EIGEN_CHAT_MAX_MESSAGE_CHARS') ?? '32000';
   const n = Number.parseInt(raw, 10);
@@ -393,6 +410,7 @@ Deno.serve(async (req) => {
               response: fullText,
               citations,
               confidence,
+              evidence_notice: buildEvidenceNotice(confidence),
               retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
               memory_updated: true,
               session_id: sessionId,
@@ -403,6 +421,7 @@ Deno.serve(async (req) => {
               llm_critic_provider: criticProvider ?? null,
               llm_critic_model: criticModel ?? null,
               effective_policy_scope: resolvedScope.effectivePolicyScope,
+              policy_scope_mode: resolvePolicyScopeMode(resolvedScope.effectivePolicyScope),
             });
           } catch (streamErr) {
             const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
@@ -506,6 +525,7 @@ Deno.serve(async (req) => {
       response: responseText,
       citations,
       confidence,
+      evidence_notice: buildEvidenceNotice(confidence),
       retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
       memory_updated: true,
       session_id: sessionId,
@@ -516,6 +536,7 @@ Deno.serve(async (req) => {
       llm_critic_provider: llmCriticProvider,
       llm_critic_model: llmCriticModel,
       effective_policy_scope: resolvedScope.effectivePolicyScope,
+      policy_scope_mode: resolvePolicyScopeMode(resolvedScope.effectivePolicyScope),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

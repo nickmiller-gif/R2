@@ -18,6 +18,8 @@ import {
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
+import { loadRecentTurns, persistTurnPair } from '../_shared/eigen-chat-history.ts';
+import { trimHistoryToBudget, type ConversationTurn } from '../../../src/lib/eigen/chat-history-utils.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 
 interface ChatRequest {
@@ -59,6 +61,15 @@ function readMaxCompletionTokens(): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(n, 16_000);
+}
+
+/** Max conversation turns (user + assistant count) passed to the LLM; must be even. */
+function readMaxHistoryTurns(): number {
+  const raw = Deno.env.get('EIGEN_CHAT_MAX_HISTORY_TURNS') ?? '8';
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 2) return 8;
+  const capped = Math.min(n, 20);
+  return capped % 2 === 0 ? capped : capped - 1;
 }
 
 function readNoContextResponse(): string {
@@ -199,6 +210,17 @@ Deno.serve(async (req) => {
         .single();
       if (sessionInsert.error) return errorResponse(sessionInsert.error.message, 400);
       sessionId = sessionInsert.data.id as string;
+    } else {
+      const { data: existingSession, error: sessionLookupError } = await client
+        .from('eigen_chat_sessions')
+        .select('id')
+        .eq('id', sessionId)
+        .eq('owner_id', auth.claims.userId)
+        .maybeSingle();
+      if (sessionLookupError) return errorResponse(sessionLookupError.message, 400);
+      if (!existingSession) {
+        return errorResponse('session_id not found or not owned by caller', 404);
+      }
     }
 
     const retrieveResult = await executeEigenRetrieve(client, {
@@ -232,6 +254,13 @@ Deno.serve(async (req) => {
       policyScope: resolvedScope.effectivePolicyScope,
     });
 
+    const maxHistoryTurns = readMaxHistoryTurns();
+    let conversationHistory: ConversationTurn[] = [];
+    if (body.conversation_context !== 'none') {
+      const rawTurns = await loadRecentTurns(client, sessionId, auth.claims.userId, maxHistoryTurns);
+      conversationHistory = trimHistoryToBudget(rawTurns, maxHistoryTurns);
+    }
+
     if (body.stream) {
       const encoder = new TextEncoder();
       const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks, body);
@@ -256,6 +285,7 @@ Deno.serve(async (req) => {
             let criticProvider: LlmProvider | undefined;
             let criticModel: string | undefined;
 
+            const generationStartedAt = Date.now();
             if (retrievedChunks.length === 0) {
               fullText = readNoContextResponse();
               send({ text: fullText });
@@ -265,6 +295,7 @@ Deno.serve(async (req) => {
                 model: body.llm_model,
                 systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
                 userContent: streamUserContent,
+                conversationHistory,
                 maxTokens: readMaxCompletionTokens(),
                 temperature: 0.1,
                 critic: {
@@ -289,6 +320,7 @@ Deno.serve(async (req) => {
                 send({ text: delta });
               }
             }
+            const turnLatencyMs = Math.max(0, Date.now() - generationStartedAt);
 
             const [memoryUpsert, sessionUpdate] = await Promise.all([
               client.from('memory_entries').upsert(
@@ -328,6 +360,34 @@ Deno.serve(async (req) => {
               return;
             }
 
+            const usedLlmForTurn = retrievedChunks.length !== 0;
+            const resolvedLlmProvider = usedLlmForTurn
+              ? (providerUsed ?? body.llm_provider ?? 'openai')
+              : null;
+            const resolvedLlmModel = usedLlmForTurn
+              ? (modelUsed ?? body.llm_model ?? null)
+              : null;
+            const resolvedLlmFallbackUsed = usedLlmForTurn ? fallbackUsed : false;
+            const resolvedLlmCriticUsed = usedLlmForTurn ? criticUsed : false;
+
+            const persistResult = await persistTurnPair(client, {
+              sessionId,
+              ownerId: auth.claims.userId,
+              userMessage: body.message,
+              assistantMessage: fullText,
+              retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+              citations,
+              confidence,
+              llmProvider: resolvedLlmProvider,
+              llmModel: resolvedLlmModel,
+              llmFallbackUsed: resolvedLlmFallbackUsed,
+              llmCriticUsed: resolvedLlmCriticUsed,
+              latencyMs: turnLatencyMs,
+            });
+            if (!persistResult.ok) {
+              console.error('[eigen-chat] persistTurnPair failed:', persistResult.error);
+            }
+
             send({
               done: true,
               response: fullText,
@@ -336,10 +396,10 @@ Deno.serve(async (req) => {
               retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
               memory_updated: true,
               session_id: sessionId,
-              llm_provider: providerUsed ?? body.llm_provider ?? 'openai',
-              llm_model: modelUsed ?? body.llm_model ?? null,
-              llm_fallback_used: fallbackUsed,
-              llm_critic_used: criticUsed,
+              llm_provider: resolvedLlmProvider,
+              llm_model: resolvedLlmModel,
+              llm_fallback_used: resolvedLlmFallbackUsed,
+              llm_critic_used: resolvedLlmCriticUsed,
               llm_critic_provider: criticProvider ?? null,
               llm_critic_model: criticModel ?? null,
               effective_policy_scope: resolvedScope.effectivePolicyScope,
@@ -364,6 +424,7 @@ Deno.serve(async (req) => {
     let llmCriticProvider: LlmProvider | null = null;
     let llmCriticModel: string | null = null;
 
+    const nonStreamGenerationStartedAt = Date.now();
     if (retrievedChunks.length === 0) {
       responseText = readNoContextResponse();
     } else {
@@ -372,6 +433,7 @@ Deno.serve(async (req) => {
         model: body.llm_model,
         systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
         userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
+        conversationHistory,
         maxTokens: readMaxCompletionTokens(),
         temperature: 0.1,
         critic: {
@@ -388,6 +450,7 @@ Deno.serve(async (req) => {
       llmCriticProvider = llmResult.critic_provider ?? null;
       llmCriticModel = llmResult.critic_model ?? null;
     }
+    const nonStreamTurnLatencyMs = Math.max(0, Date.now() - nonStreamGenerationStartedAt);
 
     const [memoryUpsert, sessionUpdate] = await Promise.all([
       client.from('memory_entries').upsert(
@@ -420,6 +483,24 @@ Deno.serve(async (req) => {
 
     if (memoryUpsert.error) return errorResponse(memoryUpsert.error.message, 400);
     if (sessionUpdate.error) return errorResponse(sessionUpdate.error.message, 400);
+
+    const persistNonStream = await persistTurnPair(client, {
+      sessionId,
+      ownerId: auth.claims.userId,
+      userMessage: body.message,
+      assistantMessage: responseText,
+      retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+      citations,
+      confidence,
+      llmProvider: retrievedChunks.length === 0 ? null : llmProvider,
+      llmModel: retrievedChunks.length === 0 ? null : llmModel,
+      llmFallbackUsed: retrievedChunks.length === 0 ? false : llmFallbackUsed,
+      llmCriticUsed: retrievedChunks.length === 0 ? false : llmCriticUsed,
+      latencyMs: nonStreamTurnLatencyMs,
+    });
+    if (!persistNonStream.ok) {
+      console.error('[eigen-chat] persistTurnPair failed:', persistNonStream.error);
+    }
 
     return jsonResponse({
       response: responseText,

@@ -17,6 +17,11 @@ if [ -z "$PROJECT_REF" ] || [ -z "$ACCESS_TOKEN" ]; then
   exit 0
 fi
 
+if [ "$REQUIRE_REMOTE_CHECKS" != "true" ]; then
+  echo "Skipping drift check: REQUIRE_SUPABASE_REMOTE_CHECKS is not true."
+  exit 0
+fi
+
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT
 

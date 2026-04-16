@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PgVectorStore,
   type ChunkWithEmbedding,
@@ -26,13 +26,23 @@ function makeChunk(
   };
 }
 
-function makeDb(chunks: ChunkWithEmbedding[]): PgVectorDb {
+function makeDb(
+  chunks: ChunkWithEmbedding[],
+  overrides: Partial<PgVectorDb> = {},
+): PgVectorDb {
   return {
-    async upsertChunks() {},
+    async upsertChunks(rows) {
+      if (overrides.upsertChunks) return overrides.upsertChunks(rows);
+    },
     async listChunksWithEmbeddings(limit) {
+      if (overrides.listChunksWithEmbeddings) {
+        return overrides.listChunksWithEmbeddings(limit);
+      }
       return chunks.slice(0, limit);
     },
-    async deleteChunks() {},
+    async deleteChunks(ids) {
+      if (overrides.deleteChunks) return overrides.deleteChunks(ids);
+    },
   };
 }
 
@@ -75,5 +85,49 @@ describe('PgVectorStore', () => {
       5,
     );
     expect(result.map((r) => r.chunk.id)).toEqual(['allowed']);
+  });
+
+  it('skips no-op upsert and delete calls', async () => {
+    const upsertSpy = vi.fn();
+    const deleteSpy = vi.fn();
+    const store = new PgVectorStore(
+      makeDb([], { upsertChunks: upsertSpy, deleteChunks: deleteSpy }),
+    );
+
+    await store.upsert([]);
+    await store.delete([]);
+
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('filters by validity window before scoring', async () => {
+    const chunks = [
+      makeChunk('expired', [1, 0], { validTo: '2026-01-01T00:00:00Z' }),
+      makeChunk('upcoming', [0, 1], { validFrom: '2027-01-01T00:00:00Z' }),
+      makeChunk('active', [0.6, 0.4], { validFrom: '2025-01-01T00:00:00Z' }),
+    ];
+    const store = new PgVectorStore(makeDb(chunks));
+
+    const result = await store.search(
+      [1, 0],
+      { validAtIso: '2026-06-01T00:00:00Z' },
+      5,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].chunk.id).toBe('active');
+  });
+
+  it('returns zero similarity when embeddings mismatch or are zero vectors', async () => {
+    const chunks = [
+      makeChunk('mismatched', [1, 0]),
+      makeChunk('zero', [0, 0, 0]),
+    ];
+    const store = new PgVectorStore(makeDb(chunks));
+
+    const [first, second] = await store.search([1, 0, 0], {}, 5);
+    expect(first.similarityScore).toBe(0);
+    expect(second.similarityScore).toBe(0);
   });
 });

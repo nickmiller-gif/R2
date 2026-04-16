@@ -141,17 +141,25 @@ async function gatherEvidence(
 
   await updateRunStatus(serviceClient, runId, 'gathering_evidence');
 
-  // Tier 1: Semantic retrieval from knowledge_chunks
   const evidenceRows: Record<string, unknown>[] = [];
 
-  // Query knowledge_chunks by matching policy tags or domain keywords
-  const { data: chunks, error: chunkErr } = await serviceClient
-    .from('knowledge_chunks')
-    .select('id, content, authority_score, policy_tags, source_document_id')
-    .textSearch('content', domain.split(/\s+/).join(' & '), { type: 'websearch' })
-    .limit(50);
+  // Tier 1: Semantic retrieval from knowledge_chunks
+  // Only query if knowledge_chunks is in the allowed sources (or no filter set)
+  const chunkSourceAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('knowledge_chunks');
+  const searchTerms = domain.split(/\s+/).filter(Boolean).join(' & ');
 
-  if (!chunkErr && chunks) {
+  let chunks: Record<string, unknown>[] | null = null;
+  if (chunkSourceAllowed && searchTerms) {
+    const { data, error: chunkErr } = await serviceClient
+      .from('knowledge_chunks')
+      .select('id, content, authority_score, policy_tags, document_id')
+      .textSearch('content', searchTerms, { type: 'websearch' })
+      .limit(50);
+    if (chunkErr) throw new Error(`Failed to gather chunk evidence: ${chunkErr.message}`);
+    chunks = data;
+  }
+
+  if (chunks) {
     for (const chunk of chunks) {
       evidenceRows.push({
         run_id: runId,
@@ -164,17 +172,18 @@ async function gatherEvidence(
         content_excerpt: typeof chunk.content === 'string'
           ? chunk.content.substring(0, 500)
           : null,
-        provenance_chain: JSON.stringify([{
+        provenance_chain: [{
           source: 'knowledge_chunks',
-          document_id: chunk.source_document_id,
+          document_id: chunk.document_id,
           retrieved_at: new Date().toISOString(),
-        }]),
+        }],
       });
     }
   }
 
   // Tier 2: Structured data from Oracle signals related to target entities
-  if (targetEntities.length > 0) {
+  const signalsAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_signals');
+  if (signalsAllowed && targetEntities.length > 0) {
     const { data: signals, error: sigErr } = await serviceClient
       .from('oracle_signals')
       .select('id, entity_asset_id, score, confidence_band, reasons, tags')
@@ -194,40 +203,43 @@ async function gatherEvidence(
           content_excerpt: Array.isArray(signal.reasons)
             ? signal.reasons.join('; ').substring(0, 500)
             : null,
-          provenance_chain: JSON.stringify([{
+          provenance_chain: [{
             source: 'oracle_signals',
             signal_id: signal.id,
             retrieved_at: new Date().toISOString(),
-          }]),
+          }],
         });
       }
     }
   }
 
   // Tier 3: Existing theses for context
-  const { data: theses, error: thErr } = await serviceClient
-    .from('oracle_theses')
-    .select('id, title, thesis_statement, confidence, evidence_strength')
-    .eq('publication_state', 'published')
-    .limit(20);
+  const thesesAllowed = sourcesAllowed.length === 0 || sourcesAllowed.includes('oracle_theses');
+  if (thesesAllowed) {
+    const { data: theses, error: thErr } = await serviceClient
+      .from('oracle_theses')
+      .select('id, title, thesis_statement, confidence, evidence_strength')
+      .eq('publication_state', 'published')
+      .limit(20);
 
-  if (!thErr && theses) {
-    for (const thesis of theses) {
-      evidenceRows.push({
-        run_id: runId,
-        chunk_id: null,
-        source_type: 'curated_database',
-        source_ref: `oracle_theses:${thesis.id}`,
-        source_system: 'oracle_theses',
-        authority_score: AUTHORITY_SCORES.curated_database,
-        relevance_score: (thesis.confidence ?? 50) / 100,
-        content_excerpt: `${thesis.title}: ${thesis.thesis_statement}`.substring(0, 500),
-        provenance_chain: JSON.stringify([{
-          source: 'oracle_theses',
-          thesis_id: thesis.id,
-          retrieved_at: new Date().toISOString(),
-        }]),
-      });
+    if (!thErr && theses) {
+      for (const thesis of theses) {
+        evidenceRows.push({
+          run_id: runId,
+          chunk_id: null,
+          source_type: 'curated_database',
+          source_ref: `oracle_theses:${thesis.id}`,
+          source_system: 'oracle_theses',
+          authority_score: AUTHORITY_SCORES.curated_database,
+          relevance_score: (thesis.confidence ?? 50) / 100,
+          content_excerpt: `${thesis.title}: ${thesis.thesis_statement}`.substring(0, 500),
+          provenance_chain: [{
+            source: 'oracle_theses',
+            thesis_id: thesis.id,
+            retrieved_at: new Date().toISOString(),
+          }],
+        });
+      }
     }
   }
 
@@ -384,6 +396,8 @@ async function scoreAndVerify(
 
   let verifiedCount = 0;
   const verificationRows: Record<string, unknown>[] = [];
+  const verifiedHypothesisIds: string[] = [];
+  const unverifiedHypothesisIds: string[] = [];
 
   for (const h of hypotheses) {
     const composite = h.composite_score as number ?? 0;
@@ -411,23 +425,51 @@ async function scoreAndVerify(
       verifier_model: 'oracle-ws-pipeline-v1',
     });
 
-    // Update hypothesis publishability
-    await serviceClient
+    if (verified) {
+      verifiedHypothesisIds.push(h.id as string);
+      verifiedCount++;
+    } else {
+      unverifiedHypothesisIds.push(h.id as string);
+    }
+  }
+
+  if (verifiedHypothesisIds.length > 0) {
+    const { error: verifiedUpdateError } = await serviceClient
       .from('oracle_run_hypotheses')
       .update({
-        publishable: verified,
-        verification_passed: verified,
+        publishable: true,
+        verification_passed: true,
       })
-      .eq('id', h.id);
+      .in('id', verifiedHypothesisIds);
 
-    if (verified) verifiedCount++;
+    if (verifiedUpdateError) {
+      throw new Error(`Failed to update verified hypotheses: ${verifiedUpdateError.message}`);
+    }
+  }
+
+  if (unverifiedHypothesisIds.length > 0) {
+    const { error: unverifiedUpdateError } = await serviceClient
+      .from('oracle_run_hypotheses')
+      .update({
+        publishable: false,
+        verification_passed: false,
+      })
+      .in('id', unverifiedHypothesisIds);
+
+    if (unverifiedUpdateError) {
+      throw new Error(`Failed to update unverified hypotheses: ${unverifiedUpdateError.message}`);
+    }
   }
 
   // Batch insert verification results
   if (verificationRows.length > 0) {
-    await serviceClient
+    const { error: verificationInsertError } = await serviceClient
       .from('verification_results')
       .insert(verificationRows);
+
+    if (verificationInsertError) {
+      throw new Error(`Failed to insert verification results: ${verificationInsertError.message}`);
+    }
   }
 
   return { verified: verifiedCount, total: hypotheses.length };
@@ -498,23 +540,29 @@ Deno.serve(async (req) => {
         if (!run) return errorResponse('Run not found', 404);
 
         // Fetch related data in parallel
-        const [hypotheses, evidence, evaluation] = await Promise.all([
+        const [hypothesesResult, evidenceResult, evaluation] = await Promise.all([
           callerClient
             .from('oracle_run_hypotheses')
             .select('*')
             .eq('run_id', runId)
-            .order('composite_score', { ascending: false })
-            .then((r) => r.data ?? []),
+            .order('composite_score', { ascending: false }),
           callerClient
             .from('oracle_run_evidence')
             .select('id, source_type, source_ref, source_system, authority_score, relevance_score, content_excerpt')
             .eq('run_id', runId)
-            .order('authority_score', { ascending: false })
-            .then((r) => r.data ?? []),
+            .order('authority_score', { ascending: false }),
           computeEvaluation(serviceClient, runId),
         ]);
 
-        return jsonResponse({ run, hypotheses, evidence, evaluation });
+        if (hypothesesResult.error) return errorResponse(hypothesesResult.error.message, 500);
+        if (evidenceResult.error) return errorResponse(evidenceResult.error.message, 500);
+
+        return jsonResponse({
+          run,
+          hypotheses: hypothesesResult.data ?? [],
+          evidence: evidenceResult.data ?? [],
+          evaluation,
+        });
       }
 
       // List recent runs
@@ -564,6 +612,15 @@ Deno.serve(async (req) => {
         if (!['low', 'medium', 'high'].includes(body.data.riskLevel)) {
           return errorResponse('riskLevel must be low, medium, or high', 400);
         }
+        if (!Array.isArray(body.data.targetEntities) || !body.data.targetEntities.every((value) => typeof value === 'string')) {
+          return errorResponse('targetEntities must be an array of strings', 400);
+        }
+        if (
+          !Array.isArray(body.data.evidenceSourcesAllowed)
+          || !body.data.evidenceSourcesAllowed.every((value) => typeof value === 'string')
+        ) {
+          return errorResponse('evidenceSourcesAllowed must be an array of strings', 400);
+        }
 
         const run = await createRun(serviceClient, auth.claims.userId, body.data);
         return jsonResponse({ run, status: 'queued' }, 201);
@@ -586,6 +643,27 @@ Deno.serve(async (req) => {
 
         if (!['queued', 'failed'].includes(run.status)) {
           return errorResponse(`Run is in ${run.status} state; only queued or failed runs can be executed`, 409);
+        }
+        if (run.status === 'failed') {
+          const [verificationCleanup, hypothesesCleanup, evidenceCleanup] = await Promise.all([
+            serviceClient
+              .from('verification_results')
+              .delete()
+              .eq('run_id', run.id),
+            serviceClient
+              .from('oracle_run_hypotheses')
+              .delete()
+              .eq('run_id', run.id),
+            serviceClient
+              .from('oracle_run_evidence')
+              .delete()
+              .eq('run_id', run.id),
+          ]);
+
+          const cleanupError = verificationCleanup.error ?? hypothesesCleanup.error ?? evidenceCleanup.error;
+          if (cleanupError) {
+            return errorResponse(`Failed to reset prior pipeline artifacts: ${cleanupError.message}`, 500);
+          }
         }
 
         const startedAt = new Date().toISOString();
@@ -658,6 +736,9 @@ Deno.serve(async (req) => {
           { name: 'publicationNotes', type: 'string' },
         ]);
         if (!body.ok) return body.response;
+        if (!Array.isArray(body.data.hypothesisIds) || !body.data.hypothesisIds.every((value) => typeof value === 'string')) {
+          return errorResponse('hypothesisIds must be an array of strings', 400);
+        }
 
         const { data: run } = await serviceClient
           .from('oracle_whitespace_runs')
@@ -671,14 +752,28 @@ Deno.serve(async (req) => {
         }
 
         // Create oracle_theses from selected hypotheses
-        const { data: selectedHypotheses } = await serviceClient
+        const requestedHypothesisIds = [...new Set(body.data.hypothesisIds)];
+        const { data: selectedHypotheses, error: selectedHypothesesError } = await serviceClient
           .from('oracle_run_hypotheses')
           .select('*')
-          .in('id', body.data.hypothesisIds)
+          .in('id', requestedHypothesisIds)
           .eq('run_id', body.data.runId);
+        if (selectedHypothesesError) {
+          return errorResponse(selectedHypothesesError.message, 500);
+        }
 
         if (!selectedHypotheses || selectedHypotheses.length === 0) {
           return errorResponse('No matching hypotheses found for this run', 404);
+        }
+        if (selectedHypotheses.length !== requestedHypothesisIds.length) {
+          return errorResponse('One or more hypotheses do not belong to this run', 400);
+        }
+
+        const unpublishedHypotheses = selectedHypotheses.filter(
+          (hypothesis) => hypothesis.publishable !== true || hypothesis.verification_passed !== true,
+        );
+        if (unpublishedHypotheses.length > 0) {
+          return errorResponse('All selected hypotheses must be verified and publishable before publishing', 409);
         }
 
         const publishedThesisIds: string[] = [];
@@ -711,13 +806,14 @@ Deno.serve(async (req) => {
           if (thErr) throw new Error(`Failed to create thesis: ${thErr.message}`);
 
           // Link hypothesis to thesis
-          await serviceClient
+          const { error: linkErr } = await serviceClient
             .from('oracle_run_hypotheses')
             .update({ thesis_id: thesis!.id })
             .eq('id', h.id);
+          if (linkErr) throw new Error(`Failed to link hypothesis to thesis: ${linkErr.message}`);
 
           // Write publication event
-          await serviceClient
+          const { error: pubEventErr } = await serviceClient
             .from('oracle_publication_events')
             .insert([{
               target_type: 'thesis',
@@ -728,6 +824,7 @@ Deno.serve(async (req) => {
               notes: body.data.publicationNotes,
               metadata: { source_run_id: body.data.runId },
             }]);
+          if (pubEventErr) throw new Error(`Failed to write publication event: ${pubEventErr.message}`);
 
           publishedThesisIds.push(thesis!.id);
         }
@@ -753,6 +850,9 @@ Deno.serve(async (req) => {
           { name: 'observedAt', type: 'string' },
         ]);
         if (!body.ok) return body.response;
+        if (!Array.isArray(body.data.evidenceRefs) || !body.data.evidenceRefs.every((value) => typeof value === 'object' && value !== null && !Array.isArray(value))) {
+          return errorResponse('evidenceRefs must be an array of objects', 400);
+        }
 
         // Fetch thesis for calibration
         const { data: thesis } = await serviceClient
@@ -792,7 +892,7 @@ Deno.serve(async (req) => {
         const confidenceDelta = accuracyScore - predictedConfidence;
 
         // Write calibration log
-        await serviceClient
+        const { error: calibrationErr } = await serviceClient
           .from('oracle_calibration_log')
           .insert([{
             thesis_id: body.data.thesisId,
@@ -805,6 +905,7 @@ Deno.serve(async (req) => {
             confidence_delta: confidenceDelta,
             model_version: 'oracle-ws-pipeline-v1',
           }]);
+        if (calibrationErr) throw new Error(`Failed to write calibration log: ${calibrationErr.message}`);
 
         return jsonResponse({
           outcome_id: outcome!.id,

@@ -19,7 +19,7 @@ CREATE TYPE entity_mention_type AS ENUM (
 
 CREATE TABLE entity_mentions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  chunk_id uuid NOT NULL,       -- FK to knowledge_chunks
+  chunk_id uuid NOT NULL REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
   entity_id uuid NOT NULL REFERENCES asset_registry(id) ON DELETE CASCADE,
 
   mention_text text NOT NULL,   -- The surface form found in the chunk
@@ -53,7 +53,20 @@ ALTER TABLE entity_mentions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY select_em ON entity_mentions
   FOR SELECT TO authenticated
-  USING (true);
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM knowledge_chunks kc
+      JOIN documents d ON d.id = kc.document_id
+      WHERE kc.id = entity_mentions.chunk_id
+        AND d.owner_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.charter_user_roles cur
+      WHERE cur.user_id = auth.uid()
+        AND cur.role::text IN ('operator', 'counsel', 'admin')
+    )
+  );
 
 CREATE POLICY insert_em ON entity_mentions
   FOR INSERT TO service_role
@@ -146,7 +159,22 @@ ALTER TABLE entity_relations ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY select_er ON entity_relations
   FOR SELECT TO authenticated
-  USING (true);
+  USING (
+    discovered_in_run_id IS NULL
+    OR EXISTS (
+      SELECT 1 FROM oracle_whitespace_runs owr
+      WHERE owr.id = entity_relations.discovered_in_run_id
+        AND (
+          owr.created_by = auth.uid()
+          OR owr.status = 'published'::oracle_run_status
+          OR EXISTS (
+            SELECT 1 FROM public.charter_user_roles cur
+            WHERE cur.user_id = auth.uid()
+              AND cur.role::text IN ('operator', 'counsel', 'admin')
+          )
+        )
+    )
+  );
 
 CREATE POLICY insert_er ON entity_relations
   FOR INSERT TO service_role
@@ -183,15 +211,68 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT target_entity_id, relation_type, weight, 'outgoing'::text
-  FROM entity_relations
-  WHERE source_entity_id = p_entity_id AND weight >= p_min_weight
+  WITH RECURSIVE walk AS (
+    SELECT
+      er.target_entity_id AS entity_id,
+      er.relation_type,
+      er.weight,
+      'outgoing'::text AS direction,
+      1 AS depth,
+      ARRAY[p_entity_id, er.target_entity_id]::uuid[] AS visited
+    FROM entity_relations er
+    WHERE er.source_entity_id = p_entity_id
+      AND er.weight >= p_min_weight
 
-  UNION ALL
+    UNION ALL
 
-  SELECT source_entity_id, relation_type, weight, 'incoming'::text
-  FROM entity_relations
-  WHERE target_entity_id = p_entity_id AND weight >= p_min_weight;
+    SELECT
+      er.source_entity_id AS entity_id,
+      er.relation_type,
+      er.weight,
+      'incoming'::text AS direction,
+      1 AS depth,
+      ARRAY[p_entity_id, er.source_entity_id]::uuid[] AS visited
+    FROM entity_relations er
+    WHERE er.target_entity_id = p_entity_id
+      AND er.weight >= p_min_weight
+
+    UNION ALL
+
+    SELECT
+      CASE
+        WHEN er.source_entity_id = walk.entity_id THEN er.target_entity_id
+        ELSE er.source_entity_id
+      END AS entity_id,
+      er.relation_type,
+      er.weight,
+      CASE
+        WHEN er.source_entity_id = walk.entity_id THEN 'outgoing'::text
+        ELSE 'incoming'::text
+      END AS direction,
+      walk.depth + 1 AS depth,
+      walk.visited || CASE
+        WHEN er.source_entity_id = walk.entity_id THEN er.target_entity_id
+        ELSE er.source_entity_id
+      END AS visited
+    FROM walk
+    JOIN entity_relations er
+      ON er.source_entity_id = walk.entity_id
+      OR er.target_entity_id = walk.entity_id
+    WHERE walk.depth < GREATEST(p_max_depth, 1)
+      AND er.weight >= p_min_weight
+      AND (
+        CASE
+          WHEN er.source_entity_id = walk.entity_id THEN er.target_entity_id
+          ELSE er.source_entity_id
+        END
+      ) <> ALL(walk.visited)
+  )
+  SELECT DISTINCT
+    walk.entity_id,
+    walk.relation_type,
+    walk.weight,
+    walk.direction
+  FROM walk;
 $$;
 
 COMMENT ON TABLE entity_mentions IS
@@ -199,4 +280,4 @@ COMMENT ON TABLE entity_mentions IS
 COMMENT ON TABLE entity_relations IS
   'Typed, weighted edges between entities forming the Oracle knowledge graph.';
 COMMENT ON FUNCTION entity_neighborhood IS
-  'Returns 1-hop entity neighbors with relation type and direction for graph traversal.';
+  'Returns up to p_max_depth hops of entity neighbors with relation type and direction for graph traversal.';

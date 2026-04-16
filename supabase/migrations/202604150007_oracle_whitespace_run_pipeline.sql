@@ -101,7 +101,7 @@ CREATE TABLE oracle_run_evidence (
   run_id uuid NOT NULL REFERENCES oracle_whitespace_runs(id) ON DELETE CASCADE,
 
   -- Source reference
-  chunk_id uuid,             -- FK to knowledge_chunks if from corpus
+  chunk_id uuid REFERENCES knowledge_chunks(id) ON DELETE SET NULL,
   source_type oracle_authority_tier NOT NULL,
   source_ref text NOT NULL,  -- URI or identifier for the source
   source_system text,        -- e.g. 'epo', 'fda', 'knowledge_chunks'

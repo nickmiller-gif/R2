@@ -1335,6 +1335,11 @@ export type Database = {
           owner_id: string
           related_entity_id: string | null
           related_entity_type: string | null
+          rights_constraints: string[]
+          source_authority_tier:
+            | Database["public"]["Enums"]["oracle_authority_tier"]
+            | null
+          source_license: string | null
           source_ref: string | null
           source_system: string
           source_title: string | null
@@ -1373,6 +1378,11 @@ export type Database = {
           owner_id: string
           related_entity_id?: string | null
           related_entity_type?: string | null
+          rights_constraints?: string[]
+          source_authority_tier?:
+            | Database["public"]["Enums"]["oracle_authority_tier"]
+            | null
+          source_license?: string | null
           source_ref?: string | null
           source_system: string
           source_title?: string | null
@@ -1411,6 +1421,11 @@ export type Database = {
           owner_id?: string
           related_entity_id?: string | null
           related_entity_type?: string | null
+          rights_constraints?: string[]
+          source_authority_tier?:
+            | Database["public"]["Enums"]["oracle_authority_tier"]
+            | null
+          source_license?: string | null
           source_ref?: string | null
           source_system?: string
           source_title?: string | null
@@ -1857,6 +1872,126 @@ export type Database = {
             columns: ["parent_entity_id"]
             isOneToOne: false
             referencedRelation: "entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_mentions: {
+        Row: {
+          chunk_id: string
+          confidence: number
+          created_at: string
+          end_offset: number | null
+          entity_id: string
+          extracted_by: string
+          extraction_model: string | null
+          id: string
+          mention_text: string
+          mention_type: Database["public"]["Enums"]["entity_mention_type"]
+          start_offset: number | null
+        }
+        Insert: {
+          chunk_id: string
+          confidence?: number
+          created_at?: string
+          end_offset?: number | null
+          entity_id: string
+          extracted_by?: string
+          extraction_model?: string | null
+          id?: string
+          mention_text: string
+          mention_type?: Database["public"]["Enums"]["entity_mention_type"]
+          start_offset?: number | null
+        }
+        Update: {
+          chunk_id?: string
+          confidence?: number
+          created_at?: string
+          end_offset?: number | null
+          entity_id?: string
+          extracted_by?: string
+          extraction_model?: string | null
+          id?: string
+          mention_text?: string
+          mention_type?: Database["public"]["Enums"]["entity_mention_type"]
+          start_offset?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_mentions_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "asset_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_relations: {
+        Row: {
+          created_at: string
+          discovered_by: string
+          discovered_in_run_id: string | null
+          evidence_chunk_ids: string[]
+          evidence_count: number
+          extraction_model: string | null
+          id: string
+          metadata: Json
+          relation_type: Database["public"]["Enums"]["entity_relation_type"]
+          source_entity_id: string
+          target_entity_id: string
+          updated_at: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          discovered_by?: string
+          discovered_in_run_id?: string | null
+          evidence_chunk_ids?: string[]
+          evidence_count?: number
+          extraction_model?: string | null
+          id?: string
+          metadata?: Json
+          relation_type: Database["public"]["Enums"]["entity_relation_type"]
+          source_entity_id: string
+          target_entity_id: string
+          updated_at?: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          discovered_by?: string
+          discovered_in_run_id?: string | null
+          evidence_chunk_ids?: string[]
+          evidence_count?: number
+          extraction_model?: string | null
+          id?: string
+          metadata?: Json
+          relation_type?: Database["public"]["Enums"]["entity_relation_type"]
+          source_entity_id?: string
+          target_entity_id?: string
+          updated_at?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_relations_discovered_in_run_id_fkey"
+            columns: ["discovered_in_run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_relations_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "asset_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_relations_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "asset_registry"
             referencedColumns: ["id"]
           },
         ]
@@ -2645,6 +2780,82 @@ export type Database = {
         }
         Relationships: []
       }
+      oracle_calibration_log: {
+        Row: {
+          accuracy_score: number | null
+          actual_verdict: string
+          calibration_error: number | null
+          confidence_delta: number | null
+          created_at: string
+          domain: string | null
+          entity_types: string[]
+          id: string
+          model_version: string | null
+          outcome_id: string
+          predicted_confidence: number
+          predicted_evidence_strength: number | null
+          prompt_version: string | null
+          run_id: string | null
+          thesis_id: string
+        }
+        Insert: {
+          accuracy_score?: number | null
+          actual_verdict: string
+          calibration_error?: number | null
+          confidence_delta?: number | null
+          created_at?: string
+          domain?: string | null
+          entity_types?: string[]
+          id?: string
+          model_version?: string | null
+          outcome_id: string
+          predicted_confidence: number
+          predicted_evidence_strength?: number | null
+          prompt_version?: string | null
+          run_id?: string | null
+          thesis_id: string
+        }
+        Update: {
+          accuracy_score?: number | null
+          actual_verdict?: string
+          calibration_error?: number | null
+          confidence_delta?: number | null
+          created_at?: string
+          domain?: string | null
+          entity_types?: string[]
+          id?: string
+          model_version?: string | null
+          outcome_id?: string
+          predicted_confidence?: number
+          predicted_evidence_strength?: number | null
+          prompt_version?: string | null
+          run_id?: string | null
+          thesis_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_calibration_log_outcome_id_fkey"
+            columns: ["outcome_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_outcomes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_calibration_log_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_calibration_log_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_theses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       oracle_evidence_items: {
         Row: {
           author_info: Json
@@ -2807,6 +3018,125 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      oracle_run_evidence: {
+        Row: {
+          authority_score: number
+          chunk_id: string | null
+          content_excerpt: string | null
+          created_at: string
+          id: string
+          provenance_chain: Json
+          relevance_score: number | null
+          rights_constraints: string[]
+          run_id: string
+          source_ref: string
+          source_system: string | null
+          source_type: Database["public"]["Enums"]["oracle_authority_tier"]
+        }
+        Insert: {
+          authority_score?: number
+          chunk_id?: string | null
+          content_excerpt?: string | null
+          created_at?: string
+          id?: string
+          provenance_chain?: Json
+          relevance_score?: number | null
+          rights_constraints?: string[]
+          run_id: string
+          source_ref: string
+          source_system?: string | null
+          source_type: Database["public"]["Enums"]["oracle_authority_tier"]
+        }
+        Update: {
+          authority_score?: number
+          chunk_id?: string | null
+          content_excerpt?: string | null
+          created_at?: string
+          id?: string
+          provenance_chain?: Json
+          relevance_score?: number | null
+          rights_constraints?: string[]
+          run_id?: string
+          source_ref?: string
+          source_system?: string | null
+          source_type?: Database["public"]["Enums"]["oracle_authority_tier"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_run_evidence_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oracle_run_hypotheses: {
+        Row: {
+          actionability: number | null
+          citation_ids: string[]
+          composite_score: number | null
+          confidence: number | null
+          created_at: string
+          evidence_strength: number | null
+          hypothesis_text: string
+          id: string
+          novelty_score: number | null
+          publishable: boolean
+          reasoning_trace: string | null
+          run_id: string
+          thesis_id: string | null
+          verification_passed: boolean | null
+        }
+        Insert: {
+          actionability?: number | null
+          citation_ids?: string[]
+          composite_score?: number | null
+          confidence?: number | null
+          created_at?: string
+          evidence_strength?: number | null
+          hypothesis_text: string
+          id?: string
+          novelty_score?: number | null
+          publishable?: boolean
+          reasoning_trace?: string | null
+          run_id: string
+          thesis_id?: string | null
+          verification_passed?: boolean | null
+        }
+        Update: {
+          actionability?: number | null
+          citation_ids?: string[]
+          composite_score?: number | null
+          confidence?: number | null
+          created_at?: string
+          evidence_strength?: number | null
+          hypothesis_text?: string
+          id?: string
+          novelty_score?: number | null
+          publishable?: boolean
+          reasoning_trace?: string | null
+          run_id?: string
+          thesis_id?: string | null
+          verification_passed?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_run_hypotheses_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_run_hypotheses_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_theses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       oracle_service_layer_run_decisions: {
         Row: {
@@ -3282,6 +3612,77 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      oracle_whitespace_runs: {
+        Row: {
+          completed_at: string | null
+          constraints: Json
+          core_run_id: string | null
+          created_at: string
+          created_by: string
+          domain: string
+          error_message: string | null
+          evaluation: Json
+          evidence_sources_allowed: string[]
+          id: string
+          risk_level: Database["public"]["Enums"]["oracle_risk_level"]
+          run_label: string | null
+          stage_progress: Json
+          started_at: string | null
+          status: Database["public"]["Enums"]["oracle_run_status"]
+          target_entities: string[]
+          time_horizon: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          constraints?: Json
+          core_run_id?: string | null
+          created_at?: string
+          created_by: string
+          domain: string
+          error_message?: string | null
+          evaluation?: Json
+          evidence_sources_allowed?: string[]
+          id?: string
+          risk_level?: Database["public"]["Enums"]["oracle_risk_level"]
+          run_label?: string | null
+          stage_progress?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["oracle_run_status"]
+          target_entities?: string[]
+          time_horizon?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          constraints?: Json
+          core_run_id?: string | null
+          created_at?: string
+          created_by?: string
+          domain?: string
+          error_message?: string | null
+          evaluation?: Json
+          evidence_sources_allowed?: string[]
+          id?: string
+          risk_level?: Database["public"]["Enums"]["oracle_risk_level"]
+          run_label?: string | null
+          stage_progress?: Json
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["oracle_run_status"]
+          target_entities?: string[]
+          time_horizon?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_whitespace_runs_core_run_id_fkey"
+            columns: ["core_run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_core_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       photo_submissions: {
         Row: {
@@ -4662,6 +5063,78 @@ export type Database = {
         }
         Relationships: []
       }
+      verification_results: {
+        Row: {
+          adversarial_check_run: boolean
+          adversarial_result: Json | null
+          claim_text: string
+          consensus_score: number | null
+          consensus_threshold: number
+          created_at: string
+          hypothesis_id: string | null
+          id: string
+          run_id: string | null
+          source_checks: Json
+          sources_agreeing: number
+          sources_checked: number
+          verdict: Database["public"]["Enums"]["verification_verdict"]
+          verification_duration_ms: number | null
+          verified_at: string
+          verifier_model: string | null
+        }
+        Insert: {
+          adversarial_check_run?: boolean
+          adversarial_result?: Json | null
+          claim_text: string
+          consensus_score?: number | null
+          consensus_threshold?: number
+          created_at?: string
+          hypothesis_id?: string | null
+          id?: string
+          run_id?: string | null
+          source_checks?: Json
+          sources_agreeing?: number
+          sources_checked?: number
+          verdict: Database["public"]["Enums"]["verification_verdict"]
+          verification_duration_ms?: number | null
+          verified_at?: string
+          verifier_model?: string | null
+        }
+        Update: {
+          adversarial_check_run?: boolean
+          adversarial_result?: Json | null
+          claim_text?: string
+          consensus_score?: number | null
+          consensus_threshold?: number
+          created_at?: string
+          hypothesis_id?: string | null
+          id?: string
+          run_id?: string | null
+          source_checks?: Json
+          sources_agreeing?: number
+          sources_checked?: number
+          verdict?: Database["public"]["Enums"]["verification_verdict"]
+          verification_duration_ms?: number | null
+          verified_at?: string
+          verifier_model?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_results_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_run_hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       charter_audit_log: {
@@ -4682,6 +5155,23 @@ export type Database = {
           payload_hash: string | null
           recorded_at: string | null
           ref_code: string | null
+        }
+        Relationships: []
+      }
+      oracle_calibration_summary: {
+        Row: {
+          avg_accuracy: number | null
+          avg_calibration_error: number | null
+          avg_confidence_delta: number | null
+          domain: string | null
+          earliest_sample: string | null
+          latest_sample: string | null
+          model_version: string | null
+          overconfident_count: number | null
+          prompt_version: string | null
+          sample_count: number | null
+          stddev_calibration_error: number | null
+          underconfident_count: number | null
         }
         Relationships: []
       }
@@ -4886,6 +5376,29 @@ export type Database = {
       eigen_site_mode: "public" | "eigenx" | "mixed"
       eigen_site_status: "active" | "paused" | "archived"
       embedding_status: "pending" | "embedded" | "failed" | "stale"
+      entity_mention_type: "direct" | "inferred" | "alias_matched"
+      entity_relation_type:
+        | "related_to"
+        | "part_of"
+        | "instance_of"
+        | "competes_with"
+        | "derives_from"
+        | "licensed_by"
+        | "targets_market"
+        | "disrupts"
+        | "treats"
+        | "interacts_with"
+        | "formulated_with"
+        | "clinical_trial_for"
+        | "located_in"
+        | "comparable_to"
+        | "zoned_as"
+        | "sold_by"
+        | "supplied_by"
+        | "priced_against"
+        | "precedes"
+        | "succeeds"
+        | "trending_with"
       entity_status: "draft" | "active" | "archived"
       entity_type:
         | "person"
@@ -4967,6 +5480,12 @@ export type Database = {
         | "opinion"
       obligation_status: "pending" | "fulfilled" | "overdue" | "waived"
       obligation_type: "payment" | "filing" | "compliance" | "delivery"
+      oracle_authority_tier:
+        | "registry_direct"
+        | "curated_database"
+        | "domain_export"
+        | "web_search"
+        | "llm_generation"
       oracle_novelty_status:
         | "new"
         | "known"
@@ -4990,6 +5509,18 @@ export type Database = {
         | "rejected"
         | "deferred"
         | "published"
+      oracle_risk_level: "low" | "medium" | "high"
+      oracle_run_status:
+        | "queued"
+        | "gathering_evidence"
+        | "resolving_entities"
+        | "generating_hypotheses"
+        | "scoring"
+        | "verification"
+        | "review"
+        | "published"
+        | "failed"
+        | "cancelled"
       oracle_source_lane:
         | "internal_canonical"
         | "external_authoritative"
@@ -5035,6 +5566,12 @@ export type Database = {
         | "refined"
       tool_mode: "read" | "write"
       tower_lease_type: "ground-lease" | "rooftop" | "tower"
+      verification_verdict:
+        | "verified"
+        | "partially_verified"
+        | "unverified"
+        | "refuted"
+        | "skipped"
       visibility_level: "public" | "authenticated" | "internal" | "confidential"
     }
     CompositeTypes: {
@@ -5257,6 +5794,30 @@ export const Constants = {
       eigen_site_mode: ["public", "eigenx", "mixed"],
       eigen_site_status: ["active", "paused", "archived"],
       embedding_status: ["pending", "embedded", "failed", "stale"],
+      entity_mention_type: ["direct", "inferred", "alias_matched"],
+      entity_relation_type: [
+        "related_to",
+        "part_of",
+        "instance_of",
+        "competes_with",
+        "derives_from",
+        "licensed_by",
+        "targets_market",
+        "disrupts",
+        "treats",
+        "interacts_with",
+        "formulated_with",
+        "clinical_trial_for",
+        "located_in",
+        "comparable_to",
+        "zoned_as",
+        "sold_by",
+        "supplied_by",
+        "priced_against",
+        "precedes",
+        "succeeds",
+        "trending_with",
+      ],
       entity_status: ["draft", "active", "archived"],
       entity_type: [
         "person",
@@ -5347,6 +5908,13 @@ export const Constants = {
       ],
       obligation_status: ["pending", "fulfilled", "overdue", "waived"],
       obligation_type: ["payment", "filing", "compliance", "delivery"],
+      oracle_authority_tier: [
+        "registry_direct",
+        "curated_database",
+        "domain_export",
+        "web_search",
+        "llm_generation",
+      ],
       oracle_novelty_status: [
         "new",
         "known",
@@ -5373,6 +5941,19 @@ export const Constants = {
         "rejected",
         "deferred",
         "published",
+      ],
+      oracle_risk_level: ["low", "medium", "high"],
+      oracle_run_status: [
+        "queued",
+        "gathering_evidence",
+        "resolving_entities",
+        "generating_hypotheses",
+        "scoring",
+        "verification",
+        "review",
+        "published",
+        "failed",
+        "cancelled",
       ],
       oracle_source_lane: [
         "internal_canonical",
@@ -5425,6 +6006,13 @@ export const Constants = {
       ],
       tool_mode: ["read", "write"],
       tower_lease_type: ["ground-lease", "rooftop", "tower"],
+      verification_verdict: [
+        "verified",
+        "partially_verified",
+        "unverified",
+        "refuted",
+        "skipped",
+      ],
       visibility_level: ["public", "authenticated", "internal", "confidential"],
     },
   },

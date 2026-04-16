@@ -66,7 +66,9 @@ export function trimHistoryToBudget(
   const limit = Math.max(2, maxTurns);
   if (turns.length <= limit) return turns;
   let start = turns.length - limit;
-  if (start < turns.length && turns[start]?.role === 'assistant') start += 1;
+  if (start < turns.length && turns[start]?.role === 'assistant') {
+    start = start > 0 ? start - 1 : start + 1;
+  }
   const sliced = turns.slice(start);
   if (sliced.length % 2 !== 0) return sliced.slice(0, -1);
   return sliced;

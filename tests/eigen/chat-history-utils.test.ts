@@ -102,11 +102,12 @@ describe('trimHistoryToBudget', () => {
     expect(trimmed[trimmed.length - 1]?.content).toBe(turns[turns.length - 1]?.content);
   });
 
-  it('drops a trailing unpaired user turn after trim so length is even', () => {
-    // 7 turns: window from index 4 would be [u,a,u] (invalid for Anthropic); trim last user
+  it('preserves complete pairs when trim window lands on assistant', () => {
     const turns = makeTurns(7);
     const trimmed = trimHistoryToBudget(turns, 4);
     expect(trimmed).toEqual([
+      { role: 'user', content: 'turn-2' },
+      { role: 'assistant', content: 'turn-3' },
       { role: 'user', content: 'turn-4' },
       { role: 'assistant', content: 'turn-5' },
     ]);
@@ -124,6 +125,15 @@ describe('trimHistoryToBudget', () => {
   it('enforces a minimum of 2 turns', () => {
     const turns = makeTurns(6);
     const trimmed = trimHistoryToBudget(turns, 0);
-    expect(trimmed.length).toBeGreaterThanOrEqual(1);
+    expect(trimmed.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('moves the trim window backward when it lands on an assistant', () => {
+    const turns = makeTurns(3);
+    const trimmed = trimHistoryToBudget(turns, 2);
+    expect(trimmed).toEqual([
+      { role: 'user', content: 'turn-0' },
+      { role: 'assistant', content: 'turn-1' },
+    ]);
   });
 });

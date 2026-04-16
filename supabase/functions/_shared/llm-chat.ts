@@ -32,6 +32,7 @@ export interface LlmChatResult {
 
 const DEFAULT_PROVIDER: LlmProvider =
   (Deno.env.get('EIGEN_CHAT_DEFAULT_PROVIDER') as LlmProvider | null) ?? 'openai';
+const DEFAULT_TIMEOUT_MS = 45_000;
 
 const PROVIDER_ORDER: LlmProvider[] = ['openai', 'anthropic', 'perplexity'];
 
@@ -81,9 +82,13 @@ function resolveCriticProvider(primaryProvider: LlmProvider): LlmProvider | null
   return null;
 }
 
-async function fetchWithStreamTimeout(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -91,12 +96,25 @@ async function fetchWithStreamTimeout(url: string, init: RequestInit): Promise<R
   }
 }
 
+function sanitizeConversationHistory(
+  history?: ConversationTurn[],
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((turn): turn is ConversationTurn =>
+      !!turn &&
+      (turn.role === 'user' || turn.role === 'assistant') &&
+      typeof turn.content === 'string')
+    .map((turn) => ({ role: turn.role, content: turn.content }));
+}
+
 function buildOpenAiMessages(
   request: LlmChatRequest,
 ): Array<{ role: string; content: string }> {
+  const history = sanitizeConversationHistory(request.conversationHistory);
   return [
     { role: 'system', content: request.systemPrompt },
-    ...(request.conversationHistory ?? []),
+    ...history,
     { role: 'user', content: request.userContent },
   ];
 }
@@ -104,8 +122,9 @@ function buildOpenAiMessages(
 function buildAnthropicMessages(
   request: LlmChatRequest,
 ): Array<{ role: string; content: string }> {
+  const history = sanitizeConversationHistory(request.conversationHistory);
   return [
-    ...(request.conversationHistory ?? []),
+    ...history,
     { role: 'user', content: request.userContent },
   ];
 }
@@ -113,7 +132,7 @@ function buildAnthropicMessages(
 async function completeOpenAi(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('openai');
   if (!apiKey) throw new Error('OPENAI_API_KEY is missing');
-  const response = await fetchWithStreamTimeout('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -136,7 +155,7 @@ async function completeOpenAi(request: LlmChatRequest, model: string): Promise<s
 async function completeAnthropic(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('anthropic');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is missing');
-  const response = await fetchWithStreamTimeout('https://api.anthropic.com/v1/messages', {
+  const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -165,7 +184,7 @@ async function completeAnthropic(request: LlmChatRequest, model: string): Promis
 async function completePerplexity(request: LlmChatRequest, model: string): Promise<string> {
   const apiKey = apiKeyForProvider('perplexity');
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY is missing');
-  const response = await fetchWithStreamTimeout('https://api.perplexity.ai/chat/completions', {
+  const response = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -183,138 +202,6 @@ async function completePerplexity(request: LlmChatRequest, model: string): Promi
   }
   const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
-}
-
-/**
- * Streams tokens from an OpenAI-compatible SSE endpoint (OpenAI, Perplexity).
- * Yields each text delta as it arrives from the provider.
- */
-async function* streamOpenAiCompatibleDeltas(
-  url: string,
-  headers: Record<string, string>,
-  request: LlmChatRequest,
-  model: string,
-  messages: Array<{ role: string; content: string }>,
-): AsyncGenerator<string, void, void> {
-  const response = await fetchWithStreamTimeout(url, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      max_tokens: request.maxTokens,
-      temperature: request.temperature,
-      stream: true,
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Streaming request failed (${response.status}): ${await response.text()}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body from provider');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice(6).trim();
-        if (payload === '[DONE]') return;
-        try {
-          const parsed = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string } }>;
-          };
-          const delta = parsed.choices?.[0]?.delta?.content ?? '';
-          if (delta) yield delta;
-        } catch {
-          // Skip malformed SSE lines.
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-/**
- * Streams tokens from Anthropic's messages SSE endpoint.
- * Yields each text_delta as it arrives from the provider.
- */
-async function* streamAnthropicDeltas(
-  request: LlmChatRequest,
-  model: string,
-): AsyncGenerator<string, void, void> {
-  const apiKey = apiKeyForProvider('anthropic');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is missing');
-
-  const response = await fetchWithStreamTimeout('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: request.maxTokens,
-      temperature: request.temperature,
-      stream: true,
-      system: request.systemPrompt,
-      messages: buildAnthropicMessages(request),
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic streaming failed (${response.status}): ${await response.text()}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body from Anthropic');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice(6).trim();
-        try {
-          const parsed = JSON.parse(payload) as {
-            type?: string;
-            delta?: { type?: string; text?: string };
-          };
-          if (
-            parsed.type === 'content_block_delta' &&
-            parsed.delta?.type === 'text_delta' &&
-            parsed.delta.text
-          ) {
-            yield parsed.delta.text;
-          }
-        } catch {
-          // Skip malformed SSE lines.
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 async function completeWithProvider(

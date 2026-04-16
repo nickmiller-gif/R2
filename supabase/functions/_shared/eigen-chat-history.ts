@@ -9,6 +9,7 @@ import type { ConversationTurn } from '../../../src/lib/eigen/chat-history-utils
 const DEFAULT_MAX_HISTORY_ROWS = 10;
 
 interface TurnRow {
+  id: string;
   role: string;
   content: string;
   created_at: string;
@@ -24,20 +25,23 @@ export async function loadRecentTurns(
   userId: string,
   maxRows: number = DEFAULT_MAX_HISTORY_ROWS,
 ): Promise<ConversationTurn[]> {
-  const limit = Math.max(2, Math.min(maxRows, 30));
+  const clamped = Math.max(2, Math.min(maxRows, 30));
+  const limit = clamped % 2 === 0 ? clamped : clamped - 1;
   const { data, error } = await client
     .from('eigen_chat_turns')
-    .select('role,content,created_at')
+    .select('id,role,content,created_at')
     .eq('session_id', sessionId)
     .eq('owner_id', userId)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
 
   if (error || !data) return [];
 
   // Rows arrived newest-first; reverse for chronological order.
   const rows = (data as TurnRow[]).slice().reverse();
-  return rows.map((row) => ({
+  const normalizedRows = rows[0]?.role === 'assistant' ? rows.slice(1) : rows;
+  return normalizedRows.map((row) => ({
     role: row.role as 'user' | 'assistant',
     content: row.content,
   }));
@@ -70,9 +74,6 @@ export async function persistTurnPair(
   client: SupabaseClient,
   input: PersistTurnPairInput,
 ): Promise<{ ok: boolean; error?: string }> {
-  const userTurnAt = new Date().toISOString();
-  const asstTurnAt = new Date(Date.now() + 1).toISOString();
-
   const { error } = await client.from('eigen_chat_turns').insert([
     {
       session_id: input.sessionId,
@@ -87,7 +88,6 @@ export async function persistTurnPair(
       llm_fallback_used: false,
       llm_critic_used: false,
       latency_ms: null,
-      created_at: userTurnAt,
     },
     {
       session_id: input.sessionId,
@@ -102,7 +102,6 @@ export async function persistTurnPair(
       llm_fallback_used: input.llmFallbackUsed,
       llm_critic_used: input.llmCriticUsed,
       latency_ms: input.latencyMs,
-      created_at: asstTurnAt,
     },
   ]);
 

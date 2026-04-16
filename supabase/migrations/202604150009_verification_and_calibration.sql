@@ -19,7 +19,7 @@ CREATE TYPE verification_verdict AS ENUM (
 -- Audit log for every verification check run against a claim.
 -- Used by the run engine (Stage 5) and available to operators on-demand.
 
-CREATE TABLE verification_results (
+CREATE TABLE IF NOT EXISTS verification_results (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- What was verified
@@ -52,10 +52,10 @@ CREATE TABLE verification_results (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_vr_hypothesis ON verification_results (hypothesis_id) WHERE hypothesis_id IS NOT NULL;
-CREATE INDEX idx_vr_run ON verification_results (run_id) WHERE run_id IS NOT NULL;
-CREATE INDEX idx_vr_verdict ON verification_results (verdict);
-CREATE INDEX idx_vr_verified_at ON verification_results (verified_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vr_hypothesis ON verification_results (hypothesis_id) WHERE hypothesis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vr_run ON verification_results (run_id) WHERE run_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vr_verdict ON verification_results (verdict);
+CREATE INDEX IF NOT EXISTS idx_vr_verified_at ON verification_results (verified_at DESC);
 
 ALTER TABLE verification_results ENABLE ROW LEVEL SECURITY;
 
@@ -86,7 +86,7 @@ CREATE POLICY insert_vr ON verification_results
 -- Records the delta between what the Oracle predicted (thesis confidence)
 -- and what actually happened (outcome verdict). This is the learning loop.
 
-CREATE TABLE oracle_calibration_log (
+CREATE TABLE IF NOT EXISTS oracle_calibration_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- What was predicted vs. observed
@@ -122,14 +122,14 @@ CREATE TABLE oracle_calibration_log (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ocl_thesis ON oracle_calibration_log (thesis_id);
-CREATE INDEX idx_ocl_outcome ON oracle_calibration_log (outcome_id);
-CREATE INDEX idx_ocl_domain ON oracle_calibration_log (domain) WHERE domain IS NOT NULL;
-CREATE INDEX idx_ocl_model ON oracle_calibration_log (model_version) WHERE model_version IS NOT NULL;
-CREATE INDEX idx_ocl_created_at ON oracle_calibration_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ocl_thesis ON oracle_calibration_log (thesis_id);
+CREATE INDEX IF NOT EXISTS idx_ocl_outcome ON oracle_calibration_log (outcome_id);
+CREATE INDEX IF NOT EXISTS idx_ocl_domain ON oracle_calibration_log (domain) WHERE domain IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ocl_model ON oracle_calibration_log (model_version) WHERE model_version IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ocl_created_at ON oracle_calibration_log (created_at DESC);
 
 -- Unique: one calibration entry per thesis-outcome pair
-CREATE UNIQUE INDEX idx_ocl_thesis_outcome ON oracle_calibration_log (thesis_id, outcome_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ocl_thesis_outcome ON oracle_calibration_log (thesis_id, outcome_id);
 
 ALTER TABLE oracle_calibration_log ENABLE ROW LEVEL SECURITY;
 

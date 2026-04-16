@@ -31,7 +31,7 @@ CREATE TYPE oracle_authority_tier AS ENUM (
 );
 
 -- ─── White Space Runs (extends core runs concept) ────────────────────
-CREATE TABLE oracle_whitespace_runs (
+CREATE TABLE IF NOT EXISTS oracle_whitespace_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Run definition
@@ -96,7 +96,7 @@ CREATE POLICY update_owsr ON oracle_whitespace_runs
 
 
 -- ─── Run Evidence (per-run evidence log) ─────────────────────────────
-CREATE TABLE oracle_run_evidence (
+CREATE TABLE IF NOT EXISTS oracle_run_evidence (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id uuid NOT NULL REFERENCES oracle_whitespace_runs(id) ON DELETE CASCADE,
 
@@ -150,7 +150,7 @@ CREATE POLICY insert_ore ON oracle_run_evidence
 
 
 -- ─── Run Hypotheses (generated per run, link to theses) ──────────────
-CREATE TABLE oracle_run_hypotheses (
+CREATE TABLE IF NOT EXISTS oracle_run_hypotheses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id uuid NOT NULL REFERENCES oracle_whitespace_runs(id) ON DELETE CASCADE,
 

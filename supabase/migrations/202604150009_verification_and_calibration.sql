@@ -125,6 +125,22 @@ CREATE TABLE IF NOT EXISTS oracle_calibration_log (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE oracle_calibration_log
+  ADD COLUMN IF NOT EXISTS thesis_id uuid,
+  ADD COLUMN IF NOT EXISTS outcome_id uuid,
+  ADD COLUMN IF NOT EXISTS predicted_confidence numeric(4,3),
+  ADD COLUMN IF NOT EXISTS predicted_evidence_strength numeric(4,3),
+  ADD COLUMN IF NOT EXISTS actual_verdict oracle_outcome_verdict,
+  ADD COLUMN IF NOT EXISTS accuracy_score numeric(4,3),
+  ADD COLUMN IF NOT EXISTS calibration_error numeric(5,4),
+  ADD COLUMN IF NOT EXISTS confidence_delta numeric(5,4),
+  ADD COLUMN IF NOT EXISTS model_version text,
+  ADD COLUMN IF NOT EXISTS prompt_version text,
+  ADD COLUMN IF NOT EXISTS run_id uuid,
+  ADD COLUMN IF NOT EXISTS domain text,
+  ADD COLUMN IF NOT EXISTS entity_types text[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_ocl_thesis ON oracle_calibration_log (thesis_id);
 CREATE INDEX IF NOT EXISTS idx_ocl_outcome ON oracle_calibration_log (outcome_id);
 CREATE INDEX IF NOT EXISTS idx_ocl_domain ON oracle_calibration_log (domain) WHERE domain IS NOT NULL;

@@ -17,22 +17,32 @@ Deno.serve(async (req) => {
     const action = url.searchParams.get('action');
     const runId = url.searchParams.get('id');
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
-
     if (req.method === 'GET') {
       if (runId) {
-        const { data, error } = await client
+        // Rows are written from retrieve via the service-role client (RLS bypass on insert).
+        // Reading by id with the caller-scoped client can yield zero rows under JWT/RLS drift
+        // even for the same user who just ran eigen-chat; use the same RBAC bar as eigen-chat
+        // (member) and read with the service client so receipts match persisted runs.
+        const roleCheck = await requireRole(auth.claims.userId, 'member');
+        if (!roleCheck.ok) return roleCheck.response;
+
+        const svc = getServiceClient();
+        const { data, error } = await svc
           .from('retrieval_runs')
           .select('*')
           .eq('id', runId)
-          .single();
+          .maybeSingle();
 
         if (error) {
-          return errorResponse(error.message, 404);
+          return errorResponse(error.message, 400);
+        }
+        if (!data) {
+          return errorResponse('Retrieval run not found', 404);
         }
 
         return jsonResponse(data);
       } else {
+        const client = getSupabaseClient(req);
         const status = url.searchParams.get('status');
 
         let query = client.from('retrieval_runs').select('*');
@@ -48,6 +58,7 @@ Deno.serve(async (req) => {
         return jsonResponse(data);
       }
     } else if (req.method === 'POST') {
+      const client = getServiceClient();
       const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
       const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();

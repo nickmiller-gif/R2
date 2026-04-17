@@ -6,18 +6,20 @@
 -- Depends on: knowledge_chunks, asset_registry, oracle_whitespace_runs
 
 -- ─── Entity mention type ─────────────────────────────────────────────
-CREATE TYPE entity_mention_type AS ENUM (
-  'direct',          -- Explicitly named in text
-  'inferred',        -- Resolved via coreference or context
-  'alias_matched'    -- Matched via known alias/synonym
-);
+DO $$ BEGIN
+  CREATE TYPE entity_mention_type AS ENUM (
+    'direct',          -- Explicitly named in text
+    'inferred',        -- Resolved via coreference or context
+    'alias_matched'    -- Matched via known alias/synonym
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ─── Entity Mentions (chunk → entity links) ──────────────────────────
 -- Connects knowledge_chunks to canonical entities in asset_registry.
 -- Populated during ingestion (entity extraction on ingest) or
 -- batch re-processing of existing corpus.
 
-CREATE TABLE entity_mentions (
+CREATE TABLE IF NOT EXISTS entity_mentions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   chunk_id uuid NOT NULL REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
   entity_id uuid NOT NULL REFERENCES asset_registry(id) ON DELETE CASCADE,
@@ -39,18 +41,19 @@ CREATE TABLE entity_mentions (
 );
 
 -- Primary lookup patterns
-CREATE INDEX idx_em_chunk_id ON entity_mentions (chunk_id);
-CREATE INDEX idx_em_entity_id ON entity_mentions (entity_id);
-CREATE INDEX idx_em_entity_chunk ON entity_mentions (entity_id, chunk_id);
-CREATE INDEX idx_em_mention_type ON entity_mentions (mention_type);
-CREATE INDEX idx_em_confidence ON entity_mentions (confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_em_chunk_id ON entity_mentions (chunk_id);
+CREATE INDEX IF NOT EXISTS idx_em_entity_id ON entity_mentions (entity_id);
+CREATE INDEX IF NOT EXISTS idx_em_entity_chunk ON entity_mentions (entity_id, chunk_id);
+CREATE INDEX IF NOT EXISTS idx_em_mention_type ON entity_mentions (mention_type);
+CREATE INDEX IF NOT EXISTS idx_em_confidence ON entity_mentions (confidence DESC);
 
 -- Prevent duplicate mentions of the same entity in the same chunk at the same offset
-CREATE UNIQUE INDEX idx_em_unique_mention
+CREATE UNIQUE INDEX IF NOT EXISTS idx_em_unique_mention
   ON entity_mentions (chunk_id, entity_id, COALESCE(start_offset, -1));
 
 ALTER TABLE entity_mentions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS select_em ON entity_mentions;
 CREATE POLICY select_em ON entity_mentions
   FOR SELECT TO authenticated
   USING (
@@ -68,56 +71,60 @@ CREATE POLICY select_em ON entity_mentions
     )
   );
 
+DROP POLICY IF EXISTS insert_em ON entity_mentions;
 CREATE POLICY insert_em ON entity_mentions
   FOR INSERT TO service_role
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS delete_em ON entity_mentions;
 CREATE POLICY delete_em ON entity_mentions
   FOR DELETE TO service_role
   USING (true);
 
 
 -- ─── Relation type enum ──────────────────────────────────────────────
-CREATE TYPE entity_relation_type AS ENUM (
-  -- Structural
-  'related_to',
-  'part_of',
-  'instance_of',
+DO $$ BEGIN
+  CREATE TYPE entity_relation_type AS ENUM (
+    -- Structural
+    'related_to',
+    'part_of',
+    'instance_of',
 
-  -- Domain: IP & market
-  'competes_with',
-  'derives_from',
-  'licensed_by',
-  'targets_market',
-  'disrupts',
+    -- Domain: IP & market
+    'competes_with',
+    'derives_from',
+    'licensed_by',
+    'targets_market',
+    'disrupts',
 
-  -- Domain: health & supplement
-  'treats',
-  'interacts_with',
-  'formulated_with',
-  'clinical_trial_for',
+    -- Domain: health & supplement
+    'treats',
+    'interacts_with',
+    'formulated_with',
+    'clinical_trial_for',
 
-  -- Domain: property & real estate
-  'located_in',
-  'comparable_to',
-  'zoned_as',
+    -- Domain: property & real estate
+    'located_in',
+    'comparable_to',
+    'zoned_as',
 
-  -- Domain: seller & commerce
-  'sold_by',
-  'supplied_by',
-  'priced_against',
+    -- Domain: seller & commerce
+    'sold_by',
+    'supplied_by',
+    'priced_against',
 
-  -- Temporal
-  'precedes',
-  'succeeds',
-  'trending_with'
-);
+    -- Temporal
+    'precedes',
+    'succeeds',
+    'trending_with'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ─── Entity Relations (knowledge graph edges) ────────────────────────
 -- Typed, weighted edges between entities. Built from entity co-occurrence
 -- in chunks, explicit extraction, or community detection.
 
-CREATE TABLE entity_relations (
+CREATE TABLE IF NOT EXISTS entity_relations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_entity_id uuid NOT NULL REFERENCES asset_registry(id) ON DELETE CASCADE,
   target_entity_id uuid NOT NULL REFERENCES asset_registry(id) ON DELETE CASCADE,
@@ -146,17 +153,18 @@ CREATE TABLE entity_relations (
 );
 
 -- Graph traversal indexes
-CREATE INDEX idx_er_source ON entity_relations (source_entity_id);
-CREATE INDEX idx_er_target ON entity_relations (target_entity_id);
-CREATE INDEX idx_er_type ON entity_relations (relation_type);
-CREATE INDEX idx_er_weight ON entity_relations (weight DESC);
-CREATE INDEX idx_er_run ON entity_relations (discovered_in_run_id) WHERE discovered_in_run_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_er_source ON entity_relations (source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_er_target ON entity_relations (target_entity_id);
+CREATE INDEX IF NOT EXISTS idx_er_type ON entity_relations (relation_type);
+CREATE INDEX IF NOT EXISTS idx_er_weight ON entity_relations (weight DESC);
+CREATE INDEX IF NOT EXISTS idx_er_run ON entity_relations (discovered_in_run_id) WHERE discovered_in_run_id IS NOT NULL;
 
 -- Reverse lookup for bidirectional traversal
-CREATE INDEX idx_er_target_source ON entity_relations (target_entity_id, source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_er_target_source ON entity_relations (target_entity_id, source_entity_id);
 
 ALTER TABLE entity_relations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS select_er ON entity_relations;
 CREATE POLICY select_er ON entity_relations
   FOR SELECT TO authenticated
   USING (
@@ -176,20 +184,24 @@ CREATE POLICY select_er ON entity_relations
     )
   );
 
+DROP POLICY IF EXISTS insert_er ON entity_relations;
 CREATE POLICY insert_er ON entity_relations
   FOR INSERT TO service_role
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS update_er ON entity_relations;
 CREATE POLICY update_er ON entity_relations
   FOR UPDATE TO service_role
   USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS delete_er ON entity_relations;
 CREATE POLICY delete_er ON entity_relations
   FOR DELETE TO service_role
   USING (true);
 
 
 -- ─── Updated-at trigger for entity_relations ─────────────────────────
+DROP TRIGGER IF EXISTS set_updated_at_er ON entity_relations;
 CREATE TRIGGER set_updated_at_er
   BEFORE UPDATE ON entity_relations
   FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();

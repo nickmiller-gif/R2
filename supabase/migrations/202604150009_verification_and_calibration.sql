@@ -7,13 +7,15 @@
 --   oracle_outcomes, oracle_authority_tier
 
 -- ─── Verification verdict enum ───────────────────────────────────────
-CREATE TYPE verification_verdict AS ENUM (
-  'verified',           -- Passed consensus + adversarial checks
-  'partially_verified', -- Some sources agree, some conflict
-  'unverified',         -- Insufficient sources to reach consensus
-  'refuted',            -- Adversarial check found contradicting evidence
-  'skipped'             -- Low-risk, verification not required
-);
+DO $$ BEGIN
+  CREATE TYPE verification_verdict AS ENUM (
+    'verified',           -- Passed consensus + adversarial checks
+    'partially_verified', -- Some sources agree, some conflict
+    'unverified',         -- Insufficient sources to reach consensus
+    'refuted',            -- Adversarial check found contradicting evidence
+    'skipped'             -- Low-risk, verification not required
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ─── Verification Results ────────────────────────────────────────────
 -- Audit log for every verification check run against a claim.
@@ -63,6 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_vr_verified_at ON verification_results (verified_
 ALTER TABLE verification_results ENABLE ROW LEVEL SECURITY;
 
 -- Operators can see all verification results; others see only for published runs
+DROP POLICY IF EXISTS select_vr ON verification_results;
 CREATE POLICY select_vr ON verification_results
   FOR SELECT TO authenticated
   USING (
@@ -80,6 +83,7 @@ CREATE POLICY select_vr ON verification_results
     )
   );
 
+DROP POLICY IF EXISTS insert_vr ON verification_results;
 CREATE POLICY insert_vr ON verification_results
   FOR INSERT TO service_role
   WITH CHECK (true);
@@ -153,6 +157,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ocl_thesis_outcome ON oracle_calibration_l
 ALTER TABLE oracle_calibration_log ENABLE ROW LEVEL SECURITY;
 
 -- Operators only
+DROP POLICY IF EXISTS select_ocl ON oracle_calibration_log;
 CREATE POLICY select_ocl ON oracle_calibration_log
   FOR SELECT TO authenticated
   USING (
@@ -163,6 +168,7 @@ CREATE POLICY select_ocl ON oracle_calibration_log
     )
   );
 
+DROP POLICY IF EXISTS insert_ocl ON oracle_calibration_log;
 CREATE POLICY insert_ocl ON oracle_calibration_log
   FOR INSERT TO service_role
   WITH CHECK (true);

@@ -1,6 +1,7 @@
-# Tool Capabilities Catalog
+# Tool Capabilities Catalog — `edge.*` (Canonical Policy Layer)
 
-This catalog is seeded by `supabase/migrations/202604130002_seed_tool_capabilities_catalog.sql`.
+This catalog is seeded by `supabase/migrations/202604130002_seed_tool_capabilities_catalog.sql`
+and extended by `202604140001_add_multi_llm_tool_capabilities.sql` (+3 LLM-router entries).
 
 ## Purpose
 
@@ -8,9 +9,16 @@ This catalog is seeded by `supabase/migrations/202604130002_seed_tool_capabiliti
 - Split surfaces into explicit read/write capabilities.
 - Attach baseline risk and approval posture for each capability.
 
+## Related Docs
+
+- [`TOOL-CAPABILITIES-README.md`](./TOOL-CAPABILITIES-README.md) — **start here** for how the whole system fits together
+- [`tool-capability-matrix.md`](./tool-capability-matrix.md) — fine-grained action-level supplement (111 entries, seeded in `202604170001`)
+
 ## Current Totals
 
-- Total capabilities: `64`
+- `edge.*` entries (this catalog): `64`
+- Action-level entries (supplement): `111`
+- **Total rows in `tool_capabilities`: `175`**
 - Domains covered: `eigen`, `oracle`, `meg`, `foundation`, `charter`
 
 ## Domain Breakdown

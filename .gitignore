@@ -143,3 +143,10 @@ vite.config.ts.timestamp-*
 
 # Eigen local ingest manifests
 **/.eigen-ingest-manifest.json
+
+# macOS / editor noise
+.DS_Store
+**/.DS_Store
+
+# Local agent scratch (not shipped)
+memory/

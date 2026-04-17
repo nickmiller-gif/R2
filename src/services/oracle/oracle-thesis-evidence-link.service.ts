@@ -10,8 +10,8 @@
 import type {
   OracleThesisEvidenceLink,
   CreateThesisEvidenceLinkInput,
-} from '../../types/oracle/thesis-evidence-link.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
+} from '../../types/oracle/thesis-evidence-link.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
 
 export interface OracleThesisEvidenceLinkService {
   create(input: CreateThesisEvidenceLinkInput): Promise<OracleThesisEvidenceLink>;

@@ -5,7 +5,7 @@ import type {
   OracleServiceLayerRunHistoryItem,
   OracleServiceLayerRunOutcome,
   OracleServiceLayerRunSummaryRow,
-} from '../../types/oracle/index.js';
+} from '../../types/oracle/index.ts';
 
 /**
  * Maps a persisted Oracle service-layer run to the stable API envelope contract.

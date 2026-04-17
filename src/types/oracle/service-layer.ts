@@ -2,8 +2,8 @@ import type {
   OracleWhitespaceAnalysis,
   OracleWhitespaceAnalysisInput,
   OracleWhitespaceRunSummary,
-} from './whitespace-core.js';
-import type { OracleServiceLayerRunOutcome } from './run-outcome.js';
+} from './whitespace-core.ts';
+import type { OracleServiceLayerRunOutcome } from './run-outcome.ts';
 
 export type OracleServiceLayerRunStatus = 'running' | 'completed' | 'failed';
 export type OracleOperatorDecisionStatus = 'pursue' | 'defer' | 'dismiss';

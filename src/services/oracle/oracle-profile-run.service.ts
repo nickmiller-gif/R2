@@ -14,9 +14,9 @@ import type {
   CreateOracleProfileRunInput,
   CompleteOracleProfileRunInput,
   OracleProfileRunFilter,
-} from '../../types/oracle/profile-run.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+} from '../../types/oracle/profile-run.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleProfileRunService {
   create(input: CreateOracleProfileRunInput): Promise<OracleProfileRun>;

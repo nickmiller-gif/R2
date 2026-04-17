@@ -1,7 +1,7 @@
 /**
  * Oracle publication workflow types.
  */
-import type { OraclePublicationState } from './shared.js';
+import type { OraclePublicationState } from './shared.ts';
 
 export type OraclePublicationDecision = 'approve' | 'reject' | 'defer' | 'publish' | 'withdraw';
 

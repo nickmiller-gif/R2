@@ -8,8 +8,8 @@ import type {
   OracleThemeMapItem,
   OracleFeedHistoryFilter,
   OracleFeedHistoryItem,
-} from '../../types/oracle/read-models.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+} from '../../types/oracle/read-models.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface DbOracleBriefingRow {
   thesis_id: string;

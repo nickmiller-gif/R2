@@ -7,7 +7,7 @@
  * Maps to `oracleReweightingExecutionCore` in the legacy shared/oracle layer.
  */
 
-import type { ConfidenceBand } from '../../types/oracle/signal.js';
+import type { ConfidenceBand } from '../../types/oracle/signal.ts';
 
 /**
  * Clamp a raw numeric score to the [0, 100] range.

@@ -12,9 +12,9 @@ import type {
   CreateOracleSignalInput,
   UpdateOracleSignalInput,
   OracleSignalFilter,
-} from '../../types/oracle/signal.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { assertScore } from '../../lib/charter/validate.js';
+} from '../../types/oracle/signal.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { assertScore } from '../../lib/charter/validate.ts';
 
 export interface OracleSignalService {
   create(input: CreateOracleSignalInput): Promise<OracleSignal>;

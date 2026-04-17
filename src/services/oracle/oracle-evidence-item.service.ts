@@ -12,9 +12,9 @@ import type {
   CreateOracleEvidenceItemInput,
   UpdateOracleEvidenceItemInput,
   OracleEvidenceItemFilter,
-} from '../../types/oracle/evidence-item.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+} from '../../types/oracle/evidence-item.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleEvidenceItemService {
   create(input: CreateOracleEvidenceItemInput): Promise<OracleEvidenceItem>;

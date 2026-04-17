@@ -5,7 +5,7 @@ import type {
   OracleGovernanceMetadata,
   OracleSourceLane,
   OracleSourceClass,
-} from './shared.js';
+} from './shared.ts';
 
 export interface OracleEvidenceItem {
   id: string;

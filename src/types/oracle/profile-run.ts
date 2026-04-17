@@ -6,7 +6,7 @@
  *   queued → running → completed | failed | canceled
  */
 
-import type { OracleProfileRunStatus } from './shared.js';
+import type { OracleProfileRunStatus } from './shared.ts';
 
 export interface OracleProfileRun {
   id: string;

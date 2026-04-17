@@ -7,14 +7,14 @@
  * Follows the R2 service pattern: interface Service + interface Db + factory.
  */
 
-import { nowUtc } from '../../lib/provenance/clock.js';
+import { nowUtc } from '../../lib/provenance/clock.ts';
 import type {
   OracleServiceLayerRunOutcome,
   CreateOracleServiceLayerRunOutcomeInput,
   UpdateOracleServiceLayerRunOutcomeInput,
   OracleServiceLayerRunOutcomeFilter,
   OracleRunOutcomeStatus,
-} from '../../types/oracle/run-outcome.js';
+} from '../../types/oracle/run-outcome.ts';
 
 export interface OracleServiceLayerRunOutcomeService {
   upsertOutcome(

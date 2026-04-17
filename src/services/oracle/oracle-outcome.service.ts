@@ -13,9 +13,9 @@ import type {
   CreateOracleOutcomeInput,
   UpdateOracleOutcomeInput,
   OracleOutcomeFilter,
-} from '../../types/oracle/outcome.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.js';
+} from '../../types/oracle/outcome.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.ts';
 
 export interface OracleOutcomeService {
   create(input: CreateOracleOutcomeInput): Promise<OracleOutcome>;

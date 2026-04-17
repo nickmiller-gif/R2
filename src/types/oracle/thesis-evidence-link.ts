@@ -1,7 +1,7 @@
 /**
  * Oracle Thesis-Evidence Link — tracks roles of evidence items for theses.
  */
-import type { OracleThesisEvidenceRole } from './shared.js';
+import type { OracleThesisEvidenceRole } from './shared.ts';
 
 export interface OracleThesisEvidenceLink {
   id: string;

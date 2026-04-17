@@ -1,4 +1,4 @@
-import type { ActorKind, ProvenanceActor } from '../../types/shared/provenance.js';
+import type { ActorKind, ProvenanceActor } from '../../types/shared/provenance.ts';
 
 export interface MegIdentity {
   id: string;

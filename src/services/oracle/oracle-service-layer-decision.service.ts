@@ -1,8 +1,8 @@
-import { nowUtc } from '../../lib/provenance/clock.js';
+import { nowUtc } from '../../lib/provenance/clock.ts';
 import type {
   OracleOperatorDecisionStatus,
   OracleServiceLayerRunDecision,
-} from '../../types/oracle/service-layer.js';
+} from '../../types/oracle/service-layer.ts';
 
 export interface UpsertOracleServiceLayerRunDecisionInput {
   oracleServiceLayerRunId: string;

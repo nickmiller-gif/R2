@@ -1,4 +1,4 @@
-import type { UtcDateInput } from '../../types/shared/temporal.js';
+import type { UtcDateInput } from '../../types/shared/temporal.ts';
 
 /**
  * Centralized timestamp helper for provenance records.

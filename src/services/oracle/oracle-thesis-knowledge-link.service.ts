@@ -14,9 +14,9 @@ import type {
   CreateThesisKnowledgeLinkInput,
   UpdateThesisKnowledgeLinkInput,
   ThesisKnowledgeLinkFilter,
-} from '../../types/oracle/thesis-knowledge-link.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+} from '../../types/oracle/thesis-knowledge-link.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleThesisKnowledgeLinkService {
   create(input: CreateThesisKnowledgeLinkInput): Promise<ThesisKnowledgeLink>;

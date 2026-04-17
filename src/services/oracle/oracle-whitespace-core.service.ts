@@ -6,17 +6,17 @@
  * evidence freshness, opportunity modeling, cross-run diff, verification core).
  */
 
-import { identifyGaps, predictiveGapScore } from '../../lib/oracle/whitespace.js';
-import { filterByRelevance } from '../../lib/oracle/retrieval-contract.js';
-import { feedRescore } from '../../lib/oracle/evidence-freshness.js';
-import { scoreOpportunity, multiHorizonTiming } from '../../lib/oracle/opportunity.js';
-import { temporalDrift } from '../../lib/oracle/temporal.js';
-import { crossRunDiff } from '../../lib/oracle/cross-run-diff.js';
+import { identifyGaps, predictiveGapScore } from '../../lib/oracle/whitespace.ts';
+import { filterByRelevance } from '../../lib/oracle/retrieval-contract.ts';
+import { feedRescore } from '../../lib/oracle/evidence-freshness.ts';
+import { scoreOpportunity, multiHorizonTiming } from '../../lib/oracle/opportunity.ts';
+import { temporalDrift } from '../../lib/oracle/temporal.ts';
+import { crossRunDiff } from '../../lib/oracle/cross-run-diff.ts';
 import {
   assessEvidenceConsistency,
   classifyContradiction,
-} from '../../lib/oracle/verification.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
+} from '../../lib/oracle/verification.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
 import type {
   OracleWhitespaceCoreRun,
   OracleWhitespaceAnalysis,
@@ -24,7 +24,7 @@ import type {
   CreateOracleWhitespaceCoreRunInput,
   OraclePredictiveGap,
   OracleWhitespaceGapContext,
-} from '../../types/oracle/whitespace-core.js';
+} from '../../types/oracle/whitespace-core.ts';
 
 export interface DbOracleWhitespaceCoreRow {
   id: string;

@@ -6,7 +6,7 @@ import type {
   OracleThesisStatus,
   OracleNoveltyStatus,
   OraclePublicationState,
-} from './shared.js';
+} from './shared.ts';
 
 export interface OracleThesis {
   id: string;

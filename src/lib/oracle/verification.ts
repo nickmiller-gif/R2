@@ -7,7 +7,7 @@
  * Maps to `oracleVerificationCore` in the legacy shared/oracle layer.
  */
 
-import type { OracleThesisEvidenceRole } from '../../types/oracle/shared.js';
+import type { OracleThesisEvidenceRole } from '../../types/oracle/shared.ts';
 
 export type UncertaintyLevel = 'low' | 'medium' | 'high';
 

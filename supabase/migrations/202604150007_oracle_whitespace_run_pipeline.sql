@@ -5,30 +5,38 @@
 --
 -- Depends on: oracle_whitespace_core_runs, oracle_theses, asset_registry,
 --   oracle_publication_state, charter_user_roles
+--
+-- Idempotent: safe to re-apply. All CREATE statements are guarded.
 
 -- ─── Run status enum ─────────────────────────────────────────────────
-CREATE TYPE oracle_run_status AS ENUM (
-  'queued',
-  'gathering_evidence',
-  'resolving_entities',
-  'generating_hypotheses',
-  'scoring',
-  'verification',
-  'review',
-  'published',
-  'failed',
-  'cancelled'
-);
+DO $$ BEGIN
+  CREATE TYPE oracle_run_status AS ENUM (
+    'queued',
+    'gathering_evidence',
+    'resolving_entities',
+    'generating_hypotheses',
+    'scoring',
+    'verification',
+    'review',
+    'published',
+    'failed',
+    'cancelled'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE oracle_risk_level AS ENUM ('low', 'medium', 'high');
+DO $$ BEGIN
+  CREATE TYPE oracle_risk_level AS ENUM ('low', 'medium', 'high');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE oracle_authority_tier AS ENUM (
-  'registry_direct',   -- 95: EPO, USPTO, FDA, ClinicalTrials
-  'curated_database',  -- 85: internal curated datasets
-  'domain_export',     -- 70: trend exporters, property intel
-  'web_search',        -- 50: Perplexity, web results
-  'llm_generation'     -- 30: AI-generated, unverified
-);
+DO $$ BEGIN
+  CREATE TYPE oracle_authority_tier AS ENUM (
+    'registry_direct',   -- 95: EPO, USPTO, FDA, ClinicalTrials
+    'curated_database',  -- 85: internal curated datasets
+    'domain_export',     -- 70: trend exporters, property intel
+    'web_search',        -- 50: Perplexity, web results
+    'llm_generation'     -- 30: AI-generated, unverified
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ─── White Space Runs (extends core runs concept) ────────────────────
 CREATE TABLE IF NOT EXISTS oracle_whitespace_runs (
@@ -65,15 +73,16 @@ CREATE TABLE IF NOT EXISTS oracle_whitespace_runs (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_owsr_status ON oracle_whitespace_runs (status);
-CREATE INDEX idx_owsr_created_by ON oracle_whitespace_runs (created_by);
-CREATE INDEX idx_owsr_created_at ON oracle_whitespace_runs (created_at DESC);
-CREATE INDEX idx_owsr_domain ON oracle_whitespace_runs (domain);
+CREATE INDEX IF NOT EXISTS idx_owsr_status ON oracle_whitespace_runs (status);
+CREATE INDEX IF NOT EXISTS idx_owsr_created_by ON oracle_whitespace_runs (created_by);
+CREATE INDEX IF NOT EXISTS idx_owsr_created_at ON oracle_whitespace_runs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_owsr_domain ON oracle_whitespace_runs (domain);
 
 ALTER TABLE oracle_whitespace_runs ENABLE ROW LEVEL SECURITY;
 
 -- Authenticated: see own runs + published runs
 -- Operator/counsel/admin: see all runs
+DROP POLICY IF EXISTS select_owsr ON oracle_whitespace_runs;
 CREATE POLICY select_owsr ON oracle_whitespace_runs
   FOR SELECT TO authenticated
   USING (
@@ -86,10 +95,12 @@ CREATE POLICY select_owsr ON oracle_whitespace_runs
     )
   );
 
+DROP POLICY IF EXISTS insert_owsr ON oracle_whitespace_runs;
 CREATE POLICY insert_owsr ON oracle_whitespace_runs
   FOR INSERT TO service_role
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS update_owsr ON oracle_whitespace_runs;
 CREATE POLICY update_owsr ON oracle_whitespace_runs
   FOR UPDATE TO service_role
   USING (true) WITH CHECK (true);
@@ -119,13 +130,14 @@ CREATE TABLE IF NOT EXISTS oracle_run_evidence (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ore_run_id ON oracle_run_evidence (run_id);
-CREATE INDEX idx_ore_source_type ON oracle_run_evidence (source_type);
-CREATE INDEX idx_ore_chunk_id ON oracle_run_evidence (chunk_id) WHERE chunk_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ore_run_id ON oracle_run_evidence (run_id);
+CREATE INDEX IF NOT EXISTS idx_ore_source_type ON oracle_run_evidence (source_type);
+CREATE INDEX IF NOT EXISTS idx_ore_chunk_id ON oracle_run_evidence (chunk_id) WHERE chunk_id IS NOT NULL;
 
 ALTER TABLE oracle_run_evidence ENABLE ROW LEVEL SECURITY;
 
 -- Evidence inherits visibility from its parent run
+DROP POLICY IF EXISTS select_ore ON oracle_run_evidence;
 CREATE POLICY select_ore ON oracle_run_evidence
   FOR SELECT TO authenticated
   USING (
@@ -144,6 +156,7 @@ CREATE POLICY select_ore ON oracle_run_evidence
     )
   );
 
+DROP POLICY IF EXISTS insert_ore ON oracle_run_evidence;
 CREATE POLICY insert_ore ON oracle_run_evidence
   FOR INSERT TO service_role
   WITH CHECK (true);
@@ -179,14 +192,15 @@ CREATE TABLE IF NOT EXISTS oracle_run_hypotheses (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_orh_run_id ON oracle_run_hypotheses (run_id);
-CREATE INDEX idx_orh_thesis_id ON oracle_run_hypotheses (thesis_id) WHERE thesis_id IS NOT NULL;
-CREATE INDEX idx_orh_composite_score ON oracle_run_hypotheses (composite_score DESC NULLS LAST);
-CREATE INDEX idx_orh_publishable ON oracle_run_hypotheses (publishable) WHERE publishable = true;
+CREATE INDEX IF NOT EXISTS idx_orh_run_id ON oracle_run_hypotheses (run_id);
+CREATE INDEX IF NOT EXISTS idx_orh_thesis_id ON oracle_run_hypotheses (thesis_id) WHERE thesis_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orh_composite_score ON oracle_run_hypotheses (composite_score DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_orh_publishable ON oracle_run_hypotheses (publishable) WHERE publishable = true;
 
 ALTER TABLE oracle_run_hypotheses ENABLE ROW LEVEL SECURITY;
 
 -- Hypotheses inherit visibility from their parent run
+DROP POLICY IF EXISTS select_orh ON oracle_run_hypotheses;
 CREATE POLICY select_orh ON oracle_run_hypotheses
   FOR SELECT TO authenticated
   USING (
@@ -205,10 +219,12 @@ CREATE POLICY select_orh ON oracle_run_hypotheses
     )
   );
 
+DROP POLICY IF EXISTS insert_orh ON oracle_run_hypotheses;
 CREATE POLICY insert_orh ON oracle_run_hypotheses
   FOR INSERT TO service_role
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS update_orh ON oracle_run_hypotheses;
 CREATE POLICY update_orh ON oracle_run_hypotheses
   FOR UPDATE TO service_role
   USING (true) WITH CHECK (true);
@@ -225,6 +241,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS set_updated_at_owsr ON oracle_whitespace_runs;
 CREATE TRIGGER set_updated_at_owsr
   BEFORE UPDATE ON oracle_whitespace_runs
   FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();

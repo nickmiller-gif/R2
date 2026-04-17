@@ -3,13 +3,13 @@
  *
  * Encapsulates publication state transitions and immutable publication events.
  */
-import { nowUtc } from '../../lib/provenance/clock.js';
-import type { OraclePublicationState } from '../../types/oracle/shared.js';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import type { OraclePublicationState } from '../../types/oracle/shared.ts';
 import type {
   CreateOraclePublicationEventInput,
   OraclePublicationRecord,
-} from '../../types/oracle/publication.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+} from '../../types/oracle/publication.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface DbOraclePublicationEventRow {
   id: string;

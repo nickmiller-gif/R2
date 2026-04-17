@@ -6,8 +6,8 @@
  * low-level lib/oracle primitive interfaces as the public model.
  */
 
-import type { ConfidenceBand } from './signal.js';
-import type { OracleSourceLane, OracleThesisEvidenceRole } from './shared.js';
+import type { ConfidenceBand } from './signal.ts';
+import type { OracleSourceLane, OracleThesisEvidenceRole } from './shared.ts';
 
 export type OracleWhitespaceGapPriority = 'critical' | 'high' | 'medium' | 'low';
 

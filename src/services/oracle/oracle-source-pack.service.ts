@@ -11,9 +11,9 @@ import type {
   OracleSourcePack,
   CreateOracleSourcePackInput,
   OracleSourcePackFilter,
-} from '../../types/oracle/source-pack.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.js';
+} from '../../types/oracle/source-pack.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.ts';
 
 export interface OracleSourcePackService {
   create(input: CreateOracleSourcePackInput): Promise<OracleSourcePack>;

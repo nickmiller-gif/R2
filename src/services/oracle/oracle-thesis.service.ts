@@ -12,11 +12,11 @@ import type {
   CreateOracleThesisInput,
   UpdateOracleThesisInput,
   OracleThesisFilter,
-} from '../../types/oracle/thesis.js';
-import type { OracleGovernanceMetadata } from '../../types/oracle/shared.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
-import { assertConfidence } from '../../lib/charter/validate.js';
+} from '../../types/oracle/thesis.ts';
+import type { OracleGovernanceMetadata } from '../../types/oracle/shared.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
+import { assertConfidence } from '../../lib/charter/validate.ts';
 
 const THESIS_STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ['active', 'retired'],

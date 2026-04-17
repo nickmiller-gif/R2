@@ -3,7 +3,7 @@ export {
   type OraclePublicationService,
   type OraclePublicationDb,
   type DbOraclePublicationEventRow,
-} from './oracle-publication.service.js';
+} from './oracle-publication.service.ts';
 
 export {
   createOracleReadModelService,
@@ -12,70 +12,70 @@ export {
   type DbOracleBriefingRow,
   type DbOracleThemeMapRow,
   type DbOracleFeedHistoryRow,
-} from './oracle-read-model.service.js';
+} from './oracle-read-model.service.ts';
 
 export {
   createOracleSignalService,
   type OracleSignalService,
   type OracleSignalDb,
   type DbOracleSignalRow,
-} from './oracle-signal.service.js';
+} from './oracle-signal.service.ts';
 
 export {
   createOracleThesisService,
   type OracleThesisService,
   type OracleThesisDb,
   type DbOracleThesisRow,
-} from './oracle-thesis.service.js';
+} from './oracle-thesis.service.ts';
 
 export {
   createOracleEvidenceItemService,
   type OracleEvidenceItemService,
   type OracleEvidenceItemDb,
   type DbOracleEvidenceItemRow,
-} from './oracle-evidence-item.service.js';
+} from './oracle-evidence-item.service.ts';
 
 export {
   createOracleSourcePackService,
   type OracleSourcePackService,
   type OracleSourcePackDb,
   type DbOracleSourcePackRow,
-} from './oracle-source-pack.service.js';
+} from './oracle-source-pack.service.ts';
 
 export {
   createOracleThesisEvidenceLinkService,
   type OracleThesisEvidenceLinkService,
   type OracleThesisEvidenceLinkDb,
   type DbOracleThesisEvidenceLinkRow,
-} from './oracle-thesis-evidence-link.service.js';
+} from './oracle-thesis-evidence-link.service.ts';
 
 export {
   createOracleProfileRunService,
   type OracleProfileRunService,
   type OracleProfileRunDb,
   type DbOracleProfileRunRow,
-} from './oracle-profile-run.service.js';
+} from './oracle-profile-run.service.ts';
 
 export {
   createOracleThesisKnowledgeLinkService,
   type OracleThesisKnowledgeLinkService,
   type OracleThesisKnowledgeLinkDb,
   type DbOracleThesisKnowledgeLinkRow,
-} from './oracle-thesis-knowledge-link.service.js';
+} from './oracle-thesis-knowledge-link.service.ts';
 
 export {
   createOracleOutcomeService,
   type OracleOutcomeService,
   type OracleOutcomeDb,
   type DbOracleOutcomeRow,
-} from './oracle-outcome.service.js';
+} from './oracle-outcome.service.ts';
 
 export {
   createOracleWhitespaceCoreService,
   type OracleWhitespaceCoreService,
   type OracleWhitespaceCoreDb,
   type DbOracleWhitespaceCoreRow,
-} from './oracle-whitespace-core.service.js';
+} from './oracle-whitespace-core.service.ts';
 
 export {
   createOracleServiceLayerService,
@@ -85,7 +85,7 @@ export {
   type OracleServiceLayerDb,
   type OracleServiceLayerDeps,
   type DbOracleServiceLayerRow,
-} from './oracle-service-layer.service.js';
+} from './oracle-service-layer.service.ts';
 
 export {
   createOracleServiceLayerRunDecisionService,
@@ -93,16 +93,16 @@ export {
   type OracleServiceLayerRunDecisionDb,
   type UpsertOracleServiceLayerRunDecisionInput,
   type DbOracleServiceLayerRunDecisionRow,
-} from './oracle-service-layer-decision.service.js';
+} from './oracle-service-layer-decision.service.ts';
 
 export {
   createOracleServiceLayerRunOutcomeService,
   type OracleServiceLayerRunOutcomeService,
   type OracleServiceLayerRunOutcomeDb,
   type DbOracleServiceLayerRunOutcomeRow,
-} from './oracle-service-layer-run-outcome.service.js';
+} from './oracle-service-layer-run-outcome.service.ts';
 
 export {
   toOracleServiceLayerResultEnvelope,
   toOracleServiceLayerRunHistoryItem,
-} from './oracle-service-layer-api.service.js';
+} from './oracle-service-layer-api.service.ts';

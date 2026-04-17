@@ -8,8 +8,8 @@
  * shared/oracle layer.
  */
 
-import type { ConfidenceBand } from '../../types/oracle/signal.js';
-import { aggregateScores, scoreToConfidenceBand } from './scoring.js';
+import type { ConfidenceBand } from '../../types/oracle/signal.ts';
+import { aggregateScores, scoreToConfidenceBand } from './scoring.ts';
 
 export interface OpportunitySignalInput {
   score: number;

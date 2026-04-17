@@ -5,7 +5,7 @@
  * with explicit scoring, confidence, and reason traces.
  * Any product domain can request and consume signals.
  */
-import type { OraclePublicationState } from './shared.js';
+import type { OraclePublicationState } from './shared.ts';
 
 export type SignalStatus = 'pending' | 'scored' | 'expired' | 'superseded';
 

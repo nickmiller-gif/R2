@@ -5,8 +5,8 @@
  * contract for running Oracle whitespace analysis as one domain operation.
  */
 
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from './oracle-db-utils.js';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from './oracle-db-utils.ts';
 import type {
   ExecuteOracleServiceLayerRunInput,
   OracleServiceLayerRun,
@@ -14,8 +14,8 @@ import type {
   OracleServiceLayerRunSummaryRow,
   OracleServiceLayerRunStatus,
   OracleWhitespaceAnalysis,
-} from '../../types/oracle/index.js';
-import type { OracleWhitespaceRunSummary } from '../../types/oracle/whitespace-core.js';
+} from '../../types/oracle/index.ts';
+import type { OracleWhitespaceRunSummary } from '../../types/oracle/whitespace-core.ts';
 
 export const ORACLE_SERVICE_LAYER_HISTORY_LIMIT_DEFAULT = 20;
 export const ORACLE_SERVICE_LAYER_HISTORY_LIMIT_MAX = 100;

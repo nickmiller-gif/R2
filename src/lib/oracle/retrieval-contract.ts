@@ -8,7 +8,7 @@
  * Maps to `retrievalContract` in the legacy shared/oracle layer.
  */
 
-import type { OracleSourceLane } from '../../types/oracle/shared.js';
+import type { OracleSourceLane } from '../../types/oracle/shared.ts';
 
 export type RetrievalMode = 'semantic' | 'keyword' | 'hybrid';
 

@@ -43,6 +43,7 @@ class IngestHttpError extends Error {
 
   constructor(message: string, status: number) {
     super(message);
+    Object.setPrototypeOf(this, IngestHttpError.prototype);
     this.name = 'IngestHttpError';
     this.status = status;
   }

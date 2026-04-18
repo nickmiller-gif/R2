@@ -2,9 +2,15 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
-import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { requireIdempotencyKey, allowlistPayload } from '../_shared/validate.ts';
+import { extractRequestMeta, metaResponseHeaders } from '../_shared/correlation.ts';
 
 const supabaseClients = createSupabaseClientFactory();
+
+const SIGNAL_CREATE_FIELDS = [
+  'entity_asset_id', 'score', 'confidence', 'reasons', 'tags', 'status',
+  'analysis_document_id', 'source_asset_id', 'producer_ref', 'version',
+] as const;
 
 async function requireOperatorForScope(userId: string): Promise<Response | null> {
   const roleCheck = await requireRole(userId, 'operator');

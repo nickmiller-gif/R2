@@ -2,12 +2,27 @@ import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shar
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
-import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { requireIdempotencyKey, allowlistPayload, safePaginationParams } from '../_shared/validate.ts';
+import { extractRequestMeta, metaResponseHeaders } from '../_shared/correlation.ts';
+
+// Columns that may be supplied on CREATE
+const PAYOUT_CREATE_FIELDS = [
+  'entity_id', 'right_id', 'obligation_id', 'amount', 'currency',
+  'payout_date', 'status', 'confidence',
+] as const;
+
+// Columns that may be updated via PATCH
+const PAYOUT_PATCH_FIELDS = [
+  'amount', 'currency', 'payout_date', 'status', 'confidence', 'reviewed_by',
+] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
   }
+
+  const { correlationId } = extractRequestMeta(req);
+  const meta = metaResponseHeaders(correlationId);
 
   const auth = await guardAuth(req);
   if (!auth.ok) return auth.response;
@@ -23,7 +38,6 @@ Deno.serve(async (req) => {
 
     if (req.method === 'GET') {
       if (id) {
-        // GET single payout
         const { data, error } = await client
           .from('charter_payouts')
           .select('*')
@@ -31,27 +45,28 @@ Deno.serve(async (req) => {
           .single();
 
         if (error) {
-          return errorResponse(error.message, 404);
+          return errorResponse(error.message, 404, meta);
         }
 
-        return jsonResponse(data);
+        return jsonResponse(data, 200, meta);
       } else {
-        // GET list with optional filters
         const entityId = url.searchParams.get('entity_id');
         const status = url.searchParams.get('status');
+        const { limit, offset } = safePaginationParams(url);
 
         let query = client.from('charter_payouts').select('*');
 
         if (entityId) query = query.eq('entity_id', entityId);
         if (status) query = query.eq('status', status);
+        query = query.range(offset, offset + limit - 1);
 
         const { data, error } = await query;
 
         if (error) {
-          return errorResponse(error.message, 400);
+          return errorResponse(error.message, 400, meta);
         }
 
-        return jsonResponse(data);
+        return jsonResponse(data, 200, meta);
       }
     } else if (req.method === 'POST') {
       const roleCheck = await requireRole(auth.claims.userId, 'operator');
@@ -60,14 +75,13 @@ Deno.serve(async (req) => {
       const idemError = requireIdempotencyKey(req);
       if (idemError) return idemError;
 
-      // Check if this is an approve action
       if (action === 'approve') {
-        const body = await req.json();
-        const payoutId = body.id;
-        const approvedBy = body.approvedBy;
+        const raw = await req.json();
+        const payoutId = raw.id;
+        const approvedBy = raw.approvedBy ?? auth.claims.userId;
 
-        if (!payoutId || !approvedBy) {
-          return errorResponse('id and approvedBy required', 400);
+        if (!payoutId || typeof payoutId !== 'string') {
+          return errorResponse('id required', 400, meta);
         }
 
         const { data, error } = await client
@@ -78,57 +92,66 @@ Deno.serve(async (req) => {
           .single();
 
         if (error) {
-          return errorResponse(error.message, 400);
+          return errorResponse(error.message, 400, meta);
         }
 
-        return jsonResponse(data);
+        return jsonResponse(data, 200, meta);
       }
 
       // CREATE payout
-      const body = await req.json();
+      const raw = await req.json();
+      const payload = {
+        ...allowlistPayload(raw, PAYOUT_CREATE_FIELDS),
+        created_by: auth.claims.userId,
+      };
+
       const { data, error } = await client
         .from('charter_payouts')
-        .insert([body])
+        .insert([payload])
         .select()
         .single();
 
       if (error) {
-        return errorResponse(error.message, 400);
+        return errorResponse(error.message, 400, meta);
       }
 
-      return jsonResponse(data, 201);
+      return jsonResponse(data, 201, meta);
     } else if (req.method === 'PATCH') {
-      // UPDATE payout
       const roleCheck = await requireRole(auth.claims.userId, 'operator');
       if (!roleCheck.ok) return roleCheck.response;
 
       const idemError = requireIdempotencyKey(req);
       if (idemError) return idemError;
 
-      const body = await req.json();
-      const payoutId = body.id;
+      const raw = await req.json();
+      const payoutId = raw.id;
 
-      if (!payoutId) {
-        return errorResponse('id required in body', 400);
+      if (!payoutId || typeof payoutId !== 'string') {
+        return errorResponse('id required in body', 400, meta);
       }
+
+      const patch = {
+        ...allowlistPayload(raw, PAYOUT_PATCH_FIELDS),
+        updated_at: new Date().toISOString(),
+      };
 
       const { data, error } = await client
         .from('charter_payouts')
-        .update(body)
+        .update(patch)
         .eq('id', payoutId)
         .select()
         .single();
 
       if (error) {
-        return errorResponse(error.message, 400);
+        return errorResponse(error.message, 400, meta);
       }
 
-      return jsonResponse(data);
+      return jsonResponse(data, 200, meta);
     } else {
-      return errorResponse('Method not allowed', 405);
+      return errorResponse('Method not allowed', 405, meta);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
+    return errorResponse(message, 500, meta);
   }
 });

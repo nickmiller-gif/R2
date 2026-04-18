@@ -8,16 +8,38 @@ export function corsResponse() {
   return new Response('ok', { headers: corsHeaders });
 }
 
-export function jsonResponse(data: unknown, status = 200) {
+/**
+ * Returns a JSON success response with standard CORS headers.
+ *
+ * @param data  - Any JSON-serialisable value.
+ * @param status - HTTP status code (default 200).
+ * @param extra  - Additional headers to merge, e.g. `metaResponseHeaders(correlationId)`.
+ */
+export function jsonResponse(
+  data: unknown,
+  status = 200,
+  extra: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extra },
   });
 }
 
-export function errorResponse(message: string, status = 400) {
+/**
+ * Returns a JSON error response `{ error: message }` with standard CORS headers.
+ *
+ * @param message - Human-readable error description.
+ * @param status  - HTTP status code (default 400).
+ * @param extra   - Additional headers to merge, e.g. `metaResponseHeaders(correlationId)`.
+ */
+export function errorResponse(
+  message: string,
+  status = 400,
+  extra: Record<string, string> = {},
+) {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extra },
   });
 }

@@ -22,6 +22,7 @@ export interface ChatCitation {
   section?: string;
   relevance: number;
   authority_tier: CitationAuthorityTier;
+  evidence_tier: 'A' | 'B' | 'C' | 'D';
 }
 
 function classifyAuthorityTier(chunk: EigenRetrieveChunk): CitationAuthorityTier {
@@ -46,7 +47,16 @@ export function buildCitations(chunks: EigenRetrieveChunk[]): ChatCitation[] {
         : undefined,
     relevance: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
     authority_tier: classifyAuthorityTier(chunk),
+    evidence_tier: classifyEvidenceTier(chunk),
   }));
+}
+
+function classifyEvidenceTier(chunk: EigenRetrieveChunk): 'A' | 'B' | 'C' | 'D' {
+  const score = Number(chunk.composite_score ?? chunk.similarity_score ?? 0);
+  if (score >= 0.85) return 'A';
+  if (score >= 0.7) return 'B';
+  if (score >= 0.5) return 'C';
+  return 'D';
 }
 
 function toLabel(score: number): ConfidenceLabel {

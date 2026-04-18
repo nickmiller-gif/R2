@@ -14,7 +14,7 @@ import {
   type ConfidenceLabel,
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
-import { completeLlmChat } from '../_shared/llm-chat.ts';
+import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 
@@ -30,6 +30,7 @@ interface WidgetChatRequest {
     max_tokens?: number;
     strata_weights?: Record<string, number>;
   };
+  stream?: boolean;
 }
 
 function parseRequest(value: unknown): WidgetChatRequest {
@@ -64,6 +65,7 @@ function parseRequest(value: unknown): WidgetChatRequest {
         ? budget.strata_weights as Record<string, number>
         : undefined,
     },
+    stream: body.stream === true,
   };
 }
 
@@ -182,6 +184,67 @@ async function synthesize(
   };
 }
 
+function buildRetrievalPlan(
+  policyScope: string[],
+  chunks: EigenRetrieveChunk[],
+  retrievalRunId: string,
+) {
+  return {
+    tool: 'eigen-retrieve',
+    policy_scope: policyScope,
+    retrieval_run_id: retrievalRunId,
+    chunk_count: chunks.length,
+    chunk_ids: chunks.map((chunk) => chunk.chunk_id),
+    rank_preview: chunks.slice(0, 5).map((chunk, index) => ({
+      rank: index + 1,
+      chunk_id: chunk.chunk_id,
+      score: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
+      source_system: chunk.provenance?.source_system ?? 'unknown',
+    })),
+  };
+}
+
+async function insertConversationTurn(
+  client: ReturnType<typeof getServiceClient>,
+  params: {
+    siteId: string;
+    mode: 'public' | 'eigenx';
+    userId: string | null;
+    question: string;
+    answer: string;
+    retrievalRunId: string;
+    effectivePolicyScope: string[];
+    citations: ReturnType<typeof buildCitations>;
+    confidence: ReturnType<typeof buildCompositeConfidence>;
+    retrievalPlan: ReturnType<typeof buildRetrievalPlan>;
+    latencyMs: number;
+  },
+) {
+  const payload = {
+    site_id: params.siteId,
+    mode: params.mode,
+    user_id: params.userId,
+    question: params.question,
+    answer: params.answer,
+    retrieval_run_id: params.retrievalRunId,
+    effective_policy_scope: params.effectivePolicyScope,
+    citations: params.citations,
+    confidence: params.confidence,
+    retrieval_plan: params.retrievalPlan,
+    latency_ms: params.latencyMs,
+  };
+  const { data, error } = await client
+    .from('conversation_turn')
+    .insert(payload)
+    .select('id')
+    .single();
+  if (error) {
+    console.warn('conversation_turn insert failed', error.message);
+    return null;
+  }
+  return (data as { id: string }).id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
@@ -242,21 +305,131 @@ Deno.serve(async (req) => {
 
     const citations = buildCitations(retrieveResult.body.chunks);
     const confidence = buildCompositeConfidence(citations);
+    const retrievalPlan = buildRetrievalPlan(
+      effectivePolicyScope,
+      retrieveResult.body.chunks,
+      retrieveResult.body.retrieval_run_id,
+    );
+    const startedAt = Date.now();
+    const format = body.response_format ?? 'structured';
+
+    const hasContext = retrieveResult.body.chunks.length > 0;
+    const envPrompt = claims.mode === 'public'
+      ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
+      : Deno.env.get('EIGENX_SYSTEM_PROMPT');
+    const basePrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(claims.mode, hasContext);
+    const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+      message: body.message,
+      includePrivate: claims.mode === 'eigenx',
+      policyScope: effectivePolicyScope,
+    });
+    const systemPrompt = [
+      withEigenChatProseStyle(basePrompt),
+      'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+      voiceStyleAddendum,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const labeled = buildContext(retrieveResult.body.chunks);
+    const userContent = hasContext
+      ? `User message: ${body.message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
+      : `User message: ${body.message}`;
+
+    if (body.stream === true || req.headers.get('accept')?.includes('text/event-stream')) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          const emit = (event: string, data: string) => {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+          };
+          let text = '';
+          try {
+            for await (const delta of streamLlmChatDeltas({
+              provider: body.llm_provider,
+              model: body.llm_model,
+              systemPrompt,
+              userContent,
+              maxTokens: readWidgetMaxTokens(format),
+              temperature: readWidgetTemperature(claims.mode),
+            })) {
+              text += delta;
+              emit('delta', JSON.stringify({ delta }));
+            }
+
+            const responseText = text.trim() || 'No response generated.';
+            const turnId = await insertConversationTurn(client, {
+              siteId: claims.site_id,
+              mode: claims.mode,
+              userId: claims.user_id ?? null,
+              question: body.message,
+              answer: responseText,
+              retrievalRunId: retrieveResult.body.retrieval_run_id,
+              effectivePolicyScope,
+              citations,
+              confidence,
+              retrievalPlan,
+              latencyMs: Date.now() - startedAt,
+            });
+            emit('final', JSON.stringify({
+              response: responseText,
+              citations,
+              confidence,
+              conversation_turn_id: turnId,
+              retrieval_run_id: retrieveResult.body.retrieval_run_id,
+              retrieval_plan: retrievalPlan,
+              site_id: claims.site_id,
+              mode: claims.mode,
+              effective_policy_scope: effectivePolicyScope,
+            }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown stream error';
+            emit('error', JSON.stringify({ message }));
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
     const synthesis = await synthesize(
       client,
       claims.mode,
       effectivePolicyScope,
       body.message,
       retrieveResult.body.chunks,
-      body.response_format ?? 'structured',
+      format,
       body.llm_provider,
       body.llm_model,
       confidence.overall,
     );
+    const turnId = await insertConversationTurn(client, {
+      siteId: claims.site_id,
+      mode: claims.mode,
+      userId: claims.user_id ?? null,
+      question: body.message,
+      answer: synthesis.text,
+      retrievalRunId: retrieveResult.body.retrieval_run_id,
+      effectivePolicyScope,
+      citations,
+      confidence,
+      retrievalPlan,
+      latencyMs: Date.now() - startedAt,
+    });
     return jsonResponse({
       response: synthesis.text,
       citations,
       confidence,
+      conversation_turn_id: turnId,
+      retrieval_plan: retrievalPlan,
       llm_provider: body.llm_provider ?? 'openai',
       llm_model: body.llm_model ?? null,
       llm_critic_used: synthesis.critic_used,

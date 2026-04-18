@@ -70,6 +70,7 @@ async function verify(data: string, signature: string, secret: string): Promise<
       encoder.encode(data),
     );
   } catch {
+    console.warn('Widget session signature verification failed due to malformed input');
     return false;
   }
 }
@@ -110,7 +111,9 @@ export async function verifyWidgetSessionToken(token: string): Promise<WidgetSes
   try {
     const payloadJson = decoder.decode(fromBase64Url(payloadPart));
     claims = JSON.parse(payloadJson) as WidgetSessionClaims;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown decode error';
+    console.warn(`Widget session payload decode failed: ${message}`);
     throw new Error('Invalid widget session token payload');
   }
   const now = Math.floor(Date.now() / 1000);

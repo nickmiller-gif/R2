@@ -697,13 +697,20 @@ Deno.serve(async (req) => {
     if (activeIngestionRunId) {
       const failedAt = new Date().toISOString();
       let existingMetadata: Record<string, unknown> = {};
-      const existingRun = await client.from('ingestion_runs').select('metadata').eq('id', activeIngestionRunId).maybeSingle();
-      if (existingRun.error) {
+      const existingRunResult = await client
+        .from('ingestion_runs')
+        .select('metadata')
+        .eq('id', activeIngestionRunId)
+        .maybeSingle();
+      if (existingRunResult.error) {
         console.error(
-          `[eigen-ingest] failed to load existing ingestion run metadata: ${existingRun.error.message}`,
+          `[eigen-ingest] failed to load existing ingestion run metadata: ${existingRunResult.error.message}`,
         );
-      } else if (isObject(existingRun.data?.metadata)) {
-        existingMetadata = existingRun.data.metadata;
+      } else {
+        const metadata = existingRunResult.data?.metadata;
+        if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+          existingMetadata = metadata as Record<string, unknown>;
+        }
       }
       const markFailed = await client
         .from('ingestion_runs')

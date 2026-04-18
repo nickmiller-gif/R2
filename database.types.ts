@@ -361,6 +361,92 @@ export type Database = {
           },
         ]
       }
+      autonomous_learning_outcomes: {
+        Row: {
+          actual_impact: number
+          created_at: string
+          error: number
+          expected_impact: number
+          id: string
+          notes: string | null
+          run_id: string
+          strategy: string
+          updated_weight: number
+        }
+        Insert: {
+          actual_impact: number
+          created_at?: string
+          error: number
+          expected_impact: number
+          id?: string
+          notes?: string | null
+          run_id: string
+          strategy: string
+          updated_weight: number
+        }
+        Update: {
+          actual_impact?: number
+          created_at?: string
+          error?: number
+          expected_impact?: number
+          id?: string
+          notes?: string | null
+          run_id?: string
+          strategy?: string
+          updated_weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "autonomous_learning_outcomes_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "retrieval_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      autonomous_runtime_state: {
+        Row: {
+          pause_reason: string | null
+          paused: boolean
+          singleton: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          pause_reason?: string | null
+          paused?: boolean
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          pause_reason?: string | null
+          paused?: boolean
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      autonomous_strategy_weights: {
+        Row: {
+          strategy: string
+          updated_at: string
+          weight: number
+        }
+        Insert: {
+          strategy: string
+          updated_at?: string
+          weight?: number
+        }
+        Update: {
+          strategy?: string
+          updated_at?: string
+          weight?: number
+        }
+        Relationships: []
+      }
       charter_asset_valuations: {
         Row: {
           amount_numeric: number
@@ -1107,6 +1193,106 @@ export type Database = {
           },
         ]
       }
+      conversation_turn: {
+        Row: {
+          answer: string
+          citations: Json
+          confidence: Json | null
+          created_at: string
+          effective_policy_scope: string[]
+          feedback_text: string | null
+          feedback_value: number | null
+          id: string
+          idempotency_key: string | null
+          latency_ms: number | null
+          mode: string
+          question: string
+          retrieval_plan: Json | null
+          retrieval_run_id: string | null
+          site_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          answer: string
+          citations?: Json
+          confidence?: Json | null
+          created_at?: string
+          effective_policy_scope?: string[]
+          feedback_text?: string | null
+          feedback_value?: number | null
+          id?: string
+          idempotency_key?: string | null
+          latency_ms?: number | null
+          mode: string
+          question: string
+          retrieval_plan?: Json | null
+          retrieval_run_id?: string | null
+          site_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          answer?: string
+          citations?: Json
+          confidence?: Json | null
+          created_at?: string
+          effective_policy_scope?: string[]
+          feedback_text?: string | null
+          feedback_value?: number | null
+          id?: string
+          idempotency_key?: string | null
+          latency_ms?: number | null
+          mode?: string
+          question?: string
+          retrieval_plan?: Json | null
+          retrieval_run_id?: string | null
+          site_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_turn_retrieval_run_id_fkey"
+            columns: ["retrieval_run_id"]
+            isOneToOne: false
+            referencedRelation: "retrieval_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_turn_feedback: {
+        Row: {
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          note: string | null
+          turn_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          note?: string | null
+          turn_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          note?: string | null
+          turn_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_turn_feedback_turn_id_fkey"
+            columns: ["turn_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_turn"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       counterparties: {
         Row: {
           company: string | null
@@ -1553,6 +1739,51 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "eigen_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eigen_governance_audit_log: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          details: Json
+          event_type: string
+          id: string
+          run_id: string | null
+          thesis_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          event_type: string
+          id?: string
+          run_id?: string | null
+          thesis_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          event_type?: string
+          id?: string
+          run_id?: string | null
+          thesis_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_governance_audit_log_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_governance_audit_log_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_theses"
             referencedColumns: ["id"]
           },
         ]
@@ -2918,6 +3149,53 @@ export type Database = {
           },
         ]
       }
+      oracle_graph_extraction_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json
+          priority: number
+          run_id: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          priority?: number
+          run_id: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          priority?: number
+          run_id?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_graph_extraction_jobs_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       oracle_outcomes: {
         Row: {
           accuracy_score: number | null
@@ -3021,46 +3299,61 @@ export type Database = {
       }
       oracle_run_evidence: {
         Row: {
+          adversarial_pass: boolean | null
           authority_score: number
           chunk_id: string | null
           content_excerpt: string | null
           created_at: string
+          evidence_tier: string | null
           id: string
+          ingest_run: Json
           provenance_chain: Json
+          registry_verified_ratio: number | null
           relevance_score: number | null
           rights_constraints: string[]
           run_id: string
           source_ref: string
           source_system: string | null
           source_type: Database["public"]["Enums"]["oracle_authority_tier"]
+          sources_queried: string[]
         }
         Insert: {
+          adversarial_pass?: boolean | null
           authority_score?: number
           chunk_id?: string | null
           content_excerpt?: string | null
           created_at?: string
+          evidence_tier?: string | null
           id?: string
+          ingest_run?: Json
           provenance_chain?: Json
+          registry_verified_ratio?: number | null
           relevance_score?: number | null
           rights_constraints?: string[]
           run_id: string
           source_ref: string
           source_system?: string | null
           source_type: Database["public"]["Enums"]["oracle_authority_tier"]
+          sources_queried?: string[]
         }
         Update: {
+          adversarial_pass?: boolean | null
           authority_score?: number
           chunk_id?: string | null
           content_excerpt?: string | null
           created_at?: string
+          evidence_tier?: string | null
           id?: string
+          ingest_run?: Json
           provenance_chain?: Json
+          registry_verified_ratio?: number | null
           relevance_score?: number | null
           rights_constraints?: string[]
           run_id?: string
           source_ref?: string
           source_system?: string | null
           source_type?: Database["public"]["Enums"]["oracle_authority_tier"]
+          sources_queried?: string[]
         }
         Relationships: [
           {
@@ -3134,6 +3427,65 @@ export type Database = {
             columns: ["thesis_id"]
             isOneToOne: false
             referencedRelation: "oracle_theses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oracle_run_scorecards: {
+        Row: {
+          avg_composite_score: number
+          avg_confidence: number
+          avg_evidence_strength: number
+          citation_coverage: number
+          created_at: string
+          evidence_diversity: number
+          hypothesis_count: number
+          id: string
+          model_version: string
+          novelty_score: number
+          published_count: number
+          run_id: string
+          updated_at: string
+          verified_rate: number
+        }
+        Insert: {
+          avg_composite_score?: number
+          avg_confidence?: number
+          avg_evidence_strength?: number
+          citation_coverage?: number
+          created_at?: string
+          evidence_diversity?: number
+          hypothesis_count?: number
+          id?: string
+          model_version: string
+          novelty_score?: number
+          published_count?: number
+          run_id: string
+          updated_at?: string
+          verified_rate?: number
+        }
+        Update: {
+          avg_composite_score?: number
+          avg_confidence?: number
+          avg_evidence_strength?: number
+          citation_coverage?: number
+          created_at?: string
+          evidence_diversity?: number
+          hypothesis_count?: number
+          id?: string
+          model_version?: string
+          novelty_score?: number
+          published_count?: number
+          run_id?: string
+          updated_at?: string
+          verified_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_run_scorecards_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "oracle_whitespace_runs"
             referencedColumns: ["id"]
           },
         ]

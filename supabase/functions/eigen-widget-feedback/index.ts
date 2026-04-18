@@ -30,6 +30,21 @@ function parseRequest(value: unknown): FeedbackRequest {
   };
 }
 
+function classifyRequestError(message: string): number {
+  if (
+    message.includes('Request body') ||
+    message.includes('widget_token is required') ||
+    message.includes('turn_id is required') ||
+    message.includes('value must be -1 or 1')
+  ) {
+    return 400;
+  }
+  if (message.includes('Widget session token')) {
+    return 401;
+  }
+  return 500;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
@@ -60,17 +75,18 @@ Deno.serve(async (req) => {
     });
     if (error) return errorResponse(error.message, 500);
 
-    await client
+    const { error: updateError } = await client
       .from('conversation_turn')
       .update({
         feedback_value: body.value,
         feedback_text: body.note ?? null,
       })
       .eq('id', body.turn_id);
+    if (updateError) return errorResponse(updateError.message, 500);
 
     return jsonResponse({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return errorResponse(message, 500);
+    return errorResponse(message, classifyRequestError(message));
   }
 });

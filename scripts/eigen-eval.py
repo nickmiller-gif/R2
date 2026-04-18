@@ -205,9 +205,9 @@ def run():
             failed += 1
             continue
         bad_tiers = [
-            c.get("evidence_tier")
+            c.get("evidence_tier") if isinstance(c, dict) else "__non_object_citation__"
             for c in citations
-            if c.get("evidence_tier") not in {"A", "B", "C", "D"}
+            if not isinstance(c, dict) or c.get("evidence_tier") not in {"A", "B", "C", "D"}
         ]
         if bad_tiers:
             print(f"[FAIL] {name}: invalid evidence_tier values: {bad_tiers}")

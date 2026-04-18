@@ -151,7 +151,7 @@ function addFeedbackControls(container, turnId) {
   async function submitFeedback(value) {
     if (!widgetToken) return;
     try {
-      await fetch(`${apiBase}/eigen-widget-feedback`, {
+      const response = await fetch(`${apiBase}/eigen-widget-feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,6 +160,9 @@ function addFeedbackControls(container, turnId) {
           value,
         }),
       });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
       up.classList.toggle('is-active', value === 1);
       down.classList.toggle('is-active', value === -1);
     } catch {
@@ -203,7 +206,9 @@ function createSseParser(onEvent) {
       const data = [];
       for (const line of lines) {
         if (line.startsWith('event:')) event = line.slice(6).trim();
-        if (line.startsWith('data:')) data.push(line.slice(5).trim());
+        if (line.startsWith('data:')) {
+          data.push(line.slice(line[5] === ' ' ? 6 : 5));
+        }
       }
       const body = data.join('\n');
       onEvent(event, body);
@@ -289,7 +294,8 @@ async function submitMessage(message) {
             deltaText = parsed.delta;
           }
         } catch {
-          deltaText = body.replace(/\\n/g, '\n');
+          console.warn('Malformed SSE delta payload', body);
+          deltaText = body;
         }
         assistantTurn.msg.textContent += deltaText;
         chat.scrollTop = chat.scrollHeight;
@@ -376,7 +382,8 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('message', (event) => {
-  if (allowedParentOrigin && event.origin.toLowerCase() !== allowedParentOrigin) return;
+  if (!allowedParentOrigin) return;
+  if (event.origin.toLowerCase() !== allowedParentOrigin) return;
   const data = event.data || {};
   if (!data || typeof data !== 'object') return;
   if (data.type === 'eigen_widget_auth' && typeof data.authBearer === 'string') {

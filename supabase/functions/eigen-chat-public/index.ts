@@ -364,20 +364,29 @@ Deno.serve(async (req) => {
           const emit = (event: string, data: string) => {
             controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
           };
-          let text = '';
+          const deltas: string[] = [];
           try {
-            for await (const delta of streamLlmChatDeltas({
+            const iterator = streamLlmChatDeltas({
               provider: body.llm_provider,
               model: body.llm_model,
               systemPrompt,
               userContent,
               temperature: readPublicChatTemperature(),
               maxTokens: readMaxCompletionTokens(),
-            })) {
-              text += delta;
+            });
+            while (true) {
+              const next = await iterator.next();
+              if (next.done) {
+                if (next.value?.text && !deltas.length) {
+                  deltas.push(next.value.text);
+                }
+                break;
+              }
+              const delta = next.value;
+              deltas.push(delta);
               emit('delta', JSON.stringify({ delta }));
             }
-            const responseText = text.trim() || 'No response generated.';
+            const responseText = deltas.join('').trim() || 'No response generated.';
             const turnId = await insertConversationTurn(client, {
               siteId: body.site_id ?? null,
               mode: 'public',
@@ -396,11 +405,20 @@ Deno.serve(async (req) => {
               citations,
               confidence,
               evidence_notice: buildEvidenceNotice(confidence),
+              llm_provider: body.llm_provider ?? 'openai',
+              llm_model: body.llm_model ?? null,
+              llm_critic_used: false,
+              llm_critic_provider: null,
+              llm_critic_model: null,
               conversation_turn_id: turnId,
               retrieval_run_id: retrieveResult.body.retrieval_run_id,
               retrieval_plan: retrievalPlan,
               policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
               policy_scope_mode: 'public_only',
+              rate_limit: {
+                limit_per_minute: rate.limit,
+                remaining: rate.remaining,
+              },
             }));
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown stream error';

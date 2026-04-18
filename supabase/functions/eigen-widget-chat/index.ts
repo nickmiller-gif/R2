@@ -313,50 +313,57 @@ Deno.serve(async (req) => {
     const startedAt = Date.now();
     const format = body.response_format ?? 'structured';
 
-    const hasContext = retrieveResult.body.chunks.length > 0;
-    const envPrompt = claims.mode === 'public'
-      ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
-      : Deno.env.get('EIGENX_SYSTEM_PROMPT');
-    const basePrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(claims.mode, hasContext);
-    const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
-      message: body.message,
-      includePrivate: claims.mode === 'eigenx',
-      policyScope: effectivePolicyScope,
-    });
-    const systemPrompt = [
-      withEigenChatProseStyle(basePrompt),
-      'Primary domain corpus decides answer direction; secondary corpus is additive only.',
-      voiceStyleAddendum,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const labeled = buildContext(retrieveResult.body.chunks);
-    const userContent = hasContext
-      ? `User message: ${body.message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
-      : `User message: ${body.message}`;
-
     if (body.stream === true || req.headers.get('accept')?.includes('text/event-stream')) {
+      const hasContext = retrieveResult.body.chunks.length > 0;
+      const envPrompt = claims.mode === 'public'
+        ? Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')
+        : Deno.env.get('EIGENX_SYSTEM_PROMPT');
+      const basePrompt = (envPrompt && envPrompt.trim()) || defaultWidgetSystemPrompt(claims.mode, hasContext);
+      const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+        message: body.message,
+        includePrivate: claims.mode === 'eigenx',
+        policyScope: effectivePolicyScope,
+      });
+      const systemPrompt = [
+        withEigenChatProseStyle(basePrompt),
+        'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+        voiceStyleAddendum,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const labeled = buildContext(retrieveResult.body.chunks);
+      const userContent = hasContext
+        ? `User message: ${body.message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
+        : `User message: ${body.message}`;
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         start: async (controller) => {
           const emit = (event: string, data: string) => {
             controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
           };
-          let text = '';
+          const deltas: string[] = [];
           try {
-            for await (const delta of streamLlmChatDeltas({
+            const iterator = streamLlmChatDeltas({
               provider: body.llm_provider,
               model: body.llm_model,
               systemPrompt,
               userContent,
               maxTokens: readWidgetMaxTokens(format),
               temperature: readWidgetTemperature(claims.mode),
-            })) {
-              text += delta;
+            });
+            while (true) {
+              const next = await iterator.next();
+              if (next.done) {
+                if (next.value?.text && !deltas.length) {
+                  deltas.push(next.value.text);
+                }
+                break;
+              }
+              const delta = next.value;
+              deltas.push(delta);
               emit('delta', JSON.stringify({ delta }));
             }
-
-            const responseText = text.trim() || 'No response generated.';
+            const responseText = deltas.join('').trim() || 'No response generated.';
             const turnId = await insertConversationTurn(client, {
               siteId: claims.site_id,
               mode: claims.mode,
@@ -374,6 +381,11 @@ Deno.serve(async (req) => {
               response: responseText,
               citations,
               confidence,
+              llm_provider: body.llm_provider ?? 'openai',
+              llm_model: body.llm_model ?? null,
+              llm_critic_used: false,
+              llm_critic_provider: null,
+              llm_critic_model: null,
               conversation_turn_id: turnId,
               retrieval_run_id: retrieveResult.body.retrieval_run_id,
               retrieval_plan: retrievalPlan,

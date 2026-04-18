@@ -35,10 +35,10 @@
   --shadow-md: 0 8px 16px oklch(0.18 0.02 250 / 0.1);
   --shadow-lg: 0 20px 40px oklch(0.18 0.02 250 / 0.14);
 
-  --font-display: "IBM Plex Serif", Georgia, serif;
-  --font-body: "IBM Plex Serif", Georgia, serif;
+  --font-display: "IBM Plex Serif", "Georgia", serif;
+  --font-body: "IBM Plex Serif", "Georgia", serif;
   --font-ui: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-label: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
   --font-caption: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
 }

@@ -27,12 +27,23 @@ CREATE INDEX IF NOT EXISTS idx_conversation_turn_retrieval_run
 
 ALTER TABLE public.conversation_turn ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Service role manages conversation_turn" ON public.conversation_turn;
-CREATE POLICY "Service role manages conversation_turn"
-  ON public.conversation_turn
-  FOR ALL
-  USING (auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'service_role');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'conversation_turn'
+      AND policyname = 'Service role manages conversation_turn'
+  ) THEN
+    CREATE POLICY "Service role manages conversation_turn"
+      ON public.conversation_turn
+      FOR ALL
+      USING (auth.role() = 'service_role')
+      WITH CHECK (auth.role() = 'service_role');
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS public.conversation_turn_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,9 +58,20 @@ CREATE INDEX IF NOT EXISTS idx_conversation_turn_feedback_turn
 
 ALTER TABLE public.conversation_turn_feedback ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Service role manages conversation_turn_feedback" ON public.conversation_turn_feedback;
-CREATE POLICY "Service role manages conversation_turn_feedback"
-  ON public.conversation_turn_feedback
-  FOR ALL
-  USING (auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'service_role');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'conversation_turn_feedback'
+      AND policyname = 'Service role manages conversation_turn_feedback'
+  ) THEN
+    CREATE POLICY "Service role manages conversation_turn_feedback"
+      ON public.conversation_turn_feedback
+      FOR ALL
+      USING (auth.role() = 'service_role')
+      WITH CHECK (auth.role() = 'service_role');
+  END IF;
+END
+$$;

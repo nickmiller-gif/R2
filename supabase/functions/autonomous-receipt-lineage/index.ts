@@ -64,9 +64,13 @@ Deno.serve(async (req) => {
       ingest_run: {
         id: ingestRun.id ?? null,
         trigger: ingestRun.trigger ?? null,
-        source_system: ingestRun.source_system ?? null
+        source_system: ingestRun.source_system ?? null,
+        started_at: ingestRun.started_at ?? null
       },
-      evidence_tier: metadata.evidence_tier ?? null
+      evidence_tier: metadata.evidence_tier ?? null,
+      sources_queried: metadata.sources_queried ?? [],
+      replay_idempotency_key: metadata.replay_idempotency_key ?? null,
+      retrieval_run_id: metadata.retrieval_run_id ?? retrievalRunId
     }
   });
 });

@@ -2,6 +2,7 @@ import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { guardAuth } from '../_shared/auth.ts';
 
 interface FeedbackRequest {
   widget_token: string;
@@ -59,6 +60,13 @@ Deno.serve(async (req) => {
     const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
     if (!origin || origin !== claims.origin) {
       return errorResponse('Widget origin mismatch', 403);
+    }
+    if (claims.mode === 'eigenx') {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      if (claims.user_id && auth.claims.userId !== claims.user_id) {
+        return errorResponse('Auth/session mismatch', 403);
+      }
     }
 
     const client = getServiceClient();

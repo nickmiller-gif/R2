@@ -108,13 +108,14 @@ function addCitations(container, citations = []) {
     chip.title = citationPreview(citation);
 
     chip.addEventListener('click', () => {
-      const existing = chip.parentElement.querySelector('.chunk-preview');
+      const existing = row.querySelector('.chunk-preview');
       if (existing) {
         existing.remove();
-        return;
+        if (existing.dataset.chipIndex === String(idx)) return;
       }
       const preview = document.createElement('div');
       preview.className = 'chunk-preview';
+      preview.dataset.chipIndex = String(idx);
       preview.textContent = citationPreview(citation);
       row.appendChild(preview);
     });
@@ -156,12 +157,14 @@ function addFeedbackControls(container, turnId) {
   async function submitFeedback(value) {
     if (!widgetToken) return;
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-idempotency-key': makeIdempotencyKey('widget-feedback'),
+      };
+      if (authBearer) headers.Authorization = `Bearer ${authBearer}`;
       const response = await fetch(`${apiBase}/eigen-widget-feedback`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-idempotency-key': makeIdempotencyKey('widget-feedback'),
-        },
+        headers,
         body: JSON.stringify({
           widget_token: widgetToken,
           turn_id: turnId,

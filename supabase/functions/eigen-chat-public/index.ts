@@ -18,6 +18,7 @@ import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -211,92 +212,6 @@ async function synthesizePublicResponse(
   };
 }
 
-function buildRetrievalPlan(
-  policyScope: string[],
-  chunks: EigenRetrieveChunk[],
-  retrievalRunId: string,
-) {
-  return {
-    tool: 'eigen-retrieve',
-    policy_scope: policyScope,
-    retrieval_run_id: retrievalRunId,
-    chunk_count: chunks.length,
-    chunk_ids: chunks.map((chunk) => chunk.chunk_id),
-    rank_preview: chunks.slice(0, 5).map((chunk, index) => ({
-      rank: index + 1,
-      chunk_id: chunk.chunk_id,
-      score: Number(chunk.composite_score?.toFixed(4) ?? chunk.similarity_score?.toFixed(4) ?? 0),
-      source_system: chunk.provenance?.source_system ?? 'unknown',
-    })),
-  };
-}
-
-async function insertConversationTurn(
-  client: ReturnType<typeof getServiceClient>,
-  params: {
-    siteId: string | null;
-    mode: 'public';
-    userId: string | null;
-    question: string;
-    answer: string;
-    retrievalRunId: string;
-    effectivePolicyScope: string[];
-    citations: ReturnType<typeof buildCitations>;
-    confidence: ReturnType<typeof buildCompositeConfidence>;
-    retrievalPlan: ReturnType<typeof buildRetrievalPlan>;
-    latencyMs: number;
-    idempotencyKey: string | null;
-  },
-) {
-  if (params.idempotencyKey) {
-    const { data: existing } = await client
-      .from('conversation_turn')
-      .select('id')
-      .eq('mode', params.mode)
-      .eq('idempotency_key', params.idempotencyKey)
-      .maybeSingle();
-    if (existing && (existing as { id?: string }).id) {
-      return (existing as { id: string }).id;
-    }
-  }
-
-  const payload = {
-    site_id: params.siteId,
-    mode: params.mode,
-    user_id: params.userId,
-    question: params.question,
-    answer: params.answer,
-    retrieval_run_id: params.retrievalRunId,
-    effective_policy_scope: params.effectivePolicyScope,
-    citations: params.citations,
-    confidence: params.confidence,
-    retrieval_plan: params.retrievalPlan,
-    latency_ms: params.latencyMs,
-    idempotency_key: params.idempotencyKey,
-  };
-  const { data, error } = await client
-    .from('conversation_turn')
-    .insert(payload)
-    .select('id')
-    .single();
-  if (error) {
-    if ((error as { code?: string }).code === '23505' && params.idempotencyKey) {
-      const { data: existing } = await client
-        .from('conversation_turn')
-        .select('id')
-        .eq('mode', params.mode)
-        .eq('idempotency_key', params.idempotencyKey)
-        .maybeSingle();
-      if (existing && (existing as { id?: string }).id) {
-        return (existing as { id: string }).id;
-      }
-    }
-    console.warn('conversation_turn insert failed', error.message);
-    return null;
-  }
-  return (data as { id: string }).id;
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
@@ -451,10 +366,18 @@ Deno.serve(async (req) => {
               },
             }));
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unknown stream error';
-            emit('error', JSON.stringify({ message }));
+            try {
+              const message = error instanceof Error ? error.message : 'Unknown stream error';
+              emit('error', JSON.stringify({ message }));
+            } catch {
+              // Client disconnect can close the stream before error delivery.
+            }
           } finally {
-            controller.close();
+            try {
+              controller.close();
+            } catch {
+              // Stream may already be closed/errored.
+            }
           }
         },
       });

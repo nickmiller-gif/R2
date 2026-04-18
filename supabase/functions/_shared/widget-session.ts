@@ -32,9 +32,7 @@ function fromBase64Url(value: string): Uint8Array {
 function readWidgetSecret(): string {
   const secret = Deno.env.get('EIGEN_WIDGET_SESSION_SECRET')?.trim();
   if (secret && secret.length >= 16) return secret;
-  const fallback = Deno.env.get('SUPABASE_ANON_KEY')?.trim();
-  if (fallback && fallback.length >= 16) return fallback;
-  throw new Error('Missing EIGEN_WIDGET_SESSION_SECRET (or SUPABASE_ANON_KEY fallback)');
+  throw new Error('Missing EIGEN_WIDGET_SESSION_SECRET');
 }
 
 function readWidgetTtlSec(): number {
@@ -57,8 +55,19 @@ async function sign(data: string, secret: string): Promise<string> {
 }
 
 async function verify(data: string, signature: string, secret: string): Promise<boolean> {
-  const expected = await sign(data, secret);
-  return expected === signature;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  );
+  return await crypto.subtle.verify(
+    'HMAC',
+    key,
+    fromBase64Url(signature),
+    encoder.encode(data),
+  );
 }
 
 export async function createWidgetSessionToken(

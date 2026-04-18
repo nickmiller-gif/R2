@@ -41,22 +41,9 @@ interface IngestIdentity {
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
-  const authHeader = req.headers.get('authorization') ?? '';
   const ingestTokenHeader = req.headers.get('x-eigen-ingest-token') ?? '';
   const configuredIngestToken = Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '';
   if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
-    return { userId: SERVICE_ROLE_OWNER_ID };
-  }
-
-  if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
-  const token = authHeader.slice(7).trim();
-  if (!token) return null;
-
-  // Optional controlled bypass for backend jobs that hold the service role key.
-  // Keep disabled by default.
-  const allowServiceRole = (Deno.env.get('EIGEN_INGEST_ALLOW_SERVICE_ROLE') ?? 'false') === 'true';
-  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (allowServiceRole && serviceRole && token === serviceRole) {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }
   return null;
@@ -342,9 +329,11 @@ Deno.serve(async (req) => {
   const idemError = requireIdempotencyKey(req);
   if (idemError) return idemError;
 
+  const client = getServiceClient();
+  let activeIngestionRunId: string | undefined;
+
   try {
     const requestMeta = extractRequestMeta(req);
-    const client = getServiceClient();
     const requestBody = await parseRequest(req, client);
     const maxBodyChars = readMaxBodyChars();
     if (requestBody.document.body.length > maxBodyChars) {
@@ -519,6 +508,7 @@ Deno.serve(async (req) => {
         .eq('id', ingestionRunId);
       if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
     }
+    activeIngestionRunId = ingestionRunId;
 
     const upsertDoc = await client
       .from('documents')
@@ -544,6 +534,17 @@ Deno.serve(async (req) => {
     if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
     const documentId = upsertDoc.data.id as string;
 
+    const chunks = buildChunks(
+      requestBody.document.title,
+      requestBody.document.body,
+      requestBody.chunking_mode ?? 'hierarchical',
+    );
+
+    const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
+      chunks.map((chunk) => chunk.content),
+      effectiveEmbeddingModel,
+    );
+
     await ensureEigenDocumentAsset(client, {
       documentId,
       title: requestBody.document.title,
@@ -558,17 +559,6 @@ Deno.serve(async (req) => {
       .update({ document_id: documentId })
       .eq('id', ingestionRunId);
     if (linkDocToRun.error) return errorResponse(linkDocToRun.error.message, 400);
-
-    const chunks = buildChunks(
-      requestBody.document.title,
-      requestBody.document.body,
-      requestBody.chunking_mode ?? 'hierarchical',
-    );
-
-    const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
-      chunks.map((chunk) => chunk.content),
-      effectiveEmbeddingModel,
-    );
 
     const chunkContentHashes = await Promise.all(
       chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
@@ -689,6 +679,23 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    if (activeIngestionRunId) {
+      const failedAt = new Date().toISOString();
+      const markFailed = await client
+        .from('ingestion_runs')
+        .update({
+          status: 'failed',
+          completed_at: failedAt,
+          metadata: {
+            failure_reason: message,
+            failed_at: failedAt,
+          },
+        })
+        .eq('id', activeIngestionRunId);
+      if (markFailed.error) {
+        console.error(`[eigen-ingest] failed to mark ingestion run as failed: ${markFailed.error.message}`);
+      }
+    }
     return errorResponse(message, 500);
   }
 });

@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
+"""
+Usage:
+  SUPABASE_URL=... python3 scripts/eigen-eval.py
+
+Streaming mode:
+  EIGEN_EVAL_STREAM=1 PUBLIC_BEARER=... AUTH_BEARER=... python3 scripts/eigen-eval.py
+
+Notes:
+  - PUBLIC_BEARER is required when public endpoint enforces bearer auth.
+  - AUTH_BEARER is required for eigenx-tier tests.
+"""
 import json
 import os
+import uuid
 import subprocess
 import sys
 
@@ -11,6 +23,7 @@ def read_json(path: str):
 
 
 def post_json(url: str, payload: dict, token: str | None = None) -> dict:
+    idempotency_key = f"eigen-eval-json:{uuid.uuid4()}"
     cmd = [
         "curl",
         "-sS",
@@ -19,6 +32,8 @@ def post_json(url: str, payload: dict, token: str | None = None) -> dict:
         url,
         "-H",
         "Content-Type: application/json",
+        "-H",
+        f"x-idempotency-key: {idempotency_key}",
         "--data",
         json.dumps(payload),
     ]
@@ -33,6 +48,65 @@ def post_json(url: str, payload: dict, token: str | None = None) -> dict:
         return json.loads(raw)
     except Exception as exc:
         raise RuntimeError(f"Invalid JSON response: {raw}") from exc
+
+
+def post_sse(url: str, payload: dict, token: str | None = None) -> dict:
+    idempotency_key = f"eigen-eval-sse:{uuid.uuid4()}"
+    cmd = [
+        "curl",
+        "-sS",
+        "-N",
+        "-X",
+        "POST",
+        url,
+        "-H",
+        "Content-Type: application/json",
+        "-H",
+        "Accept: text/event-stream",
+        "-H",
+        f"x-idempotency-key: {idempotency_key}",
+        "--data",
+        json.dumps(payload),
+    ]
+    if token:
+        cmd.extend(["-H", f"Authorization: Bearer {token}"])
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"curl failed ({proc.returncode}): {proc.stderr.strip()}")
+
+    raw_stdout = proc.stdout.strip()
+    if raw_stdout.startswith("{"):
+        maybe_json = json.loads(raw_stdout)
+        if isinstance(maybe_json, dict) and maybe_json.get("error"):
+            raise RuntimeError(str(maybe_json.get("error")))
+        if isinstance(maybe_json, dict) and maybe_json.get("message"):
+            raise RuntimeError(str(maybe_json.get("message")))
+        return maybe_json
+
+    event_name = None
+    data_lines: list[str] = []
+    final_payload = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("event:"):
+            event_name = line.split(":", 1)[1].strip()
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line.split(":", 1)[1].strip())
+            continue
+        if line.strip() == "":
+            if event_name == "final":
+                raw = "\n".join(data_lines).strip()
+                if not raw:
+                    raise RuntimeError("SSE final event had empty payload")
+                final_payload = json.loads(raw)
+                break
+            event_name = None
+            data_lines = []
+
+    if final_payload is None:
+        raise RuntimeError("SSE response did not include a final event payload")
+    return final_payload
 
 
 def ensure_contains(text: str, values: list[str]) -> list[str]:
@@ -62,6 +136,7 @@ def run():
         return 2
 
     auth_bearer = os.environ.get("AUTH_BEARER", "").strip()
+    public_bearer = os.environ.get("PUBLIC_BEARER", "").strip()
     eval_group = os.environ.get("EIGEN_EVAL_GROUP", "").strip()
     public_url = os.environ.get(
         "PUBLIC_URL",
@@ -71,6 +146,12 @@ def run():
         "EIGENX_URL",
         f"{supabase_url.rstrip('/')}/functions/v1/eigen-chat",
     )
+    stream_mode = os.environ.get("EIGEN_EVAL_STREAM", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     passed = 0
     failed = 0
@@ -93,10 +174,14 @@ def run():
             "message": question,
             "response_format": "structured",
         }
+        if stream_mode:
+            payload["stream"] = True
         if isinstance(test.get("site_id"), str) and test.get("site_id"):
             payload["site_id"] = str(test.get("site_id"))
         if isinstance(test.get("site_source_systems"), list):
             payload["site_source_systems"] = [str(x) for x in test["site_source_systems"]]
+        if tier == "public" and public_bearer:
+            token = public_bearer
         if tier == "eigenx":
             if not auth_bearer:
                 print(f"[SKIP] {name}: AUTH_BEARER not set")
@@ -106,7 +191,7 @@ def run():
             payload["policy_scope"] = ["eigenx"]
 
         try:
-            response = post_json(url, payload, token)
+            response = post_sse(url, payload, token) if stream_mode else post_json(url, payload, token)
         except Exception as exc:
             print(f"[FAIL] {name}: request error: {exc}")
             failed += 1
@@ -120,6 +205,19 @@ def run():
             continue
         if not isinstance(citations, list):
             print(f"[FAIL] {name}: citations is not a list")
+            failed += 1
+            continue
+        if not isinstance(response.get("retrieval_plan"), dict):
+            print(f"[FAIL] {name}: retrieval_plan missing or invalid")
+            failed += 1
+            continue
+        bad_tiers = [
+            c.get("evidence_tier") if isinstance(c, dict) else "__non_object_citation__"
+            for c in citations
+            if not isinstance(c, dict) or c.get("evidence_tier") not in {"A", "B", "C", "D"}
+        ]
+        if bad_tiers:
+            print(f"[FAIL] {name}: invalid evidence_tier values: {bad_tiers}")
             failed += 1
             continue
 

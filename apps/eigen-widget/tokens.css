@@ -1,0 +1,44 @@
+:root {
+  --surface-ground: oklch(0.18 0.02 250);
+  --surface-plate: oklch(0.94 0.02 80);
+  --surface-card: oklch(0.98 0.005 80);
+  --ink-primary: oklch(0.18 0.02 250);
+  --ink-muted: oklch(0.45 0.01 80);
+  --ink-inverse: oklch(0.94 0.02 80);
+  --accent-primary: oklch(0.55 0.16 40);
+  --accent-mark: oklch(0.74 0.14 70);
+  --status-verified: oklch(0.55 0.16 40);
+  --status-tentative: oklch(0.74 0.14 70);
+  --status-unverified: oklch(0.45 0.01 80);
+  --status-error: oklch(0.55 0.2 25);
+  --border-hairline: oklch(0.88 0.01 80);
+  --focus-ring: oklch(0.55 0.16 40 / 0.6);
+
+  --motion-fast: 120ms cubic-bezier(0.2, 0, 0.4, 1);
+  --motion-normal: 220ms cubic-bezier(0.2, 0, 0.2, 1);
+  --motion-slow: 360ms cubic-bezier(0.2, 0, 0.2, 1);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 1px oklch(0.18 0.02 250 / 0.06);
+  --shadow-sm: 0 2px 6px oklch(0.18 0.02 250 / 0.08);
+  --shadow-md: 0 8px 16px oklch(0.18 0.02 250 / 0.1);
+  --shadow-lg: 0 20px 40px oklch(0.18 0.02 250 / 0.14);
+
+  --font-display: "IBM Plex Serif", "Georgia", serif;
+  --font-body: "IBM Plex Serif", "Georgia", serif;
+  --font-ui: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  --font-label: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-caption: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+}

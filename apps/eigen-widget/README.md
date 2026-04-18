@@ -29,3 +29,4 @@ Notes:
 - `mode=public` uses anonymous widget sessions and `eigen_public` policy scope.
 - `mode=eigenx` requires valid auth and site registry permission in `eigen-widget-session`.
 - Add `parent_origin` to pin which parent page origin may inject EigenX auth via `postMessage`.
+- Visual system follows the shared Institutional Cartography token contract (`tokens.css` in this app, sourced from workspace `tokens/`).

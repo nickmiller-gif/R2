@@ -1,0 +1,127 @@
+import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
+import { getServiceClient } from '../_shared/supabase.ts';
+import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { guardAuth } from '../_shared/auth.ts';
+
+interface FeedbackRequest {
+  widget_token: string;
+  turn_id: string;
+  value: -1 | 1;
+  note?: string;
+}
+
+function parseRequest(value: unknown): FeedbackRequest {
+  if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
+  const body = value as Record<string, unknown>;
+  if (typeof body.widget_token !== 'string' || body.widget_token.trim().length === 0) {
+    throw new Error('widget_token is required');
+  }
+  if (typeof body.turn_id !== 'string' || body.turn_id.trim().length === 0) {
+    throw new Error('turn_id is required');
+  }
+  if (body.value !== -1 && body.value !== 1) {
+    throw new Error('value must be -1 or 1');
+  }
+
+  return {
+    widget_token: body.widget_token.trim(),
+    turn_id: body.turn_id.trim(),
+    value: body.value,
+    note: typeof body.note === 'string' ? body.note.trim() : undefined,
+  };
+}
+
+function classifyRequestError(message: string): number {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes('request body') ||
+    normalized.includes('widget_token is required') ||
+    normalized.includes('turn_id is required') ||
+    normalized.includes('value must be -1 or 1')
+  ) {
+    return 400;
+  }
+  if (normalized.includes('widget session token') || normalized.includes('widget session')) {
+    return 401;
+  }
+  return 500;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return corsResponse();
+  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+  const idemError = requireIdempotencyKey(req);
+  if (idemError) return idemError;
+  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
+
+  try {
+    const body = parseRequest(await req.json());
+    const claims = await verifyWidgetSessionToken(body.widget_token);
+    const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
+    if (!origin || origin !== claims.origin) {
+      return errorResponse('Widget origin mismatch', 403);
+    }
+    if (claims.mode === 'eigenx') {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      if (claims.user_id && auth.claims.userId !== claims.user_id) {
+        return errorResponse('Auth/session mismatch', 403);
+      }
+    }
+
+    const client = getServiceClient();
+    const { data: turn, error: turnError } = await client
+      .from('conversation_turn')
+      .select('id,site_id')
+      .eq('id', body.turn_id)
+      .single();
+    if (turnError || !turn) return errorResponse('Turn not found', 404);
+    if ((turn as { site_id: string | null }).site_id !== claims.site_id) {
+      return errorResponse('Turn/site mismatch', 403);
+    }
+
+    let feedbackAlreadyRecorded = false;
+    if (idempotencyKey) {
+      const { data: existing } = await client
+        .from('conversation_turn_feedback')
+        .select('id')
+        .eq('turn_id', body.turn_id)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing && (existing as { id?: string }).id) {
+        feedbackAlreadyRecorded = true;
+      }
+    }
+
+    if (!feedbackAlreadyRecorded) {
+      const { error } = await client.from('conversation_turn_feedback').insert({
+        turn_id: body.turn_id,
+        value: body.value,
+        note: body.note ?? null,
+        idempotency_key: idempotencyKey,
+      });
+      if (error) {
+        if ((error as { code?: string }).code === '23505' && idempotencyKey) {
+          feedbackAlreadyRecorded = true;
+        } else {
+          return errorResponse(error.message, 500);
+        }
+      }
+    }
+
+    const { error: updateError } = await client
+      .from('conversation_turn')
+      .update({
+        feedback_value: body.value,
+        feedback_text: body.note ?? null,
+      })
+      .eq('id', body.turn_id);
+    if (updateError) return errorResponse(updateError.message, 500);
+
+    return jsonResponse({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return errorResponse(message, classifyRequestError(message));
+  }
+});

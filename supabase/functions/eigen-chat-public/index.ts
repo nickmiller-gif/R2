@@ -14,9 +14,11 @@ import {
   type ConfidenceLabel,
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
-import { completeLlmChat } from '../_shared/llm-chat.ts';
+import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -33,6 +35,7 @@ interface PublicChatRequest {
     max_tokens?: number;
     strata_weights?: Record<string, number>;
   };
+  stream?: boolean;
 }
 
 function buildEvidenceNotice(confidence: ReturnType<typeof buildCompositeConfidence>): string | null {
@@ -100,6 +103,7 @@ function parseRequest(value: unknown): PublicChatRequest {
     site_boost: typeof body.site_boost === 'number' ? body.site_boost : undefined,
     global_penalty: typeof body.global_penalty === 'number' ? body.global_penalty : undefined,
     budget_profile,
+    stream: body.stream === true,
   };
 }
 
@@ -211,6 +215,10 @@ async function synthesizePublicResponse(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+  const idemError = requireIdempotencyKey(req);
+  if (idemError) return idemError;
+  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
+  const acceptHeader = (req.headers.get('accept') ?? '').toLowerCase();
 
   try {
     const client = getServiceClient();
@@ -266,21 +274,157 @@ Deno.serve(async (req) => {
 
     const citations = buildCitations(retrieveResult.body.chunks);
     const confidence = buildCompositeConfidence(citations);
+    const retrievalPlan = buildRetrievalPlan(
+      [POLICY_TAG_EIGEN_PUBLIC],
+      retrieveResult.body.chunks,
+      retrieveResult.body.retrieval_run_id,
+    );
+    const startedAt = Date.now();
+    const format = body.response_format ?? 'structured';
+
+    if (body.stream === true || acceptHeader.includes('text/event-stream')) {
+      const hasContext = retrieveResult.body.chunks.length > 0;
+      const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
+      const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+        message: body.message,
+        includePrivate: false,
+        policyScope: [POLICY_TAG_EIGEN_PUBLIC],
+      });
+      const basePrompt = withEigenChatProseStyle(
+        envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
+      );
+      const systemPrompt = [
+        basePrompt,
+        'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+        voiceStyleAddendum,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const userContent = hasContext
+        ? buildUserMessageWithContext(body.message, retrieveResult.body.chunks)
+        : `Question: ${body.message}`;
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          const emit = (event: string, data: string) => {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+          };
+          const deltas: string[] = [];
+          try {
+            const iterator = streamLlmChatDeltas({
+              provider: body.llm_provider,
+              model: body.llm_model,
+              systemPrompt,
+              userContent,
+              temperature: readPublicChatTemperature(),
+              maxTokens: readMaxCompletionTokens(),
+            });
+            while (true) {
+              const next = await iterator.next();
+              if (next.done) {
+                if (next.value?.text && !deltas.length) {
+                  deltas.push(next.value.text);
+                }
+                break;
+              }
+              const delta = next.value;
+              deltas.push(delta);
+              emit('delta', JSON.stringify({ delta }));
+            }
+            const responseText = deltas.join('').trim() || 'No response generated.';
+            const turnId = await insertConversationTurn(client, {
+              siteId: body.site_id ?? null,
+              mode: 'public',
+              userId: null,
+              question: body.message,
+              answer: responseText,
+              retrievalRunId: retrieveResult.body.retrieval_run_id,
+              effectivePolicyScope: [POLICY_TAG_EIGEN_PUBLIC],
+              citations,
+              confidence,
+              retrievalPlan,
+              latencyMs: Date.now() - startedAt,
+              idempotencyKey,
+            });
+            emit('final', JSON.stringify({
+              response: responseText,
+              citations,
+              confidence,
+              evidence_notice: buildEvidenceNotice(confidence),
+              llm_provider: body.llm_provider ?? 'openai',
+              llm_model: body.llm_model ?? null,
+              llm_critic_used: false,
+              llm_critic_provider: null,
+              llm_critic_model: null,
+              conversation_turn_id: turnId,
+              retrieval_run_id: retrieveResult.body.retrieval_run_id,
+              retrieval_plan: retrievalPlan,
+              policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
+              policy_scope_mode: 'public_only',
+              rate_limit: {
+                limit_per_minute: rate.limit,
+                remaining: rate.remaining,
+              },
+            }));
+          } catch (error) {
+            try {
+              const message = error instanceof Error ? error.message : 'Unknown stream error';
+              emit('error', JSON.stringify({ message }));
+            } catch {
+              // Client disconnect can close the stream before error delivery.
+            }
+          } finally {
+            try {
+              controller.close();
+            } catch {
+              // Stream may already be closed/errored.
+            }
+          }
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
     const synthesis = await synthesizePublicResponse(
       client,
       body.message,
       retrieveResult.body.chunks,
-      body.response_format ?? 'structured',
+      format,
       body.llm_provider,
       body.llm_model,
       confidence.overall,
     );
+    const turnId = await insertConversationTurn(client, {
+      siteId: body.site_id ?? null,
+      mode: 'public',
+      userId: null,
+      question: body.message,
+      answer: synthesis.text,
+      retrievalRunId: retrieveResult.body.retrieval_run_id,
+      effectivePolicyScope: [POLICY_TAG_EIGEN_PUBLIC],
+      citations,
+      confidence,
+      retrievalPlan,
+      latencyMs: Date.now() - startedAt,
+      idempotencyKey,
+    });
 
     return jsonResponse({
       response: synthesis.text,
       citations,
       confidence,
       evidence_notice: buildEvidenceNotice(confidence),
+      conversation_turn_id: turnId,
+      retrieval_plan: retrievalPlan,
       llm_provider: body.llm_provider ?? 'openai',
       llm_model: body.llm_model ?? null,
       llm_critic_used: synthesis.critic_used,

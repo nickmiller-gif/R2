@@ -41,8 +41,8 @@ interface EigenWidgetProps {
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
   /**
-   * Widget color theme. Eigen's design system is dark-only.
-   * @deprecated 'light' is accepted for backward compatibility but rendered as dark; Eigen always runs in dark mode.
+   * Widget color theme hint forwarded to iframe URL for compatibility.
+   * The default widget palette follows the shared Institutional Cartography tokens.
    */
   theme?: 'light' | 'dark';
   /** Extra CSS class on the wrapper div */
@@ -62,7 +62,7 @@ export default function EigenWidget({
   llmModel,
   contextHandles,
   widgetHost = DEFAULT_WIDGET_HOST,
-  theme = 'dark',
+  theme = 'light',
   className,
   style,
 }: EigenWidgetProps) {
@@ -144,7 +144,7 @@ export default function EigenWidget({
   if (!widgetHost) {
     return (
       <div className={className} style={style}>
-        <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
+        <p style={{ color: 'inherit', fontSize: '0.875rem' }}>
           Eigen widget not configured. Set <code>VITE_EIGEN_WIDGET_HOST</code> or
           pass <code>widgetHost</code> prop.
         </p>

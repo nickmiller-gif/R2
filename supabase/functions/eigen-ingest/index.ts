@@ -38,25 +38,27 @@ interface IngestIdentity {
   userId: string;
 }
 
+class IngestHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    Object.setPrototypeOf(this, IngestHttpError.prototype);
+    this.name = 'IngestHttpError';
+    this.status = status;
+  }
+}
+
+function throwIngestHttpError(message: string, status: number): never {
+  throw new IngestHttpError(message, status);
+}
+
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
-  const authHeader = req.headers.get('authorization') ?? '';
   const ingestTokenHeader = req.headers.get('x-eigen-ingest-token') ?? '';
   const configuredIngestToken = Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '';
   if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
-    return { userId: SERVICE_ROLE_OWNER_ID };
-  }
-
-  if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
-  const token = authHeader.slice(7).trim();
-  if (!token) return null;
-
-  // Optional controlled bypass for backend jobs that hold the service role key.
-  // Keep disabled by default.
-  const allowServiceRole = (Deno.env.get('EIGEN_INGEST_ALLOW_SERVICE_ROLE') ?? 'false') === 'true';
-  const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (allowServiceRole && serviceRole && token === serviceRole) {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }
   return null;
@@ -342,9 +344,11 @@ Deno.serve(async (req) => {
   const idemError = requireIdempotencyKey(req);
   if (idemError) return idemError;
 
+  const client = getServiceClient();
+  let activeIngestionRunId: string | undefined;
+
   try {
     const requestMeta = extractRequestMeta(req);
-    const client = getServiceClient();
     const requestBody = await parseRequest(req, client);
     const maxBodyChars = readMaxBodyChars();
     if (requestBody.document.body.length > maxBodyChars) {
@@ -519,6 +523,7 @@ Deno.serve(async (req) => {
         .eq('id', ingestionRunId);
       if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
     }
+    activeIngestionRunId = ingestionRunId;
 
     const upsertDoc = await client
       .from('documents')
@@ -541,23 +546,8 @@ Deno.serve(async (req) => {
       .select('id')
       .single();
 
-    if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
+    if (upsertDoc.error) throwIngestHttpError(upsertDoc.error.message, 400);
     const documentId = upsertDoc.data.id as string;
-
-    await ensureEigenDocumentAsset(client, {
-      documentId,
-      title: requestBody.document.title,
-      sourceSystem: requestBody.source_system,
-    });
-
-    const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
-    if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
-
-    const linkDocToRun = await client
-      .from('ingestion_runs')
-      .update({ document_id: documentId })
-      .eq('id', ingestionRunId);
-    if (linkDocToRun.error) return errorResponse(linkDocToRun.error.message, 400);
 
     const chunks = buildChunks(
       requestBody.document.title,
@@ -570,6 +560,21 @@ Deno.serve(async (req) => {
       effectiveEmbeddingModel,
     );
 
+    await ensureEigenDocumentAsset(client, {
+      documentId,
+      title: requestBody.document.title,
+      sourceSystem: requestBody.source_system,
+    });
+
+    const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
+    if (deleteChunks.error) throwIngestHttpError(deleteChunks.error.message, 400);
+
+    const linkDocToRun = await client
+      .from('ingestion_runs')
+      .update({ document_id: documentId })
+      .eq('id', ingestionRunId);
+    if (linkDocToRun.error) throwIngestHttpError(linkDocToRun.error.message, 400);
+
     const chunkContentHashes = await Promise.all(
       chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
     );
@@ -579,7 +584,7 @@ Deno.serve(async (req) => {
       const chunk = chunks[index]!;
       const embedding = embeddings[index];
       if (!embedding) {
-        return errorResponse(`Missing embedding for chunk index ${index}`, 500);
+        throwIngestHttpError(`Missing embedding for chunk index ${index}`, 500);
       }
       chunkRows.push({
         document_id: documentId,
@@ -611,7 +616,7 @@ Deno.serve(async (req) => {
     for (let offset = 0; offset < chunkRows.length; offset += CHUNK_INSERT_BATCH) {
       const slice = chunkRows.slice(offset, offset + CHUNK_INSERT_BATCH);
       const chunkInsert = await client.from('knowledge_chunks').insert(slice);
-      if (chunkInsert.error) return errorResponse(chunkInsert.error.message, 400);
+      if (chunkInsert.error) throwIngestHttpError(chunkInsert.error.message, 400);
     }
 
     let oracleOutboxEventId: string | null = null;
@@ -623,7 +628,7 @@ Deno.serve(async (req) => {
         .eq('idempotency_key', requestMeta.idempotencyKey)
         .maybeSingle();
 
-      if (existingOutbox.error) return errorResponse(existingOutbox.error.message, 400);
+      if (existingOutbox.error) throwIngestHttpError(existingOutbox.error.message, 400);
       if (existingOutbox.data?.id) {
         oracleOutboxEventId = existingOutbox.data.id as string;
       } else {
@@ -655,7 +660,7 @@ Deno.serve(async (req) => {
           .select('id')
           .single();
 
-        if (outboxInsert.error) return errorResponse(outboxInsert.error.message, 400);
+        if (outboxInsert.error) throwIngestHttpError(outboxInsert.error.message, 400);
         oracleOutboxEventId = outboxInsert.data.id as string;
       }
     }
@@ -675,7 +680,7 @@ Deno.serve(async (req) => {
         },
       })
       .eq('id', ingestionRunId);
-    if (runComplete.error) return errorResponse(runComplete.error.message, 400);
+    if (runComplete.error) throwIngestHttpError(runComplete.error.message, 400);
 
     return jsonResponse(
       {
@@ -689,6 +694,43 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    if (activeIngestionRunId) {
+      const failedAt = new Date().toISOString();
+      let existingMetadata: Record<string, unknown> = {};
+      const existingRunResult = await client
+        .from('ingestion_runs')
+        .select('metadata')
+        .eq('id', activeIngestionRunId)
+        .maybeSingle();
+      if (existingRunResult.error) {
+        console.error(
+          `[eigen-ingest] failed to load existing ingestion run metadata: ${existingRunResult.error.message}`,
+        );
+      } else {
+        const metadata = existingRunResult.data?.metadata;
+        if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+          existingMetadata = metadata as Record<string, unknown>;
+        }
+      }
+      const markFailed = await client
+        .from('ingestion_runs')
+        .update({
+          status: 'failed',
+          completed_at: failedAt,
+          metadata: {
+            ...existingMetadata,
+            failure_reason: message,
+            failed_at: failedAt,
+          },
+        })
+        .eq('id', activeIngestionRunId);
+      if (markFailed.error) {
+        console.error(`[eigen-ingest] failed to mark ingestion run as failed: ${markFailed.error.message}`);
+      }
+    }
+    if (err instanceof IngestHttpError) {
+      return errorResponse(err.message, err.status);
+    }
     return errorResponse(message, 500);
   }
 });

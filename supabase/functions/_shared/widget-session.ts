@@ -32,9 +32,7 @@ function fromBase64Url(value: string): Uint8Array {
 function readWidgetSecret(): string {
   const secret = Deno.env.get('EIGEN_WIDGET_SESSION_SECRET')?.trim();
   if (secret && secret.length >= 16) return secret;
-  const fallback = Deno.env.get('SUPABASE_ANON_KEY')?.trim();
-  if (fallback && fallback.length >= 16) return fallback;
-  throw new Error('Missing EIGEN_WIDGET_SESSION_SECRET (or SUPABASE_ANON_KEY fallback)');
+  throw new Error('Missing EIGEN_WIDGET_SESSION_SECRET');
 }
 
 function readWidgetTtlSec(): number {
@@ -57,8 +55,24 @@ async function sign(data: string, secret: string): Promise<string> {
 }
 
 async function verify(data: string, signature: string, secret: string): Promise<boolean> {
-  const expected = await sign(data, secret);
-  return expected === signature;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    return await crypto.subtle.verify(
+      'HMAC',
+      key,
+      fromBase64Url(signature),
+      encoder.encode(data),
+    );
+  } catch {
+    console.warn('Widget session signature verification failed due to malformed input');
+    return false;
+  }
 }
 
 export async function createWidgetSessionToken(
@@ -93,8 +107,15 @@ export async function verifyWidgetSessionToken(token: string): Promise<WidgetSes
   const ok = await verify(payloadPart, sigPart, secret);
   if (!ok) throw new Error('Invalid widget session token signature');
 
-  const payloadJson = decoder.decode(fromBase64Url(payloadPart));
-  const claims = JSON.parse(payloadJson) as WidgetSessionClaims;
+  let claims: WidgetSessionClaims;
+  try {
+    const payloadJson = decoder.decode(fromBase64Url(payloadPart));
+    claims = JSON.parse(payloadJson) as WidgetSessionClaims;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown decode error';
+    console.warn(`Widget session payload decode failed: ${message}`);
+    throw new Error('Invalid widget session token payload');
+  }
   const now = Math.floor(Date.now() / 1000);
   if (!claims.exp || claims.exp < now) throw new Error('Widget session token expired');
   return claims;

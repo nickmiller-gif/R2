@@ -15,6 +15,7 @@ import type {
 } from '../../types/oracle/signal.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
 import { assertScore } from '../../lib/charter/validate.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 
 export interface OracleSignalService {
   create(input: CreateOracleSignalInput): Promise<OracleSignal>;
@@ -117,9 +118,7 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.querySignals({ ...filter, limit, offset });
+      const rows = await db.querySignals(withPagination(filter));
       return rows.map(rowToSignal);
     },
 

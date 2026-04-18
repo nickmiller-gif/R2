@@ -8,6 +8,7 @@ import type {
 } from '../../types/charter/governance.js';
 import type { CharterEventEmitter } from './charter-event-emitter.js';
 import { assertNonEmpty, assertMaxLength } from '../../lib/charter/validate.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface GovernanceKernelService {
   create(input: CreateGovernanceEntityInput): Promise<GovernanceEntity>;
@@ -131,9 +132,7 @@ export function createGovernanceKernelService(
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryEntities({ ...filter, limit, offset });
+      const rows = await db.queryEntities(withPagination(filter));
       return rows.map(rowToEntity);
     },
 

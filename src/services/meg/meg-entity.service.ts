@@ -16,6 +16,7 @@ import type {
 } from '../../types/meg/entity.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { parseJsonbField } from '../oracle/oracle-db-utils.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface MegEntityService {
   create(input: CreateMegEntityInput): Promise<MegEntity>;
@@ -99,9 +100,7 @@ export function createMegEntityService(db: MegEntityDb): MegEntityService {
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryEntities({ ...filter, limit, offset });
+      const rows = await db.queryEntities(withPagination(filter));
       return rows.map(rowToEntity);
     },
 

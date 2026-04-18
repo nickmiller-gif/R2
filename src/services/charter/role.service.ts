@@ -5,6 +5,7 @@ import type {
   CharterUserRoleFilter,
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface CharterRoleService {
   assign(input: AssignCharterRoleInput): Promise<CharterUserRole>;
@@ -61,9 +62,7 @@ export function createCharterRoleService(db: CharterRoleDb): CharterRoleService 
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryRoles({ ...filter, limit, offset });
+      const rows = await db.queryRoles(withPagination(filter));
       return rows.map(rowToUserRole);
     },
 

@@ -15,6 +15,7 @@ import type {
 } from '../../types/shared/documents.js';
 import { hashPayload } from '../../lib/provenance/hash.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 const DOCUMENT_STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ['active', 'archived', 'deleted'],
@@ -126,9 +127,7 @@ export function createDocumentsService(db: DocumentsDb): DocumentsService {
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryDocuments({ ...filter, limit, offset });
+      const rows = await db.queryDocuments(withPagination(filter));
       return rows.map(rowToDocument);
     },
 

@@ -79,4 +79,37 @@ describe('OracleServiceLayerRunDecisionService', () => {
     expect(updated.id).toBe(first.id);
     expect(updated.createdAt.toISOString()).toBe(first.createdAt.toISOString());
   });
+
+  it('returns an empty map when no run ids are provided', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunDecisionService(db);
+
+    const result = await service.getDecisionsByRunIds([]);
+    expect(result.size).toBe(0);
+  });
+
+  it('returns decisions mapped by run id for batch lookup', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunDecisionService(db);
+
+    await service.upsertDecision({
+      oracleServiceLayerRunId: '00000000-0000-0000-0000-00000000d101',
+      decisionStatus: 'pursue',
+      decidedBy: 'operator-a@test',
+    });
+    await service.upsertDecision({
+      oracleServiceLayerRunId: '00000000-0000-0000-0000-00000000d102',
+      decisionStatus: 'defer',
+      decidedBy: 'operator-b@test',
+    });
+
+    const result = await service.getDecisionsByRunIds([
+      '00000000-0000-0000-0000-00000000d101',
+      '00000000-0000-0000-0000-00000000d102',
+    ]);
+
+    expect(result.size).toBe(2);
+    expect(result.get('00000000-0000-0000-0000-00000000d101')?.decisionStatus).toBe('pursue');
+    expect(result.get('00000000-0000-0000-0000-00000000d102')?.decisionStatus).toBe('defer');
+  });
 });

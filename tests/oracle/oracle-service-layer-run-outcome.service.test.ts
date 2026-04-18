@@ -151,6 +151,35 @@ describe('OracleServiceLayerRunOutcomeService', () => {
     expect(fetched!.oracleServiceLayerRunId).toBe(RUN_ID_1);
   });
 
+  it('returns an empty map when no run ids are provided for batch lookup', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+
+    const result = await service.getOutcomesByRunIds([]);
+    expect(result.size).toBe(0);
+  });
+
+  it('returns outcomes mapped by run id for batch lookup', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+
+    await service.upsertOutcome({
+      oracleServiceLayerRunId: RUN_ID_1,
+      outcomeStatus: 'won',
+      recordedBy: 'operator-a@test',
+    });
+    await service.upsertOutcome({
+      oracleServiceLayerRunId: RUN_ID_2,
+      outcomeStatus: 'lost',
+      recordedBy: 'operator-b@test',
+    });
+
+    const result = await service.getOutcomesByRunIds([RUN_ID_1, RUN_ID_2]);
+    expect(result.size).toBe(2);
+    expect(result.get(RUN_ID_1)?.outcomeStatus).toBe('won');
+    expect(result.get(RUN_ID_2)?.outcomeStatus).toBe('lost');
+  });
+
   it('updates outcome fields via updateOutcome', async () => {
     const db = makeMockDb();
     const service = createOracleServiceLayerRunOutcomeService(db);
@@ -283,5 +312,21 @@ describe('OracleServiceLayerRunOutcomeService', () => {
         outcomeClosedAt: 'not-a-date',
       }),
     ).rejects.toThrow('Outcome closed timestamp must be a valid ISO-8601 datetime.');
+  });
+
+  it('rejects negative outcomeRevenue on update', async () => {
+    const db = makeMockDb();
+    const service = createOracleServiceLayerRunOutcomeService(db);
+    const created = await service.upsertOutcome({
+      oracleServiceLayerRunId: RUN_ID_1,
+      outcomeStatus: 'pursued',
+      recordedBy: 'operator@test',
+    });
+
+    await expect(
+      service.updateOutcome(created.id, {
+        outcomeRevenue: -10,
+      }),
+    ).rejects.toThrow('Outcome revenue cannot be negative.');
   });
 });

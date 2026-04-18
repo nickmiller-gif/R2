@@ -99,16 +99,16 @@ Deno.serve(async (req) => {
     const capture = upsertCapture.data as { id: string; summary: string; summary_model: string };
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!supabaseUrl || !serviceRole) {
-      return errorResponse('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY', 500);
+    const ingestBackfillToken = Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN');
+    if (!supabaseUrl || !ingestBackfillToken) {
+      return errorResponse('Missing SUPABASE_URL or EIGEN_INGEST_BACKFILL_TOKEN', 500);
     }
 
     const ingestRes = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/functions/v1/eigen-ingest`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${serviceRole}`,
         'Content-Type': 'application/json',
+        'x-eigen-ingest-token': ingestBackfillToken,
         'x-idempotency-key': crypto.randomUUID(),
       },
       body: JSON.stringify({

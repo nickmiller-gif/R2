@@ -55,19 +55,23 @@ async function sign(data: string, secret: string): Promise<string> {
 }
 
 async function verify(data: string, signature: string, secret: string): Promise<boolean> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['verify'],
-  );
-  return await crypto.subtle.verify(
-    'HMAC',
-    key,
-    fromBase64Url(signature),
-    encoder.encode(data),
-  );
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    return await crypto.subtle.verify(
+      'HMAC',
+      key,
+      fromBase64Url(signature),
+      encoder.encode(data),
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function createWidgetSessionToken(
@@ -102,8 +106,13 @@ export async function verifyWidgetSessionToken(token: string): Promise<WidgetSes
   const ok = await verify(payloadPart, sigPart, secret);
   if (!ok) throw new Error('Invalid widget session token signature');
 
-  const payloadJson = decoder.decode(fromBase64Url(payloadPart));
-  const claims = JSON.parse(payloadJson) as WidgetSessionClaims;
+  let claims: WidgetSessionClaims;
+  try {
+    const payloadJson = decoder.decode(fromBase64Url(payloadPart));
+    claims = JSON.parse(payloadJson) as WidgetSessionClaims;
+  } catch {
+    throw new Error('Invalid widget session token payload');
+  }
   const now = Math.floor(Date.now() / 1000);
   if (!claims.exp || claims.exp < now) throw new Error('Widget session token expired');
   return claims;

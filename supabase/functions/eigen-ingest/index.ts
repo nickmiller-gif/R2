@@ -38,6 +38,20 @@ interface IngestIdentity {
   userId: string;
 }
 
+class IngestHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'IngestHttpError';
+    this.status = status;
+  }
+}
+
+function throwIngestHttpError(message: string, status: number): never {
+  throw new IngestHttpError(message, status);
+}
+
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
@@ -531,7 +545,7 @@ Deno.serve(async (req) => {
       .select('id')
       .single();
 
-    if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
+    if (upsertDoc.error) throwIngestHttpError(upsertDoc.error.message, 400);
     const documentId = upsertDoc.data.id as string;
 
     const chunks = buildChunks(
@@ -552,13 +566,13 @@ Deno.serve(async (req) => {
     });
 
     const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
-    if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
+    if (deleteChunks.error) throwIngestHttpError(deleteChunks.error.message, 400);
 
     const linkDocToRun = await client
       .from('ingestion_runs')
       .update({ document_id: documentId })
       .eq('id', ingestionRunId);
-    if (linkDocToRun.error) return errorResponse(linkDocToRun.error.message, 400);
+    if (linkDocToRun.error) throwIngestHttpError(linkDocToRun.error.message, 400);
 
     const chunkContentHashes = await Promise.all(
       chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
@@ -569,7 +583,7 @@ Deno.serve(async (req) => {
       const chunk = chunks[index]!;
       const embedding = embeddings[index];
       if (!embedding) {
-        return errorResponse(`Missing embedding for chunk index ${index}`, 500);
+        throwIngestHttpError(`Missing embedding for chunk index ${index}`, 500);
       }
       chunkRows.push({
         document_id: documentId,
@@ -601,7 +615,7 @@ Deno.serve(async (req) => {
     for (let offset = 0; offset < chunkRows.length; offset += CHUNK_INSERT_BATCH) {
       const slice = chunkRows.slice(offset, offset + CHUNK_INSERT_BATCH);
       const chunkInsert = await client.from('knowledge_chunks').insert(slice);
-      if (chunkInsert.error) return errorResponse(chunkInsert.error.message, 400);
+      if (chunkInsert.error) throwIngestHttpError(chunkInsert.error.message, 400);
     }
 
     let oracleOutboxEventId: string | null = null;
@@ -613,7 +627,7 @@ Deno.serve(async (req) => {
         .eq('idempotency_key', requestMeta.idempotencyKey)
         .maybeSingle();
 
-      if (existingOutbox.error) return errorResponse(existingOutbox.error.message, 400);
+      if (existingOutbox.error) throwIngestHttpError(existingOutbox.error.message, 400);
       if (existingOutbox.data?.id) {
         oracleOutboxEventId = existingOutbox.data.id as string;
       } else {
@@ -645,7 +659,7 @@ Deno.serve(async (req) => {
           .select('id')
           .single();
 
-        if (outboxInsert.error) return errorResponse(outboxInsert.error.message, 400);
+        if (outboxInsert.error) throwIngestHttpError(outboxInsert.error.message, 400);
         oracleOutboxEventId = outboxInsert.data.id as string;
       }
     }
@@ -665,7 +679,7 @@ Deno.serve(async (req) => {
         },
       })
       .eq('id', ingestionRunId);
-    if (runComplete.error) return errorResponse(runComplete.error.message, 400);
+    if (runComplete.error) throwIngestHttpError(runComplete.error.message, 400);
 
     return jsonResponse(
       {
@@ -681,12 +695,22 @@ Deno.serve(async (req) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     if (activeIngestionRunId) {
       const failedAt = new Date().toISOString();
+      let existingMetadata: Record<string, unknown> = {};
+      const existingRun = await client.from('ingestion_runs').select('metadata').eq('id', activeIngestionRunId).maybeSingle();
+      if (existingRun.error) {
+        console.error(
+          `[eigen-ingest] failed to load existing ingestion run metadata: ${existingRun.error.message}`,
+        );
+      } else if (isObject(existingRun.data?.metadata)) {
+        existingMetadata = existingRun.data.metadata;
+      }
       const markFailed = await client
         .from('ingestion_runs')
         .update({
           status: 'failed',
           completed_at: failedAt,
           metadata: {
+            ...existingMetadata,
             failure_reason: message,
             failed_at: failedAt,
           },
@@ -695,6 +719,9 @@ Deno.serve(async (req) => {
       if (markFailed.error) {
         console.error(`[eigen-ingest] failed to mark ingestion run as failed: ${markFailed.error.message}`);
       }
+    }
+    if (err instanceof IngestHttpError) {
+      return errorResponse(err.message, err.status);
     }
     return errorResponse(message, 500);
   }

@@ -53,4 +53,6 @@ export interface MegEntityEdgeFilter {
   targetEntityId?: string;
   edgeType?: MegEdgeType;
   eitherEntityId?: string;
+  limit?: number;
+  offset?: number;
 }

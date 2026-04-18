@@ -19,6 +19,7 @@ import type {
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 import { assertConfidence01 } from '../../lib/charter/validate.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -150,9 +151,7 @@ export function createAssetRegistryService(db: AssetRegistryDb): AssetRegistrySe
     },
 
     async listAssets(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryAssets({ ...filter, limit, offset });
+      const rows = await db.queryAssets(withPagination(filter));
       return rows.map(rowToAsset);
     },
 
@@ -184,9 +183,7 @@ export function createAssetRegistryService(db: AssetRegistryDb): AssetRegistrySe
     },
 
     async listLinks(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryLinks({ ...filter, limit, offset });
+      const rows = await db.queryLinks(withPagination(filter));
       return rows.map(rowToLink);
     },
 

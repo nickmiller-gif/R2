@@ -15,6 +15,7 @@ import type {
 } from '../../types/meg/entity-edge.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { parseJsonbField } from '../oracle/oracle-db-utils.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface MegEntityEdgeService {
   create(input: CreateMegEntityEdgeInput): Promise<MegEntityEdge>;
@@ -88,7 +89,7 @@ export function createMegEntityEdgeService(db: MegEntityEdgeDb): MegEntityEdgeSe
     },
 
     async list(filter) {
-      const rows = await db.queryEdges(filter);
+      const rows = await db.queryEdges(withPagination(filter));
       return rows.map(rowToEdge);
     },
 

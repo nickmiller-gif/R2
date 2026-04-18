@@ -13,6 +13,7 @@ import {
   assertNonEmpty,
   assertNonNegativeAmountNumeric,
 } from '../../lib/charter/validate.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 function requireReviewerWhenActive(status: string, reviewedBy: string | null | undefined): void {
   if (status === 'active' && (!reviewedBy || String(reviewedBy).trim() === '')) {
@@ -129,9 +130,7 @@ export function createCharterAssetValuationService(db: CharterAssetValuationDb):
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.query({ ...filter, limit, offset });
+      const rows = await db.query(withPagination(filter));
       return rows.map(rowToValuation);
     },
 

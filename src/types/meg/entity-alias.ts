@@ -32,4 +32,6 @@ export interface MegEntityAliasFilter {
   megEntityId?: string;
   aliasKind?: MegAliasKind;
   aliasValue?: string;
+  limit?: number;
+  offset?: number;
 }

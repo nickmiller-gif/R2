@@ -14,6 +14,7 @@ import type {
 } from '../../types/meg/entity-alias.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { parseJsonbField } from '../oracle/oracle-db-utils.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface MegEntityAliasService {
   create(input: CreateMegEntityAliasInput): Promise<MegEntityAlias>;
@@ -78,7 +79,7 @@ export function createMegEntityAliasService(db: MegEntityAliasDb): MegEntityAlia
     },
 
     async list(filter) {
-      const rows = await db.queryAliases(filter);
+      const rows = await db.queryAliases(withPagination(filter));
       return rows.map(rowToAlias);
     },
 

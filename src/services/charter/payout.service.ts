@@ -6,6 +6,7 @@ import type {
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { assertConfidence, assertPositiveAmount } from '../../lib/charter/validate.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 // ─── Service interfaces ────────────────────────────────────────────────────
 
@@ -91,9 +92,7 @@ export function createCharterPayoutService(db: CharterPayoutDb): CharterPayoutSe
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryPayouts({ ...filter, limit, offset });
+      const rows = await db.queryPayouts(withPagination(filter));
       return rows.map(rowToPayout);
     },
 

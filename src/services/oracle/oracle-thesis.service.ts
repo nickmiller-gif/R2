@@ -17,6 +17,7 @@ import type { OracleGovernanceMetadata } from '../../types/oracle/shared.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
 import { parseJsonbField } from './oracle-db-utils.ts';
 import { assertConfidence } from '../../lib/charter/validate.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 
 const THESIS_STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ['active', 'retired'],
@@ -145,9 +146,7 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryTheses({ ...filter, limit, offset });
+      const rows = await db.queryTheses(withPagination(filter));
       return rows.map(rowToThesis);
     },
 

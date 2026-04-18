@@ -6,6 +6,7 @@ import type {
 } from '../../types/charter/types.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import { assertConfidence } from '../../lib/charter/validate.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 // ─── Service interfaces ────────────────────────────────────────────────────
 
@@ -86,9 +87,7 @@ export function createCharterRightService(db: CharterRightDb): CharterRightServi
     },
 
     async list(filter) {
-      const limit = Math.min(filter?.limit ?? 50, 1000);
-      const offset = filter?.offset ?? 0;
-      const rows = await db.queryRights({ ...filter, limit, offset });
+      const rows = await db.queryRights(withPagination(filter));
       return rows.map(rowToRight);
     },
 

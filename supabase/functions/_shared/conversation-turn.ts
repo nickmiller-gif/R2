@@ -53,12 +53,14 @@ export async function insertConversationTurn(
   },
 ) {
   if (params.idempotencyKey) {
-    const { data: existing } = await client
+    let existingQuery = client
       .from('conversation_turn')
       .select('id')
       .eq('mode', params.mode)
-      .eq('idempotency_key', params.idempotencyKey)
-      .maybeSingle();
+      .eq('idempotency_key', params.idempotencyKey);
+    existingQuery = params.siteId === null ? existingQuery.is('site_id', null) : existingQuery.eq('site_id', params.siteId);
+    existingQuery = params.userId === null ? existingQuery.is('user_id', null) : existingQuery.eq('user_id', params.userId);
+    const { data: existing } = await existingQuery.maybeSingle();
     if (existing && (existing as { id?: string }).id) {
       return (existing as { id: string }).id;
     }
@@ -85,12 +87,14 @@ export async function insertConversationTurn(
     .single();
   if (error) {
     if ((error as { code?: string }).code === '23505' && params.idempotencyKey) {
-      const { data: existing } = await client
+      let existingQuery = client
         .from('conversation_turn')
         .select('id')
         .eq('mode', params.mode)
-        .eq('idempotency_key', params.idempotencyKey)
-        .maybeSingle();
+        .eq('idempotency_key', params.idempotencyKey);
+      existingQuery = params.siteId === null ? existingQuery.is('site_id', null) : existingQuery.eq('site_id', params.siteId);
+      existingQuery = params.userId === null ? existingQuery.is('user_id', null) : existingQuery.eq('user_id', params.userId);
+      const { data: existing } = await existingQuery.maybeSingle();
       if (existing && (existing as { id?: string }).id) {
         return (existing as { id: string }).id;
       }

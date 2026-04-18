@@ -33,15 +33,16 @@ function parseRequest(value: unknown): FeedbackRequest {
 }
 
 function classifyRequestError(message: string): number {
+  const normalized = message.toLowerCase();
   if (
-    message.includes('Request body') ||
-    message.includes('widget_token is required') ||
-    message.includes('turn_id is required') ||
-    message.includes('value must be -1 or 1')
+    normalized.includes('request body') ||
+    normalized.includes('widget_token is required') ||
+    normalized.includes('turn_id is required') ||
+    normalized.includes('value must be -1 or 1')
   ) {
     return 400;
   }
-  if (message.includes('Widget session token')) {
+  if (normalized.includes('widget session token') || normalized.includes('widget session')) {
     return 401;
   }
   return 500;
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
       return errorResponse('Turn/site mismatch', 403);
     }
 
+    let feedbackAlreadyRecorded = false;
     if (idempotencyKey) {
       const { data: existing } = await client
         .from('conversation_turn_feedback')
@@ -88,21 +90,24 @@ Deno.serve(async (req) => {
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existing && (existing as { id?: string }).id) {
-        return jsonResponse({ ok: true });
+        feedbackAlreadyRecorded = true;
       }
     }
 
-    const { error } = await client.from('conversation_turn_feedback').insert({
-      turn_id: body.turn_id,
-      value: body.value,
-      note: body.note ?? null,
-      idempotency_key: idempotencyKey,
-    });
-    if (error) {
-      if ((error as { code?: string }).code === '23505' && idempotencyKey) {
-        return jsonResponse({ ok: true });
+    if (!feedbackAlreadyRecorded) {
+      const { error } = await client.from('conversation_turn_feedback').insert({
+        turn_id: body.turn_id,
+        value: body.value,
+        note: body.note ?? null,
+        idempotency_key: idempotencyKey,
+      });
+      if (error) {
+        if ((error as { code?: string }).code === '23505' && idempotencyKey) {
+          feedbackAlreadyRecorded = true;
+        } else {
+          return errorResponse(error.message, 500);
+        }
       }
-      return errorResponse(error.message, 500);
     }
 
     const { error: updateError } = await client

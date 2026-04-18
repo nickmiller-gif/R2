@@ -218,6 +218,7 @@ Deno.serve(async (req) => {
   const idemError = requireIdempotencyKey(req);
   if (idemError) return idemError;
   const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
+  const acceptHeader = (req.headers.get('accept') ?? '').toLowerCase();
 
   try {
     const client = getServiceClient();
@@ -281,7 +282,7 @@ Deno.serve(async (req) => {
     const startedAt = Date.now();
     const format = body.response_format ?? 'structured';
 
-    if (body.stream === true || req.headers.get('accept')?.includes('text/event-stream')) {
+    if (body.stream === true || acceptHeader.includes('text/event-stream')) {
       const hasContext = retrieveResult.body.chunks.length > 0;
       const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
       const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {

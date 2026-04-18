@@ -2,8 +2,9 @@ create table if not exists public.autonomous_runtime_state (
   singleton boolean primary key default true,
   paused boolean not null default false,
   pause_reason text,
-  updated_by uuid,
-  updated_at timestamptz not null default now()
+  updated_by uuid references auth.users (id),
+  updated_at timestamptz not null default now(),
+  constraint autonomous_runtime_state_singleton_true check (singleton = true)
 );
 
 insert into public.autonomous_runtime_state (singleton, paused)
@@ -18,7 +19,7 @@ create table if not exists public.autonomous_strategy_weights (
 
 create table if not exists public.autonomous_learning_outcomes (
   id uuid primary key default gen_random_uuid(),
-  run_id text not null,
+  run_id uuid not null references public.retrieval_runs (id),
   strategy text not null,
   expected_impact numeric not null,
   actual_impact numeric not null,
@@ -42,8 +43,9 @@ drop policy if exists "runtime_state_operator_write" on public.autonomous_runtim
 create policy "runtime_state_operator_write"
 on public.autonomous_runtime_state
 for all
-using (auth.role() = 'authenticated')
-with check (auth.role() = 'authenticated');
+to service_role
+using (true)
+with check (true);
 
 drop policy if exists "strategy_weights_member_read" on public.autonomous_strategy_weights;
 create policy "strategy_weights_member_read"
@@ -55,8 +57,9 @@ drop policy if exists "strategy_weights_operator_write" on public.autonomous_str
 create policy "strategy_weights_operator_write"
 on public.autonomous_strategy_weights
 for all
-using (auth.role() = 'authenticated')
-with check (auth.role() = 'authenticated');
+to service_role
+using (true)
+with check (true);
 
 drop policy if exists "learning_outcomes_member_read" on public.autonomous_learning_outcomes;
 create policy "learning_outcomes_member_read"
@@ -68,5 +71,6 @@ drop policy if exists "learning_outcomes_operator_write" on public.autonomous_le
 create policy "learning_outcomes_operator_write"
 on public.autonomous_learning_outcomes
 for all
-using (auth.role() = 'authenticated')
-with check (auth.role() = 'authenticated');
+to service_role
+using (true)
+with check (true);

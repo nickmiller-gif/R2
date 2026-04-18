@@ -49,6 +49,28 @@ Deno.serve(async (req) => {
     metadata.ingest_run && typeof metadata.ingest_run === "object"
       ? (metadata.ingest_run as Record<string, unknown>)
       : {};
+  const sourceEntityType =
+    typeof metadata.source_entity_type === "string" ? metadata.source_entity_type : null;
+  const sourceEntityId =
+    typeof metadata.source_entity_id === "string" ? metadata.source_entity_id : null;
+  const ingestRunId = typeof ingestRun.id === "string" ? ingestRun.id : null;
+  const ingestTrigger = typeof ingestRun.trigger === "string" ? ingestRun.trigger : null;
+  const ingestSourceSystem =
+    typeof ingestRun.source_system === "string" ? ingestRun.source_system : null;
+  const ingestStartedAt =
+    typeof ingestRun.started_at === "string" ? ingestRun.started_at : null;
+  const evidenceTier =
+    typeof metadata.evidence_tier === "string" ? metadata.evidence_tier : null;
+  const sourcesQueriedRaw = metadata.sources_queried;
+  const sourcesQueried = Array.isArray(sourcesQueriedRaw)
+    ? sourcesQueriedRaw.filter((v) => typeof v === "string")
+    : [];
+  const replayIdempotencyKey =
+    typeof metadata.replay_idempotency_key === "string"
+      ? metadata.replay_idempotency_key
+      : null;
+  const metadataRetrievalRunId =
+    typeof metadata.retrieval_run_id === "string" ? metadata.retrieval_run_id : null;
 
   return jsonResponse({
     status: "resolved",
@@ -59,18 +81,18 @@ Deno.serve(async (req) => {
       created_at: data.created_at
     },
     lineage: {
-      source_entity_type: metadata.source_entity_type ?? null,
-      source_entity_id: metadata.source_entity_id ?? null,
+      source_entity_type: sourceEntityType,
+      source_entity_id: sourceEntityId,
       ingest_run: {
-        id: ingestRun.id ?? null,
-        trigger: ingestRun.trigger ?? null,
-        source_system: ingestRun.source_system ?? null,
-        started_at: ingestRun.started_at ?? null
+        id: ingestRunId,
+        trigger: ingestTrigger,
+        source_system: ingestSourceSystem,
+        started_at: ingestStartedAt
       },
-      evidence_tier: metadata.evidence_tier ?? null,
-      sources_queried: metadata.sources_queried ?? [],
-      replay_idempotency_key: metadata.replay_idempotency_key ?? null,
-      retrieval_run_id: metadata.retrieval_run_id ?? retrievalRunId
+      evidence_tier: evidenceTier,
+      sources_queried: sourcesQueried,
+      replay_idempotency_key: replayIdempotencyKey,
+      retrieval_run_id: metadataRetrievalRunId ?? retrievalRunId
     }
   });
 });

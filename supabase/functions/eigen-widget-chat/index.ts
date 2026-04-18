@@ -17,6 +17,7 @@ import {
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -218,8 +219,21 @@ async function insertConversationTurn(
     confidence: ReturnType<typeof buildCompositeConfidence>;
     retrievalPlan: ReturnType<typeof buildRetrievalPlan>;
     latencyMs: number;
+    idempotencyKey: string | null;
   },
 ) {
+  if (params.idempotencyKey) {
+    const { data: existing } = await client
+      .from('conversation_turn')
+      .select('id')
+      .eq('mode', params.mode)
+      .eq('idempotency_key', params.idempotencyKey)
+      .maybeSingle();
+    if (existing && (existing as { id?: string }).id) {
+      return (existing as { id: string }).id;
+    }
+  }
+
   const payload = {
     site_id: params.siteId,
     mode: params.mode,
@@ -232,6 +246,7 @@ async function insertConversationTurn(
     confidence: params.confidence,
     retrieval_plan: params.retrievalPlan,
     latency_ms: params.latencyMs,
+    idempotency_key: params.idempotencyKey,
   };
   const { data, error } = await client
     .from('conversation_turn')
@@ -239,6 +254,17 @@ async function insertConversationTurn(
     .select('id')
     .single();
   if (error) {
+    if ((error as { code?: string }).code === '23505' && params.idempotencyKey) {
+      const { data: existing } = await client
+        .from('conversation_turn')
+        .select('id')
+        .eq('mode', params.mode)
+        .eq('idempotency_key', params.idempotencyKey)
+        .maybeSingle();
+      if (existing && (existing as { id?: string }).id) {
+        return (existing as { id: string }).id;
+      }
+    }
     console.warn('conversation_turn insert failed', error.message);
     return null;
   }
@@ -248,6 +274,9 @@ async function insertConversationTurn(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+  const idemError = requireIdempotencyKey(req);
+  if (idemError) return idemError;
+  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
 
   try {
     const body = parseRequest(await req.json());
@@ -376,6 +405,7 @@ Deno.serve(async (req) => {
               confidence,
               retrievalPlan,
               latencyMs: Date.now() - startedAt,
+              idempotencyKey,
             });
             emit('final', JSON.stringify({
               response: responseText,
@@ -435,6 +465,7 @@ Deno.serve(async (req) => {
       confidence,
       retrievalPlan,
       latencyMs: Date.now() - startedAt,
+      idempotencyKey,
     });
     return jsonResponse({
       response: synthesis.text,

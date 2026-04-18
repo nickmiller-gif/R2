@@ -1,6 +1,7 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 
 interface FeedbackRequest {
   widget_token: string;
@@ -48,6 +49,9 @@ function classifyRequestError(message: string): number {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+  const idemError = requireIdempotencyKey(req);
+  if (idemError) return idemError;
+  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
 
   try {
     const body = parseRequest(await req.json());
@@ -68,12 +72,30 @@ Deno.serve(async (req) => {
       return errorResponse('Turn/site mismatch', 403);
     }
 
+    if (idempotencyKey) {
+      const { data: existing } = await client
+        .from('conversation_turn_feedback')
+        .select('id')
+        .eq('turn_id', body.turn_id)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing && (existing as { id?: string }).id) {
+        return jsonResponse({ ok: true });
+      }
+    }
+
     const { error } = await client.from('conversation_turn_feedback').insert({
       turn_id: body.turn_id,
       value: body.value,
       note: body.note ?? null,
+      idempotency_key: idempotencyKey,
     });
-    if (error) return errorResponse(error.message, 500);
+    if (error) {
+      if ((error as { code?: string }).code === '23505' && idempotencyKey) {
+        return jsonResponse({ ok: true });
+      }
+      return errorResponse(error.message, 500);
+    }
 
     const { error: updateError } = await client
       .from('conversation_turn')

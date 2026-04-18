@@ -44,6 +44,11 @@ function timestampNow() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function makeIdempotencyKey(prefix) {
+  if (globalThis.crypto?.randomUUID) return `${prefix}:${globalThis.crypto.randomUUID()}`;
+  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
 function makeTurn(role, text) {
   const turn = document.createElement('article');
   turn.className = `turn ${role}`;
@@ -153,7 +158,10 @@ function addFeedbackControls(container, turnId) {
     try {
       const response = await fetch(`${apiBase}/eigen-widget-feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-idempotency-key': makeIdempotencyKey('widget-feedback'),
+        },
         body: JSON.stringify({
           widget_token: widgetToken,
           turn_id: turnId,
@@ -263,6 +271,7 @@ async function submitMessage(message) {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
+        'x-idempotency-key': makeIdempotencyKey('widget-chat'),
       },
       body: JSON.stringify({
         widget_token: token,

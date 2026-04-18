@@ -12,6 +12,7 @@ Notes:
 """
 import json
 import os
+import uuid
 import subprocess
 import sys
 
@@ -22,6 +23,7 @@ def read_json(path: str):
 
 
 def post_json(url: str, payload: dict, token: str | None = None) -> dict:
+    idempotency_key = f"eigen-eval-json:{uuid.uuid4()}"
     cmd = [
         "curl",
         "-sS",
@@ -30,6 +32,8 @@ def post_json(url: str, payload: dict, token: str | None = None) -> dict:
         url,
         "-H",
         "Content-Type: application/json",
+        "-H",
+        f"x-idempotency-key: {idempotency_key}",
         "--data",
         json.dumps(payload),
     ]
@@ -47,6 +51,7 @@ def post_json(url: str, payload: dict, token: str | None = None) -> dict:
 
 
 def post_sse(url: str, payload: dict, token: str | None = None) -> dict:
+    idempotency_key = f"eigen-eval-sse:{uuid.uuid4()}"
     cmd = [
         "curl",
         "-sS",
@@ -58,6 +63,8 @@ def post_sse(url: str, payload: dict, token: str | None = None) -> dict:
         "Content-Type: application/json",
         "-H",
         "Accept: text/event-stream",
+        "-H",
+        f"x-idempotency-key: {idempotency_key}",
         "--data",
         json.dumps(payload),
     ]

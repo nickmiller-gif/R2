@@ -5,6 +5,7 @@ import { requireRole } from '../_shared/rbac.ts';
 import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-session.ts';
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface WidgetSessionRequest {
   site_id: string;
@@ -22,6 +23,7 @@ interface RegistryConfig {
 
 function parseRequest(value: unknown): WidgetSessionRequest {
   if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
+  assertNoClientPolicyScopeOverride(value);
   const body = value as Record<string, unknown>;
   if (typeof body.site_id !== 'string' || body.site_id.trim().length === 0) {
     throw new Error('site_id is required');

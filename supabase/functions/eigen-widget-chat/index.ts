@@ -19,6 +19,7 @@ import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevanc
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -37,6 +38,7 @@ interface WidgetChatRequest {
 
 function parseRequest(value: unknown): WidgetChatRequest {
   if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
+  assertNoClientPolicyScopeOverride(value);
   const body = value as Record<string, unknown>;
   if (typeof body.widget_token !== 'string' || body.widget_token.trim().length === 0) {
     throw new Error('widget_token is required');

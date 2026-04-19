@@ -1,6 +1,12 @@
 import type { EigenRetrieveChunk } from './eigen-retrieve-core.ts';
 import type { getServiceClient } from './supabase.ts';
 
+export const CONVERSATION_TURN_TELEMETRY_OWNERSHIP = {
+  write_path_owner: 'R2 Platform',
+  sink: 'supabase.public.conversation_turn',
+  calibration_consumer: 'OWSR Stage 7',
+} as const;
+
 export interface RetrievalPlan {
   tool: 'eigen-retrieve';
   policy_scope: string[];

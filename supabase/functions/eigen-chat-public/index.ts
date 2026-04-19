@@ -19,6 +19,7 @@ import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevanc
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -62,6 +63,7 @@ function readMaxCompletionTokens(): number {
 
 function parseRequest(value: unknown): PublicChatRequest {
   if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
+  assertNoClientPolicyScopeOverride(value);
   const body = value as Record<string, unknown>;
   if (typeof body.message !== 'string' || body.message.trim().length === 0) {
     throw new Error('message is required');

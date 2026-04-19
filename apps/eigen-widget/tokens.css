@@ -1,4 +1,11 @@
+/*
+ * R2 semantic token contract
+ * Canonical values use OkLCh. Legacy HSL channels are provided in
+ * companion variables for mixed-generation consumers.
+ */
+
 :root {
+  /* Canonical OkLCh roles */
   --surface-ground: oklch(0.18 0.02 250);
   --surface-plate: oklch(0.94 0.02 80);
   --surface-card: oklch(0.98 0.005 80);
@@ -14,31 +21,46 @@
   --border-hairline: oklch(0.88 0.01 80);
   --focus-ring: oklch(0.55 0.16 40 / 0.6);
 
-  --motion-fast: 120ms cubic-bezier(0.2, 0, 0.4, 1);
-  --motion-normal: 220ms cubic-bezier(0.2, 0, 0.2, 1);
-  --motion-slow: 360ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* Legacy HSL channels (space-separated channels for hsl(var())) */
+  --surface-ground-hsl: 220 40% 9%;
+  --surface-plate-hsl: 40 40% 90%;
+  --surface-card-hsl: 40 20% 96%;
+  --ink-primary-hsl: 220 40% 9%;
+  --ink-muted-hsl: 40 8% 42%;
+  --ink-inverse-hsl: 40 40% 90%;
+  --accent-primary-hsl: 18 56% 44%;
+  --accent-mark-hsl: 40 60% 56%;
+  --status-verified-hsl: 18 56% 44%;
+  --status-tentative-hsl: 40 60% 56%;
+  --status-unverified-hsl: 40 8% 42%;
+  --status-error-hsl: 8 58% 44%;
+  --border-hairline-hsl: 40 8% 82%;
+  --focus-ring-hsl: 18 56% 44%;
 
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
+  /* Shared semantic extension tokens used across apps */
+  --status-success: var(--status-verified);
+  --status-success-foreground: var(--ink-inverse);
+  --status-warning: var(--status-tentative);
+  --status-warning-foreground: var(--ink-primary);
+  --status-danger: var(--status-error);
+  --status-danger-foreground: var(--ink-inverse);
+  --status-info: oklch(0.52 0.1 245);
+  --status-info-foreground: var(--ink-inverse);
 
-  --radius-sm: 2px;
-  --radius-md: 6px;
-  --radius-lg: 12px;
-  --radius-full: 9999px;
+  --surface-elevated: var(--surface-card);
+  --surface-inset: oklch(0.9 0.01 80);
+  --surface-glass: oklch(0.94 0.02 80 / 0.72);
 
-  --shadow-xs: 0 1px 1px oklch(0.18 0.02 250 / 0.06);
-  --shadow-sm: 0 2px 6px oklch(0.18 0.02 250 / 0.08);
-  --shadow-md: 0 8px 16px oklch(0.18 0.02 250 / 0.1);
-  --shadow-lg: 0 20px 40px oklch(0.18 0.02 250 / 0.14);
+  --chart-1: oklch(0.55 0.16 40);
+  --chart-2: oklch(0.74 0.14 70);
+  --chart-3: oklch(0.5 0.08 250);
+  --chart-4: oklch(0.68 0.1 140);
+  --chart-5: oklch(0.6 0.11 300);
 
-  --font-display: "IBM Plex Serif", "Georgia", serif;
-  --font-body: "IBM Plex Serif", "Georgia", serif;
+  --font-display: "IBM Plex Serif", Georgia, serif;
+  --font-body: "IBM Plex Serif", Georgia, serif;
   --font-ui: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-label: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-caption: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
 }

@@ -30,3 +30,15 @@ Notes:
 - `mode=eigenx` requires valid auth and site registry permission in `eigen-widget-session`.
 - Add `parent_origin` to pin which parent page origin may inject EigenX auth via `postMessage`.
 - Visual system follows the shared Institutional Cartography token contract (`tokens.css` in this app, sourced from workspace `tokens/`).
+
+## Token sync (umbrella workspace)
+
+Canonical semantic tokens live at `../../tokens/semantic.css` in the umbrella workspace.
+This widget consumes the checked-in copy at `apps/eigen-widget/tokens.css`.
+
+- Sync from canonical source:
+  - `node scripts/sync-widget-tokens.mjs --write` (run from umbrella root)
+- Drift check:
+  - `node scripts/sync-widget-tokens.mjs --check` (run from umbrella root)
+
+For standalone `R2` clones, set `R2_TOKEN_SOURCE_PATH` if you need to compare against an external canonical file.

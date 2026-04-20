@@ -31,7 +31,7 @@ jobs:
 
       - name: Restore public-files manifest cache
         if: ${{ vars.EIGEN_PUBLIC_FILES_DIR != '' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .cache/eigen-public-files-manifest.json
           key: eigen-public-files-manifest-${{ github.run_id }}
@@ -50,7 +50,7 @@ jobs:
 
       - name: Save public-files manifest cache
         if: ${{ always() && vars.EIGEN_PUBLIC_FILES_DIR != '' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .cache/eigen-public-files-manifest.json
           key: eigen-public-files-manifest-${{ github.run_id }}

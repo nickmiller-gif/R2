@@ -1,4 +1,9 @@
-import { corsHeaders, corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
+import {
+  reflectedCorsHeaders,
+  reflectedCorsResponse,
+  reflectedErrorResponse,
+  reflectedJsonResponse,
+} from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
@@ -15,11 +20,12 @@ import {
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
-import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
+import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
-import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { IDEMPOTENCY_KEY_HEADER } from '../_shared/correlation.ts';
 import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
+import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -189,20 +195,31 @@ async function synthesize(
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
-  const idemError = requireIdempotencyKey(req);
-  if (idemError) return idemError;
-  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
+  const rawOrigin = req.headers.get('origin');
+  if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
+  if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
+  // Inline idempotency check so the pre-body-parse error path carries the same
+  // reflected CORS headers + Vary: Origin that the rest of the endpoint uses.
+  // The shared requireIdempotencyKey helper returns a response using the legacy
+  // wildcard errorResponse, which broke the "Vary: Origin" invariant on caches.
+  const idempotencyHeader = req.headers.get(IDEMPOTENCY_KEY_HEADER);
+  if (!idempotencyHeader || idempotencyHeader.trim().length === 0) {
+    return reflectedErrorResponse(
+      rawOrigin,
+      `Missing required header: ${IDEMPOTENCY_KEY_HEADER}`,
+      400,
+    );
+  }
+  const idempotencyKey = idempotencyHeader.trim() || null;
   const acceptHeader = (req.headers.get('accept') ?? '').toLowerCase();
 
   try {
     const body = parseRequest(await req.json());
     const claims = await verifyWidgetSessionToken(body.widget_token);
 
-    const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
+    const origin = (rawOrigin ?? '').replace(/\/+$/, '').toLowerCase();
     if (!origin || origin !== claims.origin) {
-      return errorResponse('Widget origin mismatch', 403);
+      return reflectedErrorResponse(rawOrigin, 'Widget origin mismatch', 403);
     }
 
     const client = getServiceClient();
@@ -214,9 +231,22 @@ Deno.serve(async (req) => {
         explicitScope: claims.default_policy_scope,
       });
       if (scopeResolution.emptyAfterGrantIntersection) {
-        return errorResponse('No private policy scope access for this user', 403);
+        return reflectedErrorResponse(rawOrigin, 'No private policy scope access for this user', 403);
       }
       effectivePolicyScope = scopeResolution.effectivePolicyScope;
+    }
+
+    // Defense-in-depth: a public widget session must never retrieve `eigenx`.
+    // The session endpoint already strips `eigenx` for public tokens, but we
+    // also filter here so any stale token (minted before the session-side fix)
+    // or any future regression cannot widen scope past the public corpus.
+    if (claims.mode === 'public') {
+      effectivePolicyScope = effectivePolicyScope.filter(
+        (tag) => tag !== POLICY_TAG_EIGENX,
+      );
+      if (effectivePolicyScope.length === 0) {
+        effectivePolicyScope = [POLICY_TAG_EIGEN_PUBLIC];
+      }
     }
 
     const retreatScopedPublic = claims.mode === 'public' && claims.site_id === 'raysretreat';
@@ -248,7 +278,9 @@ Deno.serve(async (req) => {
       rerank: true,
       include_provenance: true,
     });
-    if (!retrieveResult.ok) return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
+    if (!retrieveResult.ok) {
+      return reflectedErrorResponse(rawOrigin, `Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
+    }
 
     const citations = buildCitations(retrieveResult.body.chunks);
     const confidence = buildCompositeConfidence(citations);
@@ -285,9 +317,28 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         start: async (controller) => {
+          let streamClosed = false;
           const emit = (event: string, data: string) => {
-            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+            if (streamClosed) return;
+            try {
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+            } catch {
+              streamClosed = true;
+            }
           };
+          // SSE heartbeat — emit a comment line every 15s so intermediate
+          // proxies (Cloudflare, corporate gateways, mobile carriers) don't
+          // idle-close the connection before the LLM emits its first token.
+          // Comments (lines starting with ':') are ignored by the EventSource
+          // spec but still count as activity.
+          const heartbeat = setInterval(() => {
+            if (streamClosed) return;
+            try {
+              controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+            } catch {
+              streamClosed = true;
+            }
+          }, 15_000);
           const deltas: string[] = [];
           try {
             const iterator = streamLlmChatDeltas({
@@ -349,6 +400,8 @@ Deno.serve(async (req) => {
               // Client disconnect can close the stream before error delivery.
             }
           } finally {
+            clearInterval(heartbeat);
+            streamClosed = true;
             try {
               controller.close();
             } catch {
@@ -360,7 +413,7 @@ Deno.serve(async (req) => {
       return new Response(stream, {
         status: 200,
         headers: {
-          ...corsHeaders,
+          ...reflectedCorsHeaders(rawOrigin),
           'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
@@ -393,7 +446,7 @@ Deno.serve(async (req) => {
       latencyMs: Date.now() - startedAt,
       idempotencyKey,
     });
-    return jsonResponse({
+    return reflectedJsonResponse(rawOrigin, {
       response: synthesis.text,
       citations,
       confidence,
@@ -411,9 +464,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return reflectedErrorResponse(rawOrigin, message, 500);
   }
 });

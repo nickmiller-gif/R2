@@ -15,7 +15,7 @@ import {
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
-import { inferOutsideDomainIntent } from '../../../src/lib/eigen/source-relevance-gating.ts';
+import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';

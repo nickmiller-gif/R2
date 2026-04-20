@@ -4,6 +4,8 @@ const siteId = params.get('site_id') || '';
 const initialMode = params.get('mode') || 'public';
 const parentOriginParam = (params.get('parent_origin') || '').replace(/\/+$/, '');
 const intentParam = (params.get('conversation_intent') || '').trim();
+const embeddedParam = params.get('embedded');
+const isEmbedded = embeddedParam === '1' || !!parentOriginParam || window.self !== window.top;
 
 const backdrop = document.getElementById('backdrop');
 const launcher = document.getElementById('launcher');
@@ -32,6 +34,7 @@ if (parentOriginParam) {
 }
 
 function setOpen(open) {
+  if (isEmbedded) open = true;
   panel.hidden = !open;
   panel.classList.toggle('open', open);
   backdrop.classList.toggle('open', open);
@@ -390,6 +393,7 @@ closeBtn.addEventListener('click', () => setOpen(false));
 backdrop.addEventListener('click', () => setOpen(false));
 
 window.addEventListener('keydown', (event) => {
+  if (isEmbedded) return;
   if (event.key === 'Escape') setOpen(false);
 });
 
@@ -414,6 +418,8 @@ form.addEventListener('submit', async (event) => {
 });
 
 updateModeUI();
+if (isEmbedded) document.body.classList.add('embedded');
+setOpen(isEmbedded);
 makeTurn(
   'assistant',
   'Ask a question. Answers are drawn from the evidence corpus, and citations show the evidence tier for each source.',

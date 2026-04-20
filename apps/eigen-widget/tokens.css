@@ -6,33 +6,33 @@
 
 :root {
   /* Canonical OkLCh roles */
-  --surface-ground: oklch(0.18 0.02 250);
-  --surface-plate: oklch(0.94 0.02 80);
-  --surface-card: oklch(0.98 0.005 80);
-  --ink-primary: oklch(0.18 0.02 250);
-  --ink-muted: oklch(0.45 0.01 80);
-  --ink-inverse: oklch(0.94 0.02 80);
-  --accent-primary: oklch(0.55 0.16 40);
-  --accent-mark: oklch(0.74 0.14 70);
-  --status-verified: oklch(0.55 0.16 40);
-  --status-tentative: oklch(0.74 0.14 70);
-  --status-unverified: oklch(0.45 0.01 80);
+  --surface-ground: oklch(0.98 0.004 255);
+  --surface-plate: oklch(0.995 0.002 255);
+  --surface-card: oklch(0.965 0.006 255);
+  --ink-primary: oklch(0.22 0.02 255);
+  --ink-muted: oklch(0.52 0.01 255);
+  --ink-inverse: oklch(0.99 0.003 255);
+  --accent-primary: oklch(0.58 0.16 252);
+  --accent-mark: oklch(0.7 0.14 220);
+  --status-verified: oklch(0.58 0.14 245);
+  --status-tentative: oklch(0.67 0.14 170);
+  --status-unverified: oklch(0.62 0.02 255);
   --status-error: oklch(0.55 0.2 25);
-  --border-hairline: oklch(0.88 0.01 80);
-  --focus-ring: oklch(0.55 0.16 40 / 0.6);
+  --border-hairline: oklch(0.88 0.01 255);
+  --focus-ring: oklch(0.58 0.16 252 / 0.45);
 
   /* Legacy HSL channels (space-separated channels for hsl(var())) */
-  --surface-ground-hsl: 220 40% 9%;
-  --surface-plate-hsl: 40 40% 90%;
-  --surface-card-hsl: 40 20% 96%;
-  --ink-primary-hsl: 220 40% 9%;
-  --ink-muted-hsl: 40 8% 42%;
-  --ink-inverse-hsl: 40 40% 90%;
-  --accent-primary-hsl: 18 56% 44%;
-  --accent-mark-hsl: 40 60% 56%;
-  --status-verified-hsl: 18 56% 44%;
-  --status-tentative-hsl: 40 60% 56%;
-  --status-unverified-hsl: 40 8% 42%;
+  --surface-ground-hsl: 220 28% 98%;
+  --surface-plate-hsl: 220 25% 99%;
+  --surface-card-hsl: 220 20% 96%;
+  --ink-primary-hsl: 224 28% 16%;
+  --ink-muted-hsl: 220 10% 42%;
+  --ink-inverse-hsl: 220 25% 99%;
+  --accent-primary-hsl: 227 86% 57%;
+  --accent-mark-hsl: 210 76% 58%;
+  --status-verified-hsl: 224 76% 55%;
+  --status-tentative-hsl: 160 58% 43%;
+  --status-unverified-hsl: 220 10% 52%;
   --status-error-hsl: 8 58% 44%;
   --border-hairline-hsl: 40 8% 82%;
   --focus-ring-hsl: 18 56% 44%;
@@ -48,8 +48,8 @@
   --status-info-foreground: var(--ink-inverse);
 
   --surface-elevated: var(--surface-card);
-  --surface-inset: oklch(0.9 0.01 80);
-  --surface-glass: oklch(0.94 0.02 80 / 0.72);
+  --surface-inset: oklch(0.95 0.005 255);
+  --surface-glass: oklch(0.985 0.004 255 / 0.78);
 
   --chart-1: oklch(0.55 0.16 40);
   --chart-2: oklch(0.74 0.14 70);
@@ -57,8 +57,8 @@
   --chart-4: oklch(0.68 0.1 140);
   --chart-5: oklch(0.6 0.11 300);
 
-  --font-display: "IBM Plex Serif", Georgia, serif;
-  --font-body: "IBM Plex Serif", Georgia, serif;
+  --font-display: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-ui: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-label: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;

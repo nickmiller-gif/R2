@@ -26,7 +26,7 @@
       .backdrop {
         position: fixed;
         inset: 0;
-        background: rgb(0 0 0 / 0.24);
+        background: rgb(15 23 42 / 0.16);
         opacity: 0;
         pointer-events: none;
         transition: opacity var(--motion-normal);
@@ -43,9 +43,9 @@
         bottom: 24px;
         border-radius: var(--radius-full);
         border: 1px solid var(--border-hairline);
-        background: var(--surface-ground);
+        background: var(--surface-plate);
         color: var(--ink-inverse);
-        box-shadow: var(--shadow-md);
+        box-shadow: 0 8px 24px rgb(15 23 42 / 0.18);
         display: grid;
         place-items: center;
         cursor: pointer;
@@ -72,7 +72,7 @@
         height: 8px;
         border-radius: 50%;
         background: var(--accent-mark);
-        opacity: 0.7;
+        opacity: 0.72;
       }
       .panel {
         position: fixed;
@@ -81,9 +81,9 @@
         bottom: 88px;
         width: min(100vw - 32px, 420px);
         height: min(100vh - 120px, 620px);
-        border-radius: var(--radius-lg);
+        border-radius: 12px;
         background: var(--surface-plate);
-        box-shadow: var(--shadow-lg);
+        box-shadow: 0 20px 48px rgb(15 23 42 / 0.16);
         border: 1px solid var(--border-hairline);
         opacity: 0;
         transform: translateY(4px);
@@ -110,11 +110,11 @@
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 20%, var(--border-hairline));
         border-radius: var(--radius-sm);
         padding: 2px 6px;
         color: var(--ink-primary);
-        background: var(--surface-card);
+        background: color-mix(in oklch, var(--accent-primary) 10%, var(--surface-card));
       }
       .head-title-wrap {
         min-width: 0;
@@ -147,6 +147,7 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-4);
+        background: linear-gradient(180deg, color-mix(in oklch, var(--surface-ground) 55%, white 45%), var(--surface-plate));
       }
       .turn {
         display: flex;
@@ -167,16 +168,16 @@
         white-space: pre-wrap;
       }
       .turn.user .msg {
-        background: var(--surface-card);
+        background: color-mix(in oklch, var(--accent-primary) 7%, var(--surface-card));
         color: var(--ink-primary);
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 15%, var(--border-hairline));
         padding: var(--space-3);
         font-family: var(--font-body);
       }
       .turn.assistant .msg {
         color: var(--ink-primary);
         padding-left: var(--space-2);
-        border-left: 1px solid var(--border-hairline);
+        border-left: 1px solid color-mix(in oklch, var(--accent-primary) 16%, var(--border-hairline));
         font-family: var(--font-body);
       }
       .streaming .msg::after {
@@ -203,7 +204,7 @@
         gap: var(--space-1);
       }
       .citation-chip {
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 14%, var(--border-hairline));
         border-radius: var(--radius-sm);
         background: var(--surface-card);
         color: var(--ink-primary);
@@ -235,7 +236,7 @@
         width: 100%;
       }
       .tool-disclosure button {
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 14%, var(--border-hairline));
         background: var(--surface-card);
         color: var(--ink-primary);
         border-radius: var(--radius-sm);
@@ -247,7 +248,7 @@
       .tool-disclosure pre {
         margin: 6px 0 0;
         background: var(--surface-card);
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 12%, var(--border-hairline));
         border-radius: var(--radius-md);
         padding: var(--space-2);
         white-space: pre-wrap;
@@ -260,7 +261,7 @@
         gap: var(--space-1);
       }
       .feedback button {
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 12%, var(--border-hairline));
         background: var(--surface-card);
         color: var(--ink-muted);
         border-radius: var(--radius-sm);
@@ -278,6 +279,7 @@
         padding: var(--space-3);
         display: flex;
         gap: var(--space-2);
+        background: var(--surface-plate);
       }
       textarea {
         flex: 1;
@@ -285,7 +287,7 @@
         min-height: 44px;
         max-height: 130px;
         border-radius: var(--radius-md);
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 16%, var(--border-hairline));
         background: var(--surface-card);
         color: var(--ink-primary);
         font-family: var(--font-body);
@@ -300,7 +302,7 @@
         border-radius: var(--radius-md);
         border: none;
         min-width: 68px;
-        background: var(--accent-primary);
+        background: linear-gradient(135deg, color-mix(in oklch, var(--accent-primary) 86%, white 14%), color-mix(in oklch, var(--accent-primary) 90%, black 10%));
         color: var(--ink-inverse);
         font-family: var(--font-ui);
         cursor: pointer;
@@ -321,11 +323,43 @@
       .chunk-preview {
         margin-top: var(--space-1);
         padding: var(--space-2);
-        border: 1px solid var(--border-hairline);
+        border: 1px solid color-mix(in oklch, var(--accent-primary) 10%, var(--border-hairline));
         border-radius: var(--radius-md);
         background: var(--surface-card);
         font-family: var(--font-caption);
         color: var(--ink-muted);
+      }
+      body.embedded .backdrop,
+      body.embedded .launcher {
+        display: none !important;
+      }
+      body.embedded .panel {
+        position: relative;
+        inset: 0;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+        height: 100vh;
+        max-height: none;
+        min-height: 100vh;
+        border-radius: 0;
+        border: 0;
+        box-shadow: none;
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+      body.embedded .head {
+        background: var(--surface-plate);
+      }
+      body.embedded .chat {
+        background: var(--surface-plate);
+      }
+      body.embedded .foot {
+        background: var(--surface-ground);
+      }
+      body.embedded .close-btn {
+        display: none;
       }
       @media (max-width: 700px) {
         .panel {
@@ -335,6 +369,10 @@
           border-radius: 0;
           right: 0;
           bottom: 0;
+        }
+        body.embedded .panel {
+          height: 100vh;
+          min-height: 100vh;
         }
         .launcher {
           width: 48px;

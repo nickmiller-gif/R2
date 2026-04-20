@@ -3,7 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSafeSignalPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import {
+  buildSafeSignalPatch,
+  formatAllowedSignalPatchFields,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -174,6 +177,24 @@ Deno.serve(async (req) => {
         if (findError || !previous) {
           return errorResponse(findError?.message ?? `Oracle signal not found: ${previousId}`, 404);
         }
+        if (previous.status === 'superseded') {
+          return errorResponse('Only the latest non-superseded signal version can be rescored', 409);
+        }
+
+        const { data: latestVersions, error: latestError } = await client
+          .from('oracle_signals')
+          .select('id, version')
+          .eq('entity_asset_id', previous.entity_asset_id)
+          .order('version', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (latestError) {
+          return errorResponse(latestError.message, 400);
+        }
+        const latest = latestVersions?.[0];
+        if (latest && latest.id !== previousId) {
+          return errorResponse('Only the latest non-superseded signal version can be rescored', 409);
+        }
 
         const now = new Date().toISOString();
 
@@ -192,10 +213,14 @@ Deno.serve(async (req) => {
           reasons: body.reasons ?? previous.reasons,
           tags: body.tags ?? previous.tags,
           status: 'scored',
-          analysis_document_id: body.analysis_document_id ?? previous.analysis_document_id,
-          source_asset_id: body.source_asset_id ?? previous.source_asset_id,
+          analysis_document_id: Object.prototype.hasOwnProperty.call(body, 'analysis_document_id')
+            ? body.analysis_document_id
+            : previous.analysis_document_id,
+          source_asset_id: Object.prototype.hasOwnProperty.call(body, 'source_asset_id')
+            ? body.source_asset_id
+            : previous.source_asset_id,
           producer_ref: previous.producer_ref,
-          version: (previous.version ?? 1) + 1,
+          version: (latest?.version ?? previous.version ?? 1) + 1,
           publication_state: 'pending_review',
           published_at: null,
           published_by: null,
@@ -247,7 +272,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeSignalPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+          `No patchable fields provided. Allowed fields: ${formatAllowedSignalPatchFields()}`,
           400,
         );
       }

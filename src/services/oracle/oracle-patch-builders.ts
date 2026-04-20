@@ -1,4 +1,4 @@
-const SIGNAL_PATCH_ALLOWLIST = new Set([
+const SIGNAL_PATCH_FIELDS = [
   'score',
   'confidence',
   'reasons',
@@ -8,7 +8,9 @@ const SIGNAL_PATCH_ALLOWLIST = new Set([
   'source_asset_id',
   'producer_ref',
   'publication_notes',
-]);
+];
+
+const SIGNAL_PATCH_ALLOWLIST = new Set(SIGNAL_PATCH_FIELDS);
 
 const THESIS_PATCH_ALLOWLIST = new Set([
   'title',
@@ -49,6 +51,10 @@ function buildPatch(body: Record<string, unknown>, allowlist: Set<string>): Reco
 
 export function buildSafeSignalPatch(body: Record<string, unknown>): Record<string, unknown> {
   return buildPatch(body, SIGNAL_PATCH_ALLOWLIST);
+}
+
+export function formatAllowedSignalPatchFields(): string {
+  return SIGNAL_PATCH_FIELDS.join(', ');
 }
 
 export function buildSafeThesisPatch(body: Record<string, unknown>): Record<string, unknown> {

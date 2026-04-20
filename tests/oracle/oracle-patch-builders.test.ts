@@ -3,6 +3,7 @@ import {
   buildSafeEvidenceItemPatch,
   buildSafeSignalPatch,
   buildSafeThesisPatch,
+  formatAllowedSignalPatchFields,
 } from '../../src/services/oracle/oracle-patch-builders.js';
 
 describe('oracle patch builders', () => {
@@ -84,5 +85,11 @@ describe('oracle patch builders', () => {
     });
 
     expect(Object.keys(patch)).toEqual(['updated_at']);
+  });
+
+  it('formats the signal allowlisted fields from the shared source of truth', () => {
+    expect(formatAllowedSignalPatchFields()).toBe(
+      'score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+    );
   });
 });

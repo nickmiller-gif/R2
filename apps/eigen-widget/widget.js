@@ -348,26 +348,40 @@ function resolveConversationIntent() {
 
 function createSseParser(onEvent) {
   let buffer = '';
-  return (chunkText) => {
+  const dispatch = (raw) => {
+    const lines = raw.split('\n');
+    let event = 'message';
+    const data = [];
+    for (const line of lines) {
+      if (line.startsWith(':')) continue; // comment/heartbeat line
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      if (line.startsWith('data:')) {
+        data.push(line.slice(line[5] === ' ' ? 6 : 5));
+      }
+    }
+    const body = data.join('\n');
+    onEvent(event, body);
+  };
+  const feed = (chunkText) => {
     buffer += chunkText;
     let marker = buffer.indexOf('\n\n');
     while (marker >= 0) {
       const raw = buffer.slice(0, marker);
       buffer = buffer.slice(marker + 2);
       marker = buffer.indexOf('\n\n');
-      const lines = raw.split('\n');
-      let event = 'message';
-      const data = [];
-      for (const line of lines) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        if (line.startsWith('data:')) {
-          data.push(line.slice(line[5] === ' ' ? 6 : 5));
-        }
-      }
-      const body = data.join('\n');
-      onEvent(event, body);
+      dispatch(raw);
     }
   };
+  // Flush any remaining buffered event that didn't end in the spec
+  // terminator before EOF — Supabase closes the stream immediately after
+  // the final event, and some intermediaries can swallow the trailing
+  // blank line. Without this, the `final` payload can silently drop.
+  feed.flush = () => {
+    const raw = buffer.trim();
+    buffer = '';
+    if (raw) dispatch(raw);
+  };
+  return feed;
 }
 
 async function ensureWidgetSession() {
@@ -432,7 +446,6 @@ async function submitMessage(message) {
       addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
       addCitations(assistantTurn.turn, payload.citations);
       addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
-      if (payload.evidence_notice) appendBanner(payload.evidence_notice);
       return;
     }
 
@@ -459,7 +472,6 @@ async function submitMessage(message) {
           addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
           addCitations(assistantTurn.turn, payload.citations);
           addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
-          if (payload.evidence_notice) appendBanner(payload.evidence_notice);
         }
       } else if (event === 'error') {
         let messageText = body || 'The request failed.';
@@ -481,6 +493,12 @@ async function submitMessage(message) {
       if (done) break;
       parser(decoder.decode(value, { stream: true }));
     }
+    // Decode any trailing bytes the streaming decoder was holding onto,
+    // then flush whatever's left in the parser buffer. Catches cases
+    // where the server closes immediately after `final` without a
+    // trailing blank line.
+    parser(decoder.decode());
+    parser.flush?.();
   } catch (err) {
     const messageText = err instanceof Error ? err.message : 'Request failed';
     if (messageText.toLowerCase().includes('policy scope')) {
@@ -629,5 +647,12 @@ if (isEmbedded) {
 makeTurn('assistant', identityFor(bootApp).intro);
 
 try {
-  window.parent?.postMessage?.({ type: 'eigen_widget_ready' }, '*');
+  // Only broadcast ready to the validated parent origin. If we don't have
+  // a confirmed parent_origin (embedded mode without handshake, or
+  // standalone/top-level load), skip the post entirely — a wildcard here
+  // would leak the widget's embed state to any frame that opens us in an
+  // iframe, including an attacker who wraps the CDN URL in their own page.
+  if (isEmbedded && allowedParentOrigin) {
+    window.parent?.postMessage?.({ type: 'eigen_widget_ready' }, allowedParentOrigin);
+  }
 } catch { /* ignore */ }

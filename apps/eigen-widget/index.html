@@ -3,424 +3,738 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Eigen</title>
+    <title>Eigen · R2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Serif:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./tokens.css" />
     <style>
-      * {
-        box-sizing: border-box;
+      /* ============================================================
+         R2 · Eigen / EigenX widget
+         Production skin matched to R2-Demo.html — light clinical white.
+         Twin dock (bottom-right), morph-to-workspace. Embedded mode
+         shows the workspace inline (no dock).
+         ============================================================ */
+
+      /* -- Font overrides: shared tokens.css defaults to IBM Plex.
+         The widget must use Inter + Inter Tight + JetBrains Mono. -- */
+      :root {
+        --r2-bg:       #FFFFFF;
+        --r2-ink:      #0A0A0D;
+        --r2-ink-2:    #1F1F24;
+        --r2-muted:    #5B5B63;
+        --r2-muted-2:  #8A8A92;
+        --r2-hair:     #EAEAEC;
+        --r2-hair-2:   #D9D9DD;
+        --r2-grid:     rgba(10,10,13,0.035);
+        --r2-eigen:    #0A0A0D;
+        --r2-eigenx:   #EF9F27;
+        --r2-signal:   #2F6FED;
+        --r2-r-s:      6px;
+        --r2-r-m:      10px;
+        --r2-r-l:      16px;
+        --r2-ease:     cubic-bezier(0.16, 1, 0.3, 1);
+        --r2-morph:    cubic-bezier(0.2, 0.8, 0.2, 1);
+        --r2-shadow:   0 1px 0 rgba(10,10,13,0.02), 0 18px 48px rgba(10,10,13,0.10);
+        --r2-font-ui:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --r2-font-display: 'Inter Tight', 'Inter', sans-serif;
+        --r2-font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
       }
-      body {
+
+      * { box-sizing: border-box; }
+
+      html, body {
         margin: 0;
+        padding: 0;
         min-height: 100vh;
-        font-family: var(--font-ui);
         background: transparent;
-        color: var(--ink-primary);
-        font-size: 13px;
+        color: var(--r2-ink);
+        font-family: var(--r2-font-ui);
+        font-feature-settings: "ss01", "cv11";
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-size: 13.5px;
       }
+
+      /* ---------- Backdrop ---------- */
       .backdrop {
         position: fixed;
         inset: 0;
-        background: rgb(15 23 42 / 0.16);
+        background: rgba(10, 10, 13, 0.32);
+        backdrop-filter: blur(3px) saturate(1.15);
+        -webkit-backdrop-filter: blur(3px) saturate(1.15);
         opacity: 0;
         pointer-events: none;
-        transition: opacity var(--motion-normal);
+        transition: opacity 280ms var(--r2-ease);
+        z-index: 40;
       }
       .backdrop.open {
         opacity: 1;
         pointer-events: auto;
       }
-      .launcher {
+
+      /* ---------- Twin App Dock ---------- */
+      .app-dock {
         position: fixed;
-        width: 56px;
-        height: 56px;
         right: 24px;
         bottom: 24px;
-        border-radius: var(--radius-full);
-        border: 1px solid var(--border-hairline);
-        background: var(--surface-plate);
-        color: var(--ink-inverse);
-        box-shadow: 0 8px 24px rgb(15 23 42 / 0.18);
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        z-index: 45;
+      }
+
+      .app-button {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        padding: 0;
+        border: 1px solid var(--r2-hair-2);
+        border-radius: 18px;
+        background: #0A0A0D;
+        color: #fff;
+        cursor: pointer;
+        overflow: hidden;
         display: grid;
         place-items: center;
-        cursor: pointer;
-        transition: transform var(--motion-fast), box-shadow var(--motion-fast);
+        box-shadow: 0 1px 0 rgba(10,10,13,0.04), 0 10px 26px rgba(10,10,13,0.14);
+        transition: transform 180ms var(--r2-ease),
+                    box-shadow 180ms var(--r2-ease),
+                    border-color 180ms var(--r2-ease);
       }
-      .launcher:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-lg);
+      .app-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 0 rgba(10,10,13,0.04), 0 16px 34px rgba(10,10,13,0.18);
       }
-      .launcher:focus-visible,
-      .close-btn:focus-visible,
-      .tool-disclosure button:focus-visible,
-      .citation-chip:focus-visible,
-      textarea:focus-visible,
-      .submit:focus-visible {
+      .app-button:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 3px var(--focus-ring);
+        border-color: var(--r2-ink);
+        box-shadow: 0 0 0 3px rgba(47,111,237,0.35), 0 10px 26px rgba(10,10,13,0.14);
       }
-      .pulse-dot {
+      .app-button svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .app-button .chip {
         position: absolute;
-        top: 4px;
-        right: 4px;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--accent-mark);
-        opacity: 0.72;
-      }
-      .panel {
-        position: fixed;
-        z-index: 50;
-        right: 16px;
-        bottom: 88px;
-        width: min(100vw - 32px, 420px);
-        height: min(100vh - 120px, 620px);
-        border-radius: 12px;
-        background: var(--surface-plate);
-        box-shadow: 0 20px 48px rgb(15 23 42 / 0.16);
-        border: 1px solid var(--border-hairline);
-        opacity: 0;
-        transform: translateY(4px);
+        left: 50%;
+        top: -11px;
+        transform: translateX(-50%);
+        font-family: var(--r2-font-mono);
+        font-size: 9.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        background: #fff;
+        color: var(--r2-ink);
+        border: 1px solid var(--r2-hair);
+        border-radius: 999px;
+        padding: 2px 7px;
+        line-height: 1;
+        white-space: nowrap;
         pointer-events: none;
-        display: flex;
-        flex-direction: column;
-        transition: opacity var(--motion-normal), transform var(--motion-normal);
       }
-      .panel.open {
-        opacity: 1;
-        transform: translateY(0);
+      .app-button.eigenx .chip {
+        background: #0A0A0D;
+        color: #EF9F27;
+        border-color: #0A0A0D;
+      }
+      .app-button .label {
+        position: absolute;
+        left: 50%;
+        bottom: -18px;
+        transform: translateX(-50%);
+        font-family: var(--r2-font-display);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        color: var(--r2-ink);
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .app-button.is-active {
+        border-color: var(--r2-ink);
+      }
+      .app-button.is-active::after {
+        content: "";
+        position: absolute;
+        inset: -4px;
+        border-radius: 22px;
+        border: 1px solid rgba(10,10,13,0.2);
+        animation: r2-pulse 1.6s var(--r2-ease) infinite;
+        pointer-events: none;
+      }
+      .app-button.eigenx.is-active::after {
+        border-color: rgba(239,159,39,0.6);
+      }
+      @keyframes r2-pulse {
+        0%   { opacity: 0.9; transform: scale(1); }
+        70%  { opacity: 0;   transform: scale(1.25); }
+        100% { opacity: 0;   transform: scale(1.25); }
+      }
+
+      .app-button.is-opening {
+        opacity: 0;
+        transition: opacity 120ms linear;
+      }
+      .app-dock.is-hidden { display: none !important; }
+
+      /* ---------- Workspace (morph target) ---------- */
+      .workspace {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        pointer-events: none;
+      }
+      .workspace.open {
         pointer-events: auto;
       }
-      .head {
-        min-height: 52px;
-        padding: var(--space-3) var(--space-4);
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        border-bottom: 1px solid var(--border-hairline);
-      }
-      .mode-badge {
-        font-family: var(--font-label);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 20%, var(--border-hairline));
-        border-radius: var(--radius-sm);
-        padding: 2px 6px;
-        color: var(--ink-primary);
-        background: color-mix(in oklch, var(--accent-primary) 10%, var(--surface-card));
-      }
-      .head-title-wrap {
-        min-width: 0;
-      }
-      .head-title {
-        margin: 0;
-        font-family: var(--font-ui);
-        font-size: 13px;
-        color: var(--ink-primary);
-      }
-      .head-sub {
-        margin: 0;
-        color: var(--ink-muted);
-        font-family: var(--font-caption);
-        font-size: 11px;
-      }
-      .close-btn {
-        margin-left: auto;
-        border: 1px solid var(--border-hairline);
-        background: var(--surface-card);
-        color: var(--ink-primary);
-        border-radius: var(--radius-sm);
-        padding: 4px 6px;
-        cursor: pointer;
-      }
-      .chat {
-        flex: 1;
-        overflow: auto;
-        padding: var(--space-4);
+
+      /* The shell animates FROM the originating button's rect
+         (written by widget.js as CSS vars) TO a centered workspace. */
+      .workspace-shell {
+        position: absolute;
+        left: var(--from-x, 50%);
+        top: var(--from-y, 50%);
+        width: var(--from-w, 64px);
+        height: var(--from-h, 64px);
+        border-radius: 18px;
+        background: var(--r2-bg);
+        border: 1px solid var(--r2-hair);
+        box-shadow: 0 0 0 rgba(10,10,13,0);
+        overflow: hidden;
+        opacity: 0;
+        transform: scale(1);
         display: flex;
         flex-direction: column;
-        gap: var(--space-4);
-        background: linear-gradient(180deg, color-mix(in oklch, var(--surface-ground) 55%, white 45%), var(--surface-plate));
+        transition:
+          left   460ms var(--r2-morph),
+          top    460ms var(--r2-morph),
+          width  460ms var(--r2-morph),
+          height 460ms var(--r2-morph),
+          border-radius 460ms var(--r2-morph),
+          box-shadow   460ms var(--r2-morph),
+          opacity      220ms linear;
       }
-      .turn {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-2);
+      .workspace.open .workspace-shell {
+        left:   max(16px, calc((100vw - 900px) / 2));
+        top:    40px;
+        width:  min(900px, calc(100vw - 32px));
+        height: calc(100vh - 80px);
+        border-radius: 18px;
+        box-shadow: var(--r2-shadow);
+        opacity: 1;
       }
-      .turn.user {
-        align-items: flex-end;
-      }
-      .turn.assistant {
-        align-items: flex-start;
-      }
-      .msg {
-        max-width: 95%;
-        border-radius: var(--radius-md);
-        font-size: 15px;
-        line-height: 1.45;
-        white-space: pre-wrap;
-      }
-      .turn.user .msg {
-        background: color-mix(in oklch, var(--accent-primary) 7%, var(--surface-card));
-        color: var(--ink-primary);
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 15%, var(--border-hairline));
-        padding: var(--space-3);
-        font-family: var(--font-body);
-      }
-      .turn.assistant .msg {
-        color: var(--ink-primary);
-        padding-left: var(--space-2);
-        border-left: 1px solid color-mix(in oklch, var(--accent-primary) 16%, var(--border-hairline));
-        font-family: var(--font-body);
-      }
-      .streaming .msg::after {
-        content: "";
-        display: block;
-        width: 2px;
-        height: 1em;
-        margin-top: 4px;
-        background: var(--accent-primary);
-        animation: cursorPulse 800ms linear infinite;
-      }
-      @keyframes cursorPulse {
-        0%, 49% { opacity: 1; }
-        50%, 100% { opacity: 0.2; }
-      }
-      .turn-meta {
-        font-family: var(--font-caption);
-        color: var(--ink-muted);
-        font-size: 11px;
-      }
-      .citations {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-1);
-      }
-      .citation-chip {
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 14%, var(--border-hairline));
-        border-radius: var(--radius-sm);
-        background: var(--surface-card);
-        color: var(--ink-primary);
-        font-family: var(--font-label);
-        font-size: 11px;
-        padding: 2px 6px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        cursor: pointer;
-      }
-      .tier-badge {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        border-radius: var(--radius-sm);
-        padding: 1px 4px;
-      }
-      .tier-a,
-      .tier-b {
-        background: color-mix(in oklch, var(--status-verified) 18%, transparent);
-      }
-      .tier-c {
-        background: color-mix(in oklch, var(--status-tentative) 24%, transparent);
-      }
-      .tier-d {
-        background: color-mix(in oklch, var(--status-unverified) 22%, transparent);
-      }
-      .tool-disclosure {
-        width: 100%;
-      }
-      .tool-disclosure button {
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 14%, var(--border-hairline));
-        background: var(--surface-card);
-        color: var(--ink-primary);
-        border-radius: var(--radius-sm);
-        font-family: var(--font-mono);
-        font-size: 11px;
-        padding: 3px 8px;
-        cursor: pointer;
-      }
-      .tool-disclosure pre {
-        margin: 6px 0 0;
-        background: var(--surface-card);
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 12%, var(--border-hairline));
-        border-radius: var(--radius-md);
-        padding: var(--space-2);
-        white-space: pre-wrap;
-        color: var(--ink-muted);
-        font-family: var(--font-mono);
-        font-size: 11px;
-      }
-      .feedback {
-        display: inline-flex;
-        gap: var(--space-1);
-      }
-      .feedback button {
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 12%, var(--border-hairline));
-        background: var(--surface-card);
-        color: var(--ink-muted);
-        border-radius: var(--radius-sm);
-        padding: 2px 6px;
-        font-family: var(--font-ui);
-        font-size: 11px;
-        cursor: pointer;
-      }
-      .feedback button.is-active {
-        color: var(--ink-primary);
-        border-color: var(--accent-primary);
-      }
-      .foot {
-        border-top: 1px solid var(--border-hairline);
-        padding: var(--space-3);
-        display: flex;
-        gap: var(--space-2);
-        background: var(--surface-plate);
-      }
-      textarea {
-        flex: 1;
-        resize: none;
-        min-height: 44px;
-        max-height: 130px;
-        border-radius: var(--radius-md);
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 16%, var(--border-hairline));
-        background: var(--surface-card);
-        color: var(--ink-primary);
-        font-family: var(--font-body);
-        font-size: 15px;
-        line-height: 1.35;
-        padding: var(--space-2) var(--space-3);
-      }
-      textarea::placeholder {
-        color: var(--ink-muted);
-      }
-      .submit {
-        border-radius: var(--radius-md);
-        border: none;
-        min-width: 68px;
-        background: linear-gradient(135deg, color-mix(in oklch, var(--accent-primary) 86%, white 14%), color-mix(in oklch, var(--accent-primary) 90%, black 10%));
-        color: var(--ink-inverse);
-        font-family: var(--font-ui);
-        cursor: pointer;
-      }
-      .submit:disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
-      }
-      .state-banner {
-        width: 100%;
-        border: 1px solid color-mix(in oklch, var(--status-error) 50%, transparent);
-        border-radius: var(--radius-md);
-        background: color-mix(in oklch, var(--status-error) 14%, transparent);
-        color: var(--ink-primary);
-        padding: var(--space-2) var(--space-3);
-        font-family: var(--font-ui);
-      }
-      .chunk-preview {
-        margin-top: var(--space-1);
-        padding: var(--space-2);
-        border: 1px solid color-mix(in oklch, var(--accent-primary) 10%, var(--border-hairline));
-        border-radius: var(--radius-md);
-        background: var(--surface-card);
-        font-family: var(--font-caption);
-        color: var(--ink-muted);
-      }
+
+      /* Embedded mode — no dock, workspace fills the iframe. */
       body.embedded .backdrop,
-      body.embedded .launcher {
+      body.embedded .app-dock {
         display: none !important;
       }
-      body.embedded .panel {
-        position: relative;
-        inset: 0;
-        right: auto;
-        bottom: auto;
+      body.embedded .workspace {
+        position: static;
+        inset: auto;
+        pointer-events: auto;
+        height: 100vh;
+      }
+      body.embedded .workspace-shell {
+        position: static;
+        inset: auto;
+        left: 0; top: 0;
         width: 100%;
         height: 100vh;
-        max-height: none;
-        min-height: 100vh;
         border-radius: 0;
         border: 0;
         box-shadow: none;
         opacity: 1;
-        transform: none;
-        pointer-events: auto;
+        transition: none;
       }
-      body.embedded .head {
-        background: var(--surface-plate);
-      }
-      body.embedded .chat {
-        background: var(--surface-plate);
-      }
-      body.embedded .foot {
-        background: var(--surface-ground);
-      }
-      body.embedded .close-btn {
+      body.embedded .ws-close {
         display: none;
       }
+
+      /* ---------- Workspace head ---------- */
+      .ws-head {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: 42px 1fr auto auto;
+        grid-gap: 12px;
+        align-items: center;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--r2-hair);
+        background: var(--r2-bg);
+      }
+      .ws-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: #0A0A0D;
+      }
+      .ws-logo svg { display: block; }
+      .ws-title {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+      .ws-title .name {
+        font-family: var(--r2-font-display);
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.012em;
+        color: var(--r2-ink);
+        line-height: 1.15;
+      }
+      .ws-title .sub {
+        font-family: var(--r2-font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--r2-muted);
+      }
+      .ws-mode {
+        font-family: var(--r2-font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 4px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--r2-hair-2);
+        color: var(--r2-ink);
+        background: var(--r2-bg);
+        line-height: 1;
+      }
+      .ws-mode.active-public  { border-color: var(--r2-ink); color: var(--r2-ink); }
+      .ws-mode.active-eigenx  { border-color: var(--r2-eigenx); color: var(--r2-eigenx); background: #FFFDF7; }
+      .ws-close {
+        border: 1px solid var(--r2-hair-2);
+        background: var(--r2-bg);
+        color: var(--r2-ink);
+        border-radius: 8px;
+        width: 32px; height: 32px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background 160ms var(--r2-ease), border-color 160ms var(--r2-ease);
+      }
+      .ws-close:hover { background: #FAFAFB; border-color: var(--r2-ink); }
+      .ws-close svg { width: 14px; height: 14px; }
+
+      /* ---------- Workspace body ---------- */
+      .ws-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 18px 20px;
+        background: var(--r2-bg);
+        background-image:
+          linear-gradient(to right, var(--r2-grid) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--r2-grid) 1px, transparent 1px);
+        background-size: 32px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .ws-body.eigen-accent { /* subtle left rule for eigen replies in demo feel */ }
+
+      .turn {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 100%;
+      }
+      .turn.user { align-items: flex-end; }
+      .turn.assistant { align-items: flex-start; }
+      .turn.system { align-items: flex-start; }
+
+      .msg {
+        max-width: 94%;
+        font-family: var(--r2-font-ui);
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--r2-ink);
+        letter-spacing: -0.005em;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .turn.user .msg {
+        background: #F4F5F7;
+        border: 1px solid var(--r2-hair);
+        border-radius: 12px;
+        padding: 10px 12px;
+      }
+      .turn.assistant .msg {
+        padding-left: 10px;
+        border-left: 1.5px solid var(--r2-ink);
+      }
+      body.mode-eigenx .turn.assistant .msg {
+        border-left-color: var(--r2-eigenx);
+      }
+      .turn.system .msg {
+        font-family: var(--r2-font-mono);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--r2-muted);
+      }
+      .streaming .msg::after {
+        content: "";
+        display: inline-block;
+        width: 2px;
+        height: 0.95em;
+        margin-left: 2px;
+        vertical-align: -2px;
+        background: var(--r2-ink);
+        animation: r2-cursor 900ms steps(2) infinite;
+      }
+      body.mode-eigenx .streaming .msg::after {
+        background: var(--r2-eigenx);
+      }
+      @keyframes r2-cursor {
+        0%, 49%  { opacity: 1; }
+        50%, 100%{ opacity: 0.15; }
+      }
+
+      .turn-meta {
+        font-family: var(--r2-font-mono);
+        color: var(--r2-muted-2);
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+      }
+      .citations {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 2px;
+      }
+      .citation-chip {
+        border: 1px solid var(--r2-hair-2);
+        border-radius: 6px;
+        background: var(--r2-bg);
+        color: var(--r2-ink);
+        font-family: var(--r2-font-mono);
+        font-size: 10.5px;
+        padding: 2px 7px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+        transition: background 140ms var(--r2-ease), border-color 140ms var(--r2-ease);
+      }
+      .citation-chip:hover { background: #FAFAFB; border-color: var(--r2-ink); }
+      .citation-chip:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(47,111,237,0.35);
+      }
+      .tier-badge {
+        font-family: var(--r2-font-mono);
+        font-size: 9.5px;
+        border-radius: 4px;
+        padding: 1px 4px;
+        letter-spacing: 0.06em;
+      }
+      .tier-a, .tier-b {
+        background: #E9F3EC;
+        color: #14532D;
+      }
+      .tier-c {
+        background: #FFF4EA;
+        color: #7A4A08;
+      }
+      .tier-d {
+        background: #F4F5F7;
+        color: var(--r2-muted);
+      }
+
+      .tool-disclosure { width: 100%; }
+      .tool-disclosure > button {
+        border: 1px solid var(--r2-hair-2);
+        background: var(--r2-bg);
+        color: var(--r2-ink);
+        border-radius: 6px;
+        font-family: var(--r2-font-mono);
+        font-size: 10.5px;
+        padding: 3px 9px;
+        cursor: pointer;
+        letter-spacing: 0.02em;
+        transition: background 140ms var(--r2-ease);
+      }
+      .tool-disclosure > button:hover { background: #FAFAFB; }
+      .tool-disclosure pre {
+        margin: 6px 0 0;
+        background: #FAFAFB;
+        border: 1px solid var(--r2-hair);
+        border-radius: 8px;
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        color: var(--r2-ink-2);
+        font-family: var(--r2-font-mono);
+        font-size: 10.5px;
+        line-height: 1.55;
+        overflow-x: auto;
+      }
+
+      .feedback {
+        display: inline-flex;
+        gap: 4px;
+      }
+      .feedback button {
+        border: 1px solid var(--r2-hair-2);
+        background: var(--r2-bg);
+        color: var(--r2-muted);
+        border-radius: 6px;
+        padding: 2px 8px;
+        font-family: var(--r2-font-ui);
+        font-size: 11px;
+        cursor: pointer;
+        transition: color 140ms var(--r2-ease), border-color 140ms var(--r2-ease);
+      }
+      .feedback button:hover { color: var(--r2-ink); border-color: var(--r2-ink); }
+      .feedback button.is-active {
+        color: var(--r2-ink);
+        border-color: var(--r2-ink);
+        background: #F4F5F7;
+      }
+
+      .state-banner {
+        width: 100%;
+        border: 1px solid #F1D3CF;
+        border-radius: 8px;
+        background: #FFF6F4;
+        color: #7F1D1D;
+        padding: 8px 12px;
+        font-family: var(--r2-font-ui);
+        font-size: 12px;
+        letter-spacing: -0.005em;
+      }
+      .chunk-preview {
+        margin-top: 4px;
+        padding: 8px 10px;
+        border: 1px solid var(--r2-hair);
+        border-radius: 8px;
+        background: #FAFAFB;
+        font-family: var(--r2-font-mono);
+        font-size: 11px;
+        color: var(--r2-ink-2);
+        letter-spacing: 0.01em;
+      }
+
+      /* ---------- Workspace foot (composer) ---------- */
+      .ws-foot {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 8px;
+        padding: 12px 14px 14px;
+        border-top: 1px solid var(--r2-hair);
+        background: var(--r2-bg);
+      }
+      .ws-foot textarea {
+        flex: 1;
+        resize: none;
+        min-height: 42px;
+        max-height: 140px;
+        border: 1px solid var(--r2-hair-2);
+        background: var(--r2-bg);
+        color: var(--r2-ink);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-family: var(--r2-font-ui);
+        font-size: 14px;
+        line-height: 1.4;
+        letter-spacing: -0.005em;
+        transition: border-color 140ms var(--r2-ease);
+      }
+      .ws-foot textarea::placeholder { color: var(--r2-muted-2); }
+      .ws-foot textarea:focus {
+        outline: none;
+        border-color: var(--r2-ink);
+      }
+      body.mode-eigenx .ws-foot textarea:focus {
+        border-color: var(--r2-eigenx);
+      }
+      .ws-foot .submit {
+        border: 1px solid var(--r2-ink);
+        background: var(--r2-ink);
+        color: #fff;
+        border-radius: 10px;
+        padding: 0 16px;
+        min-height: 42px;
+        min-width: 76px;
+        font-family: var(--r2-font-display);
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: -0.005em;
+        cursor: pointer;
+        transition: transform 140ms var(--r2-ease), background 140ms var(--r2-ease), border-color 140ms var(--r2-ease);
+      }
+      .ws-foot .submit:hover { transform: translateY(-1px); }
+      .ws-foot .submit:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+        transform: none;
+      }
+      body.mode-eigenx .ws-foot .submit {
+        background: var(--r2-eigenx);
+        border-color: var(--r2-eigenx);
+        color: #0A0A0D;
+      }
+
+      /* Scrollbar */
+      .ws-body::-webkit-scrollbar { width: 8px; height: 8px; }
+      .ws-body::-webkit-scrollbar-thumb { background: var(--r2-hair-2); border-radius: 10px; }
+      .ws-body::-webkit-scrollbar-track { background: transparent; }
+
+      /* Setup / error view shares workspace look without dock */
+      body.setup-error .app-dock { display: none; }
+      body.setup-error .workspace {
+        pointer-events: auto;
+      }
+      body.setup-error .workspace-shell {
+        left:   max(16px, calc((100vw - 640px) / 2));
+        top:    max(16px, calc((100vh - 320px) / 2));
+        width:  min(640px, calc(100vw - 32px));
+        height: min(320px, calc(100vh - 32px));
+        border-radius: 18px;
+        opacity: 1;
+        box-shadow: var(--r2-shadow);
+      }
+
       @media (max-width: 700px) {
-        .panel {
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          border-radius: 0;
-          right: 0;
-          bottom: 0;
-        }
-        body.embedded .panel {
-          height: 100vh;
-          min-height: 100vh;
-        }
-        .launcher {
-          width: 48px;
-          height: 48px;
-          right: 16px;
-          bottom: 16px;
+        .app-dock { right: 14px; bottom: 14px; gap: 8px; }
+        .app-button { width: 56px; height: 56px; border-radius: 16px; }
+        .workspace.open .workspace-shell {
+          left: 8px; top: 8px;
+          width: calc(100vw - 16px);
+          height: calc(100vh - 16px);
+          border-radius: 14px;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        * {
-          animation-duration: 1ms !important;
+        .workspace-shell,
+        .app-button,
+        .app-button::after {
           transition-duration: 1ms !important;
+          animation-duration: 1ms !important;
         }
       }
     </style>
   </head>
   <body>
-    <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
-      <symbol id="eigenx-mark" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="36" stroke="currentColor" stroke-width="1.5"/>
-        <line x1="25" y1="25" x2="75" y2="75" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/>
-        <line x1="75" y1="25" x2="25" y2="75" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/>
-        <circle cx="50" cy="50" r="2.5" fill="currentColor"/>
+    <!-- ================================================================
+         SVG symbols — twin logos
+         ================================================================ -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+      <!-- Eigen: monochrome square + diagonal eigenvector -->
+      <symbol id="eigen-mark" viewBox="0 0 200 200">
+        <rect x="0" y="0" width="200" height="200" rx="22" fill="#0A0A0D"/>
+        <line x1="100" y1="18" x2="100" y2="182" stroke="rgba(255,255,255,0.05)" stroke-width="0.6"/>
+        <line x1="18" y1="100" x2="182" y2="100" stroke="rgba(255,255,255,0.05)" stroke-width="0.6"/>
+        <rect x="40" y="40" width="120" height="120" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>
+        <rect x="52" y="52" width="96" height="96" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.8" stroke-dasharray="6 14"/>
+        <line x1="66" y1="134" x2="142" y2="62" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="square"/>
+        <polyline points="132,60 142,62 136,72" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="square"/>
+        <circle cx="100" cy="100" r="3" fill="none" stroke="#FFFFFF" stroke-width="0.8"/>
+      </symbol>
+      <!-- EigenX: amber circle + crossed X vectors -->
+      <symbol id="eigenx-mark" viewBox="0 0 200 200">
+        <rect x="0" y="0" width="200" height="200" rx="22" fill="#0A0A0D"/>
+        <circle cx="100" cy="100" r="62" fill="none" stroke="#EF9F27" stroke-width="1.8"/>
+        <line x1="62" y1="62" x2="138" y2="138" stroke="#EF9F27" stroke-width="2.2" stroke-linecap="square"/>
+        <line x1="138" y1="62" x2="62" y2="138" stroke="#EF9F27" stroke-width="2.2" stroke-linecap="square"/>
+        <polyline points="130,60 138,62 132,70" fill="none" stroke="#EF9F27" stroke-width="1.4" stroke-linecap="square"/>
+        <polyline points="70,130 62,138 68,140" fill="none" stroke="#EF9F27" stroke-width="1.4" stroke-linecap="square"/>
+        <polyline points="70,60 62,62 68,70"   fill="none" stroke="#EF9F27" stroke-width="1.4" stroke-linecap="square"/>
+        <polyline points="130,140 138,138 132,130" fill="none" stroke="#EF9F27" stroke-width="1.4" stroke-linecap="square"/>
+        <circle cx="100" cy="100" r="4" fill="#EF9F27"/>
       </symbol>
     </svg>
 
+    <!-- ================================================================
+         Backdrop + Twin App Dock
+         ================================================================ -->
     <div id="backdrop" class="backdrop" aria-hidden="true"></div>
-    <button type="button" id="launcher" class="launcher" aria-label="Open Eigen" aria-expanded="false">
-      <span class="pulse-dot"></span>
-      <svg viewBox="0 0 100 100" fill="none" width="28" height="28" aria-hidden="true">
-        <use href="#eigenx-mark"></use>
-      </svg>
-    </button>
-    <div id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="head-title" hidden>
-      <div class="head">
-        <span id="mode-badge" class="mode-badge">Public Eigen</span>
-        <div class="head-title-wrap">
-          <p class="head-title" id="head-title">Eigen</p>
-          <p class="head-sub" id="head-sub"></p>
-        </div>
-        <button id="close-btn" class="close-btn" type="button" aria-label="Close panel">Close</button>
-      </div>
-      <div class="chat" id="chat"></div>
-      <form class="foot" id="form">
-        <textarea id="input" placeholder="Ask a question..." required rows="1"></textarea>
-        <button class="submit" type="submit">Send</button>
-      </form>
+
+    <div id="app-dock" class="app-dock" role="toolbar" aria-label="Eigen apps">
+      <button
+        id="btn-eigen"
+        class="app-button eigen"
+        type="button"
+        aria-label="Open Eigen — public commons"
+        aria-controls="workspace"
+        aria-expanded="false"
+      >
+        <span class="chip">Public</span>
+        <svg viewBox="0 0 200 200" aria-hidden="true"><use href="#eigen-mark"/></svg>
+        <span class="label">Eigen</span>
+      </button>
+
+      <button
+        id="btn-eigenx"
+        class="app-button eigenx"
+        type="button"
+        aria-label="Open EigenX — operator console"
+        aria-controls="workspace"
+        aria-expanded="false"
+      >
+        <span class="chip">Authed</span>
+        <svg viewBox="0 0 200 200" aria-hidden="true"><use href="#eigenx-mark"/></svg>
+        <span class="label">EigenX</span>
+      </button>
     </div>
+
+    <!-- ================================================================
+         Morph Workspace — single shell, retargeted per app
+         ================================================================ -->
+    <div id="workspace" class="workspace" aria-hidden="true">
+      <div
+        id="ws-shell"
+        class="workspace-shell"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ws-title-name"
+      >
+        <div class="ws-head">
+          <div id="ws-logo" class="ws-logo" aria-hidden="true">
+            <svg viewBox="0 0 200 200" width="36" height="36"><use href="#eigen-mark"/></svg>
+          </div>
+          <div class="ws-title">
+            <span id="ws-title-name" class="name">Eigen</span>
+            <span id="ws-title-sub" class="sub">public commons</span>
+          </div>
+          <span id="ws-mode" class="ws-mode active-public">Public</span>
+          <button
+            id="ws-close"
+            class="ws-close"
+            type="button"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div id="ws-body" class="ws-body" role="log" aria-live="polite"></div>
+
+        <form id="ws-form" class="ws-foot" autocomplete="off">
+          <textarea
+            id="ws-input"
+            rows="1"
+            placeholder="Ask the commons…"
+            required
+          ></textarea>
+          <button id="ws-submit" class="submit" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+
     <script type="module" src="./widget.js"></script>
   </body>
 </html>

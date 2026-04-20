@@ -1,3 +1,11 @@
+/* ============================================================
+   R2 · Eigen / EigenX widget runtime
+   Matches the R2-Demo.html look: twin dock, morph-to-workspace,
+   singleton shell with identity swap. Preserves all backend
+   behavior — SSE streaming, auth handshake, feedback, citations,
+   idempotency, parent-origin validation.
+   ============================================================ */
+
 const params = new URLSearchParams(window.location.search);
 const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
 const siteId = params.get('site_id') || '';
@@ -7,23 +15,31 @@ const intentParam = (params.get('conversation_intent') || '').trim();
 const embeddedParam = params.get('embedded');
 const isEmbedded = embeddedParam === '1' || !!parentOriginParam || window.self !== window.top;
 
+/* ---------- DOM refs ---------- */
 const backdrop = document.getElementById('backdrop');
-const launcher = document.getElementById('launcher');
-const panel = document.getElementById('panel');
-const closeBtn = document.getElementById('close-btn');
-const modeBadge = document.getElementById('mode-badge');
-const headTitle = document.getElementById('head-title');
-const headSub = document.getElementById('head-sub');
-const chat = document.getElementById('chat');
-const form = document.getElementById('form');
-const input = document.getElementById('input');
-const submitBtn = form.querySelector('button[type="submit"]');
+const appDock = document.getElementById('app-dock');
+const btnEigen = document.getElementById('btn-eigen');
+const btnEigenX = document.getElementById('btn-eigenx');
+const workspace = document.getElementById('workspace');
+const wsShell = document.getElementById('ws-shell');
+const wsLogo = document.getElementById('ws-logo');
+const wsTitleName = document.getElementById('ws-title-name');
+const wsTitleSub = document.getElementById('ws-title-sub');
+const wsMode = document.getElementById('ws-mode');
+const wsClose = document.getElementById('ws-close');
+const wsBody = document.getElementById('ws-body');
+const wsForm = document.getElementById('ws-form');
+const wsInput = document.getElementById('ws-input');
+const wsSubmit = document.getElementById('ws-submit');
 
+/* ---------- State ---------- */
+let activeApp = null;               // 'eigen' | 'eigenx' | null
 let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
 let allowedParentOrigin = '';
 let pendingAssistant = null;
+let morphRaf = 0;
 
 if (parentOriginParam) {
   try {
@@ -33,16 +49,7 @@ if (parentOriginParam) {
   }
 }
 
-function setOpen(open) {
-  if (isEmbedded) open = true;
-  panel.hidden = !open;
-  panel.classList.toggle('open', open);
-  backdrop.classList.toggle('open', open);
-  launcher.setAttribute('aria-expanded', open ? 'true' : 'false');
-  launcher.setAttribute('aria-label', open ? `Close ${activeMode === 'eigenx' ? 'EigenX' : 'Eigen'}` : `Open ${activeMode === 'eigenx' ? 'EigenX' : 'Eigen'}`);
-  if (open) input.focus();
-}
-
+/* ---------- Utilities ---------- */
 function timestampNow() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -52,6 +59,149 @@ function makeIdempotencyKey(prefix) {
   return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
+/* ---------- Identity swap ---------- */
+const EIGEN_IDENTITY = {
+  app: 'eigen',
+  name: 'Eigen',
+  sub: 'public commons',
+  modeLabel: 'Public',
+  modeClass: 'active-public',
+  symbolId: '#eigen-mark',
+  placeholder: 'Ask the commons…',
+  intro:
+    'Ask a question. Answers draw from public evidence in the R2 commons. Citations show the evidence tier for each source.',
+};
+const EIGENX_IDENTITY = {
+  app: 'eigenx',
+  name: 'EigenX',
+  sub: 'operator console',
+  modeLabel: 'EigenX',
+  modeClass: 'active-eigenx',
+  symbolId: '#eigenx-mark',
+  placeholder: 'Run an operator query…',
+  intro:
+    'EigenX runs in authenticated scope. Retrieval follows your policy scope; results cite the evidence tier for each source.',
+};
+
+function identityFor(app) {
+  return app === 'eigenx' ? EIGENX_IDENTITY : EIGEN_IDENTITY;
+}
+
+function setAppIdentity(app) {
+  const id = identityFor(app);
+  activeApp = id.app;
+  activeMode = id.app === 'eigenx' ? 'eigenx' : 'public';
+
+  // Title / sub / mode badge
+  if (wsTitleName) wsTitleName.textContent = id.name;
+  if (wsTitleSub) wsTitleSub.textContent = siteId ? `${siteId} · ${id.sub}` : id.sub;
+  if (wsMode) {
+    wsMode.textContent = id.modeLabel;
+    wsMode.classList.remove('active-public', 'active-eigenx');
+    wsMode.classList.add(id.modeClass);
+  }
+
+  // Logo swap — rebuild inline SVG so the <use href> refreshes reliably
+  if (wsLogo) {
+    wsLogo.innerHTML = `<svg viewBox="0 0 200 200" width="36" height="36" aria-hidden="true"><use href="${id.symbolId}"/></svg>`;
+  }
+
+  // Composer placeholder
+  if (wsInput) wsInput.placeholder = id.placeholder;
+
+  // Body mode class (drives amber accents in EigenX)
+  document.body.classList.toggle('mode-eigenx', id.app === 'eigenx');
+  document.body.classList.toggle('mode-eigen', id.app === 'eigen');
+
+  // Dock focus rings
+  if (btnEigen) btnEigen.classList.toggle('is-active', id.app === 'eigen');
+  if (btnEigenX) btnEigenX.classList.toggle('is-active', id.app === 'eigenx');
+}
+
+/* ---------- Morph open/close ---------- */
+function writeMorphOrigin(rect) {
+  if (!wsShell || !rect) return;
+  wsShell.style.setProperty('--from-x', `${rect.left}px`);
+  wsShell.style.setProperty('--from-y', `${rect.top}px`);
+  wsShell.style.setProperty('--from-w', `${rect.width}px`);
+  wsShell.style.setProperty('--from-h', `${rect.height}px`);
+}
+
+function cancelMorphRaf() {
+  if (morphRaf) {
+    cancelAnimationFrame(morphRaf);
+    morphRaf = 0;
+  }
+}
+
+function openApp(app, options = {}) {
+  const { silent = false, origin = null } = options;
+  setAppIdentity(app);
+
+  if (isEmbedded) {
+    // Embedded mode: no morph, workspace already fills the iframe via CSS
+    workspace?.setAttribute('aria-hidden', 'false');
+    workspace?.classList.add('open');
+    backdrop?.classList.remove('open');
+    appDock?.classList.add('is-hidden');
+    btnEigen?.setAttribute('aria-expanded', 'true');
+    btnEigenX?.setAttribute('aria-expanded', 'true');
+    wsInput?.focus();
+    return;
+  }
+
+  // Dim the originating button so it visually “lifts” into the shell
+  const sourceBtn = app === 'eigenx' ? btnEigenX : btnEigen;
+  const otherBtn = app === 'eigenx' ? btnEigen : btnEigenX;
+  sourceBtn?.classList.add('is-opening');
+  otherBtn?.classList.remove('is-opening');
+
+  // Seed morph origin at the button rect
+  const rect =
+    origin ||
+    sourceBtn?.getBoundingClientRect() ||
+    { left: window.innerWidth - 88, top: window.innerHeight - 88, width: 64, height: 64 };
+  writeMorphOrigin(rect);
+
+  // Make the shell visible at origin before transitioning to target
+  workspace?.setAttribute('aria-hidden', 'false');
+  backdrop?.classList.add('open');
+
+  // Force reflow so the browser registers the start state before we add .open
+  // (this makes the transition go from seeded vars → CSS target values)
+  cancelMorphRaf();
+  // eslint-disable-next-line no-unused-expressions
+  wsShell?.offsetWidth;
+  morphRaf = requestAnimationFrame(() => {
+    workspace?.classList.add('open');
+    if (!silent) setTimeout(() => wsInput?.focus({ preventScroll: true }), 120);
+  });
+
+  btnEigen?.setAttribute('aria-expanded', app === 'eigen' ? 'true' : 'false');
+  btnEigenX?.setAttribute('aria-expanded', app === 'eigenx' ? 'true' : 'false');
+}
+
+function closeApp() {
+  if (isEmbedded) return; // workspace is always shown in embedded mode
+
+  // Rewrite origin to the button that owns the current app so the morph reverses
+  const sourceBtn = activeApp === 'eigenx' ? btnEigenX : btnEigen;
+  if (sourceBtn) writeMorphOrigin(sourceBtn.getBoundingClientRect());
+
+  workspace?.classList.remove('open');
+  backdrop?.classList.remove('open');
+  workspace?.setAttribute('aria-hidden', 'true');
+  btnEigen?.setAttribute('aria-expanded', 'false');
+  btnEigenX?.setAttribute('aria-expanded', 'false');
+
+  // Restore dock buttons after the morph closes
+  setTimeout(() => {
+    btnEigen?.classList.remove('is-opening');
+    btnEigenX?.classList.remove('is-opening');
+  }, 480);
+}
+
+/* ---------- Chat primitives ---------- */
 function makeTurn(role, text) {
   const turn = document.createElement('article');
   turn.className = `turn ${role}`;
@@ -66,8 +216,8 @@ function makeTurn(role, text) {
   meta.textContent = timestampNow();
   turn.appendChild(meta);
 
-  chat.appendChild(turn);
-  chat.scrollTop = chat.scrollHeight;
+  wsBody.appendChild(turn);
+  wsBody.scrollTop = wsBody.scrollHeight;
   return { turn, msg, meta };
 }
 
@@ -75,8 +225,8 @@ function appendBanner(text) {
   const banner = document.createElement('div');
   banner.className = 'state-banner';
   banner.textContent = text;
-  chat.appendChild(banner);
-  chat.scrollTop = chat.scrollHeight;
+  wsBody.appendChild(banner);
+  wsBody.scrollTop = wsBody.scrollHeight;
 }
 
 function tierClass(tier) {
@@ -174,9 +324,7 @@ function addFeedbackControls(container, turnId) {
           value,
         }),
       });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+      if (!response.ok) throw new Error(await response.text());
       up.classList.toggle('is-active', value === 1);
       down.classList.toggle('is-active', value === -1);
     } catch {
@@ -189,14 +337,6 @@ function addFeedbackControls(container, turnId) {
   row.appendChild(up);
   row.appendChild(down);
   container.appendChild(row);
-}
-
-function updateModeUI() {
-  const label = activeMode === 'eigenx' ? 'EigenX' : 'Public Eigen';
-  modeBadge.textContent = label;
-  headTitle.textContent = label;
-  headSub.textContent = siteId;
-  launcher.setAttribute('aria-label', `Open ${activeMode === 'eigenx' ? 'EigenX' : 'Eigen'}`);
 }
 
 function resolveConversationIntent() {
@@ -246,21 +386,17 @@ async function ensureWidgetSession() {
 }
 
 function upgradeToEigenx(bearer) {
-  if (activeMode === 'eigenx') return;
   authBearer = bearer;
-  activeMode = 'eigenx';
   widgetToken = '';
-  updateModeUI();
-  makeTurn('assistant', 'Signed in. Session scope now runs in EigenX mode.');
+  setAppIdentity('eigenx');
+  makeTurn('system', 'Signed in. Running in EigenX (authenticated) scope.');
 }
 
 function downgradeToPublic() {
-  if (activeMode === 'public') return;
-  activeMode = 'public';
   authBearer = '';
   widgetToken = '';
-  updateModeUI();
-  makeTurn('assistant', 'Signed out. Session scope now runs in Public Eigen mode.');
+  setAppIdentity('eigen');
+  makeTurn('system', 'Signed out. Running in public Eigen scope.');
 }
 
 async function submitMessage(message) {
@@ -268,7 +404,7 @@ async function submitMessage(message) {
   const assistantTurn = makeTurn('assistant', '');
   assistantTurn.turn.classList.add('streaming');
   pendingAssistant = assistantTurn;
-  submitBtn.disabled = true;
+  wsSubmit.disabled = true;
 
   try {
     const token = await ensureWidgetSession();
@@ -309,18 +445,13 @@ async function submitMessage(message) {
             deltaText = parsed.delta;
           }
         } catch {
-          console.warn('Malformed SSE delta payload', body);
           deltaText = body;
         }
         assistantTurn.msg.textContent += deltaText;
-        chat.scrollTop = chat.scrollHeight;
+        wsBody.scrollTop = wsBody.scrollHeight;
       } else if (event === 'final') {
         let payload = null;
-        try {
-          payload = JSON.parse(body);
-        } catch {
-          payload = null;
-        }
+        try { payload = JSON.parse(body); } catch { payload = null; }
         if (payload) {
           if (!assistantTurn.msg.textContent.trim()) {
             assistantTurn.msg.textContent = payload.response || 'No response generated.';
@@ -331,16 +462,14 @@ async function submitMessage(message) {
           if (payload.evidence_notice) appendBanner(payload.evidence_notice);
         }
       } else if (event === 'error') {
-        let message = body || 'The request failed.';
+        let messageText = body || 'The request failed.';
         try {
           const parsed = JSON.parse(body);
-          if (parsed && typeof parsed.message === 'string') {
-            message = parsed.message;
-          }
+          if (parsed && typeof parsed.message === 'string') messageText = parsed.message;
         } catch {
-          message = body || 'The request failed.';
+          messageText = body || 'The request failed.';
         }
-        appendBanner(message);
+        appendBanner(messageText);
       }
     });
 
@@ -360,43 +489,91 @@ async function submitMessage(message) {
       appendBanner(messageText);
     }
   } finally {
-    submitBtn.disabled = false;
+    wsSubmit.disabled = false;
     if (pendingAssistant) pendingAssistant.turn.classList.remove('streaming');
     pendingAssistant = null;
     userTurn.turn.classList.remove('streaming');
   }
 }
 
+/* ---------- Setup guard ---------- */
 if (!apiBase || !siteId) {
-  headTitle.textContent = 'Setup required';
-  headSub.textContent = 'Missing api_base or site_id';
+  document.body.classList.add('setup-error');
+  if (wsTitleName) wsTitleName.textContent = 'Setup required';
+  if (wsTitleSub) wsTitleSub.textContent = 'Missing api_base or site_id';
   appendBanner('Add query params: api_base and site_id.');
-  form.remove();
-  launcher.remove();
-  backdrop.remove();
+  wsForm?.remove();
+  appDock?.remove();
+  backdrop?.remove();
+  // Keep the workspace visible at centered size via .setup-error CSS
+  workspace?.classList.add('open');
   throw new Error('Missing widget params');
 }
 
 const requiresTrustedParentOrigin = initialMode === 'mixed' || initialMode === 'eigenx';
 if (requiresTrustedParentOrigin && !allowedParentOrigin) {
-  headTitle.textContent = 'Setup required';
-  headSub.textContent = 'Missing parent_origin';
+  document.body.classList.add('setup-error');
+  if (wsTitleName) wsTitleName.textContent = 'Setup required';
+  if (wsTitleSub) wsTitleSub.textContent = 'Missing parent_origin';
   appendBanner('Mixed and EigenX modes require a valid parent_origin query param.');
-  form.remove();
-  launcher.remove();
-  backdrop.remove();
+  wsForm?.remove();
+  appDock?.remove();
+  backdrop?.remove();
+  workspace?.classList.add('open');
   throw new Error('Missing or invalid parent_origin for mixed/eigenx mode');
 }
 
-launcher.addEventListener('click', () => setOpen(panel.hidden || !panel.classList.contains('open')));
-closeBtn.addEventListener('click', () => setOpen(false));
-backdrop.addEventListener('click', () => setOpen(false));
+/* ---------- Dock wiring ---------- */
+btnEigen?.addEventListener('click', () => {
+  if (activeApp === 'eigen' && workspace?.classList.contains('open')) {
+    closeApp();
+    return;
+  }
+  openApp('eigen');
+});
+
+btnEigenX?.addEventListener('click', () => {
+  // If we already have an auth bearer, run authed scope.
+  // Otherwise, ask the parent for auth (if embedded with trusted parent),
+  // and also open the workspace optimistically in public scope until auth arrives.
+  if (authBearer) {
+    if (activeApp === 'eigenx' && workspace?.classList.contains('open')) {
+      closeApp();
+      return;
+    }
+    activeMode = 'eigenx';
+    openApp('eigenx');
+    return;
+  }
+  // No auth yet. Request it from a trusted parent if present.
+  if (allowedParentOrigin) {
+    try {
+      window.parent?.postMessage?.(
+        { type: 'eigen_widget_request_auth', scope: 'eigenx' },
+        allowedParentOrigin,
+      );
+    } catch { /* ignore */ }
+  }
+  openApp('eigenx');
+  makeTurn('system', 'EigenX requires an authenticated session. Running in preview scope until sign-in.');
+});
+
+wsClose?.addEventListener('click', () => closeApp());
+backdrop?.addEventListener('click', () => closeApp());
 
 window.addEventListener('keydown', (event) => {
   if (isEmbedded) return;
-  if (event.key === 'Escape') setOpen(false);
+  if (event.key === 'Escape' && workspace?.classList.contains('open')) closeApp();
 });
 
+window.addEventListener('resize', () => {
+  if (!workspace?.classList.contains('open')) {
+    const sourceBtn = activeApp === 'eigenx' ? btnEigenX : btnEigen;
+    if (sourceBtn) writeMorphOrigin(sourceBtn.getBoundingClientRect());
+  }
+});
+
+/* ---------- Parent postMessage ---------- */
 window.addEventListener('message', (event) => {
   if (!allowedParentOrigin) return;
   if (event.origin.toLowerCase() !== allowedParentOrigin) return;
@@ -407,21 +584,50 @@ window.addEventListener('message', (event) => {
     else downgradeToPublic();
   }
   if (data.type === 'eigen_widget_signout') downgradeToPublic();
+  // Context passthrough — host apps may update operator context.
+  if (data.type === 'eigen_widget_context' && data.context && typeof data.context === 'object') {
+    try {
+      const ctx = data.context;
+      if (ctx.module_scope && wsTitleSub) {
+        wsTitleSub.textContent = `${ctx.module_scope}`;
+      }
+    } catch { /* ignore */ }
+  }
 });
 
-form.addEventListener('submit', async (event) => {
+/* ---------- Composer ---------- */
+wsInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    wsForm?.requestSubmit();
+  }
+});
+
+wsForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const message = input.value.trim();
+  const message = wsInput.value.trim();
   if (!message) return;
-  input.value = '';
+  wsInput.value = '';
   await submitMessage(message);
 });
 
-updateModeUI();
+/* ---------- Boot ---------- */
 if (isEmbedded) document.body.classList.add('embedded');
-setOpen(isEmbedded);
-makeTurn(
-  'assistant',
-  'Ask a question. Answers are drawn from the evidence corpus, and citations show the evidence tier for each source.',
-);
-window.parent?.postMessage?.({ type: 'eigen_widget_ready' }, '*');
+
+// Pick an initial identity that matches the requested mode
+const bootApp = initialMode === 'eigenx' ? 'eigenx' : 'eigen';
+setAppIdentity(bootApp);
+
+// Seed a morph origin even before a click, so keyboard/programmatic opens animate
+const bootBtn = bootApp === 'eigenx' ? btnEigenX : btnEigen;
+if (bootBtn) writeMorphOrigin(bootBtn.getBoundingClientRect());
+
+if (isEmbedded) {
+  openApp(bootApp, { silent: true });
+}
+
+makeTurn('assistant', identityFor(bootApp).intro);
+
+try {
+  window.parent?.postMessage?.({ type: 'eigen_widget_ready' }, '*');
+} catch { /* ignore */ }

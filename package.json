@@ -16,7 +16,9 @@
     "lint:migrations": "bash scripts/check-migrations.sh",
     "lint:supabase:drift": "bash scripts/check-supabase-migration-drift.sh",
     "lint:supabase:types": "bash scripts/check-supabase-generated-types.sh",
-    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types"
+    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types",
+    "deploy:widget": "npx wrangler@3 pages deploy apps/eigen-widget --project-name eigen",
+    "deploy:widget:list-projects": "npx wrangler@3 pages project list"
   },
   "repository": {
     "type": "git",

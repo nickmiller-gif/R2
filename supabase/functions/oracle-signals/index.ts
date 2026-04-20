@@ -16,6 +16,14 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   return null;
 }
 
+function preserveExplicitNullableField(
+  body: Record<string, unknown>,
+  key: string,
+  fallback: unknown,
+): unknown {
+  return Object.prototype.hasOwnProperty.call(body, key) ? body[key] : fallback;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
@@ -213,12 +221,16 @@ Deno.serve(async (req) => {
           reasons: body.reasons ?? previous.reasons,
           tags: body.tags ?? previous.tags,
           status: 'scored',
-          analysis_document_id: Object.prototype.hasOwnProperty.call(body, 'analysis_document_id')
-            ? body.analysis_document_id
-            : previous.analysis_document_id,
-          source_asset_id: Object.prototype.hasOwnProperty.call(body, 'source_asset_id')
-            ? body.source_asset_id
-            : previous.source_asset_id,
+          analysis_document_id: preserveExplicitNullableField(
+            body as Record<string, unknown>,
+            'analysis_document_id',
+            previous.analysis_document_id,
+          ),
+          source_asset_id: preserveExplicitNullableField(
+            body as Record<string, unknown>,
+            'source_asset_id',
+            previous.source_asset_id,
+          ),
           producer_ref: previous.producer_ref,
           version: (latest?.version ?? previous.version ?? 1) + 1,
           publication_state: 'pending_review',

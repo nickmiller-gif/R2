@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Restore sync manifest cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .cache/eigen-ingest-manifest.json
           key: eigen-ingest-manifest-${{ github.run_id }}
@@ -52,7 +52,7 @@ jobs:
 
       - name: Save sync manifest cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .cache/eigen-ingest-manifest.json
           key: eigen-ingest-manifest-${{ github.run_id }}

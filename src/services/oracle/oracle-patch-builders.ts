@@ -1,3 +1,15 @@
+const SIGNAL_PATCH_ALLOWLIST = new Set([
+  'score',
+  'confidence',
+  'reasons',
+  'tags',
+  'status',
+  'analysis_document_id',
+  'source_asset_id',
+  'producer_ref',
+  'publication_notes',
+]);
+
 const THESIS_PATCH_ALLOWLIST = new Set([
   'title',
   'thesis_statement',
@@ -33,6 +45,10 @@ function buildPatch(body: Record<string, unknown>, allowlist: Set<string>): Reco
     if (allowlist.has(key)) patch[key] = value;
   }
   return patch;
+}
+
+export function buildSafeSignalPatch(body: Record<string, unknown>): Record<string, unknown> {
+  return buildPatch(body, SIGNAL_PATCH_ALLOWLIST);
 }
 
 export function buildSafeThesisPatch(body: Record<string, unknown>): Record<string, unknown> {

@@ -1,10 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSafeEvidenceItemPatch,
+  buildSafeSignalPatch,
   buildSafeThesisPatch,
 } from '../../src/services/oracle/oracle-patch-builders.js';
 
 describe('oracle patch builders', () => {
+  it('keeps only allowlisted signal fields', () => {
+    const patch = buildSafeSignalPatch({
+      score: 72,
+      confidence: 'high',
+      reasons: ['r1'],
+      tags: ['t1'],
+      status: 'scored',
+      analysis_document_id: 'doc-1',
+      source_asset_id: 'asset-1',
+      producer_ref: 'producer-1',
+      publication_notes: 'notes',
+      id: 'should-not-pass',
+      entity_asset_id: 'should-not-pass',
+      version: 99,
+      publication_state: 'should-not-pass',
+      created_at: 'should-not-pass',
+    });
+
+    expect(patch.score).toBe(72);
+    expect(patch.confidence).toBe('high');
+    expect(patch.reasons).toEqual(['r1']);
+    expect(patch.tags).toEqual(['t1']);
+    expect(patch.status).toBe('scored');
+    expect(patch.analysis_document_id).toBe('doc-1');
+    expect(patch.source_asset_id).toBe('asset-1');
+    expect(patch.producer_ref).toBe('producer-1');
+    expect(patch.publication_notes).toBe('notes');
+    expect(patch.id).toBeUndefined();
+    expect(patch.entity_asset_id).toBeUndefined();
+    expect(patch.version).toBeUndefined();
+    expect(patch.publication_state).toBeUndefined();
+    expect(patch.created_at).toBeUndefined();
+    expect(typeof patch.updated_at).toBe('string');
+  });
+
   it('keeps only allowlisted thesis fields', () => {
     const patch = buildSafeThesisPatch({
       title: 'Updated title',

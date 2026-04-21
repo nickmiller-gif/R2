@@ -1,0 +1,33 @@
+# Cloudflare Pages custom headers for the Eigen widget CDN origin.
+#
+# Applies to every path under the Pages project (eigen-d3x.pages.dev and
+# any custom domains bound to it). Headers here are the outer hardening
+# layer for an iframe that ships HMAC-signed widget tokens and streams
+# SSE responses from Supabase.
+#
+# Notes:
+# - Content-Security-Policy is deliberately strict: no third-party
+#   scripts, no inline script/style allowed, only the widget's origin
+#   for assets, and connect-src limited to the Supabase Functions host
+#   that actually issues tokens and serves eigen-widget-chat. If we
+#   ever move api_base to a different origin, update connect-src.
+# - frame-ancestors is a wildcard because the widget is designed to be
+#   embedded by any approved customer site; the real per-site origin
+#   allowlist is enforced server-side by eigen-widget-session, which
+#   rejects requests whose Origin header isn't in the registry. Do NOT
+#   rely on frame-ancestors alone to gate embedding.
+# - X-Frame-Options is intentionally omitted; modern browsers prefer
+#   frame-ancestors from CSP, and mixing the two can break legitimate
+#   embedders on older Safari.
+# - HSTS is two-year, includeSubDomains, preload-ready. pages.dev is
+#   already preloaded; this mirrors the directive on custom domains.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://zudslxucibosjwefojtm.supabase.co; frame-ancestors *; base-uri 'self'; form-action 'none'; object-src 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=()
+  Cross-Origin-Resource-Policy: cross-origin
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Embedder-Policy: unsafe-none

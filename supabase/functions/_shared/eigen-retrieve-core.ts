@@ -12,7 +12,7 @@ import {
 import {
   applySiteRelevanceGate,
   limitCrossSourceRatio,
-} from '../../../src/lib/eigen/source-relevance-gating.ts';
+} from './source-relevance-gating.ts';
 
 export interface EigenRetrieveRequest {
   query: string;

@@ -166,6 +166,48 @@ async function loadSiteRegistryContext(
   };
 }
 
+// Upper bounds that client-supplied parameters must respect. They exist to
+// prevent a caller from inflating the retrieval budget to the point where
+// embedding cost, RPC payload size, or LLM context-window usage become a
+// DoS vector. See FULL_AUDIT §1 L9.
+const QUERY_MAX_LENGTH = 8_000;            // chars; generous — typical queries < 500
+const BUDGET_MAX_CHUNKS = 100;              // absolute ceiling; ann_limit caps at 500
+const BUDGET_MAX_TOKENS = 32_000;           // covers the widest planner context
+const STRATA_WEIGHT_MAX_KEYS = 32;
+const STRATA_WEIGHT_MIN = -10;
+const STRATA_WEIGHT_MAX = 10;
+
+function parseBoundedInt(value: unknown, { min, max }: { min: number; max: number }): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (value < min || value > max) {
+    throw new Error(`value ${value} out of allowed range [${min}, ${max}]`);
+  }
+  return Math.floor(value);
+}
+
+function parseStrataWeights(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const keys = Object.keys(raw);
+  if (keys.length > STRATA_WEIGHT_MAX_KEYS) {
+    throw new Error(`strata_weights must not exceed ${STRATA_WEIGHT_MAX_KEYS} keys`);
+  }
+  const out: Record<string, number> = {};
+  for (const key of keys) {
+    // Drop any inherited / prototype-pollution vectors.
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    const raw_val = raw[key];
+    if (typeof raw_val !== 'number' || !Number.isFinite(raw_val)) {
+      throw new Error(`strata_weights[${key}] must be a finite number`);
+    }
+    if (raw_val < STRATA_WEIGHT_MIN || raw_val > STRATA_WEIGHT_MAX) {
+      throw new Error(`strata_weights[${key}] out of range [${STRATA_WEIGHT_MIN}, ${STRATA_WEIGHT_MAX}]`);
+    }
+    out[key] = raw_val;
+  }
+  return out;
+}
+
 export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
   if (!body || typeof body !== 'object') {
     throw new Error('Request body must be a JSON object');
@@ -175,18 +217,39 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
   if (typeof payload.query !== 'string' || payload.query.trim().length === 0) {
     throw new Error('query is required');
   }
+  const query = payload.query.trim();
+  if (query.length > QUERY_MAX_LENGTH) {
+    throw new Error(`query must not exceed ${QUERY_MAX_LENGTH} characters`);
+  }
 
   const entityScope = normalizeList(payload.entity_scope);
   const policyScope = normalizeList(payload.policy_scope);
-  if (entityScope && entityScope.length > 100) {
+  if (entityScope.length > 100) {
     throw new Error('entity_scope must not exceed 100 entries');
   }
-  if (policyScope && policyScope.length > 100) {
+  if (policyScope.length > 100) {
     throw new Error('policy_scope must not exceed 100 entries');
   }
 
+  const budgetProfile =
+    payload.budget_profile && typeof payload.budget_profile === 'object'
+      ? {
+          max_chunks: parseBoundedInt(
+            (payload.budget_profile as Record<string, unknown>).max_chunks,
+            { min: 1, max: BUDGET_MAX_CHUNKS },
+          ),
+          max_tokens: parseBoundedInt(
+            (payload.budget_profile as Record<string, unknown>).max_tokens,
+            { min: 1, max: BUDGET_MAX_TOKENS },
+          ),
+          strata_weights: parseStrataWeights(
+            (payload.budget_profile as Record<string, unknown>).strata_weights,
+          ),
+        }
+      : undefined;
+
   return {
-    query: payload.query.trim(),
+    query,
     entity_scope: entityScope,
     policy_scope: policyScope,
     site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
@@ -198,27 +261,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     allow_cross_source_when_low_confidence: payload.allow_cross_source_when_low_confidence === true,
     outside_domain_intent: payload.outside_domain_intent === true,
     disallowed_source_systems: normalizeList(payload.disallowed_source_systems),
-    budget_profile:
-      payload.budget_profile && typeof payload.budget_profile === 'object'
-        ? {
-            max_chunks:
-              typeof (payload.budget_profile as Record<string, unknown>).max_chunks === 'number'
-                ? (payload.budget_profile as Record<string, number>).max_chunks
-                : undefined,
-            max_tokens:
-              typeof (payload.budget_profile as Record<string, unknown>).max_tokens === 'number'
-                ? (payload.budget_profile as Record<string, number>).max_tokens
-                : undefined,
-            strata_weights:
-              typeof (payload.budget_profile as Record<string, unknown>).strata_weights ===
-              'object'
-                ? ((payload.budget_profile as Record<string, unknown>).strata_weights as Record<
-                    string,
-                    number
-                  >)
-                : undefined,
-          }
-        : undefined,
+    budget_profile: budgetProfile,
     rerank: payload.rerank !== false,
     include_provenance: payload.include_provenance !== false,
   };

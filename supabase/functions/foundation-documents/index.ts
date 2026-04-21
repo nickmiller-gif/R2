@@ -3,6 +3,43 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
+
+// documents table: intent is that `owner_id` is the document's owner.
+// Creating operators may legitimately ingest on behalf of someone else, so
+// owner_id stays client-settable (the RLS layer + GET/PATCH filters enforce
+// read-access downstream). `created_by`-style columns are not present on
+// this table, so we only strip system-managed fields here.
+const INSERT_FIELDS = [
+  'title',
+  'description',
+  'source_system',
+  'source_ref',
+  'owner_id',
+  'status',
+  'index_status',
+  'embedding_status',
+  'vector_store_ref',
+  'storage_path',
+  'storage_bucket',
+  'mime_type',
+  'metadata',
+  'tags',
+] as const;
+
+const UPDATE_FIELDS = [
+  'title',
+  'description',
+  'status',
+  'index_status',
+  'embedding_status',
+  'vector_store_ref',
+  'storage_path',
+  'storage_bucket',
+  'mime_type',
+  'metadata',
+  'tags',
+] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -107,9 +144,10 @@ Deno.serve(async (req) => {
         return jsonResponse(data);
       } else {
         // CREATE document
+        const row = sanitizeInsert(body, INSERT_FIELDS, {});
         const { data, error } = await client
           .from('documents')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 
@@ -129,9 +167,14 @@ Deno.serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
+      const patch = sanitizeUpdate(body, UPDATE_FIELDS);
+      if (Object.keys(patch).length === 0) {
+        return errorResponse('No updatable fields in body', 400);
+      }
+
       const { data, error } = await client
         .from('documents')
-        .update(body)
+        .update(patch)
         .eq('id', id)
         .select()
         .single();

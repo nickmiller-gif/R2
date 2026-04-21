@@ -3,6 +3,9 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { pickFields } from '../_shared/sanitize.ts';
+
+const INSERT_FIELDS = ['source_entity_id', 'target_entity_id', 'edge_type', 'confidence', 'valid_from', 'valid_to', 'source', 'metadata'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -57,9 +60,10 @@ Deno.serve(async (req) => {
       const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
       const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();
+      const row = pickFields(body, INSERT_FIELDS);
       const { data, error } = await client
         .from('meg_entity_edges')
-        .insert([body])
+        .insert([row])
         .select()
         .single();
       if (error) return errorResponse(error.message, 400);

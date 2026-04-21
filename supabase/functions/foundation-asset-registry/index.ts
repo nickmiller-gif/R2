@@ -3,6 +3,10 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { pickFields } from '../_shared/sanitize.ts';
+
+const ASSET_REGISTRY_INSERT_FIELDS = ['kind', 'ref_id', 'domain', 'label', 'metadata'] as const;
+const EVIDENCE_LINK_INSERT_FIELDS = ['from_asset_id', 'to_asset_id', 'link_kind', 'confidence', 'metadata'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -44,9 +48,10 @@ Deno.serve(async (req) => {
         const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
         const body = await req.json();
 
+        const row = pickFields(body, EVIDENCE_LINK_INSERT_FIELDS);
         const { data, error } = await client
           .from('asset_evidence_links')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 
@@ -115,9 +120,10 @@ Deno.serve(async (req) => {
         const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
         const body = await req.json();
 
+        const row = pickFields(body, ASSET_REGISTRY_INSERT_FIELDS);
         const { data, error } = await client
           .from('asset_registry')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 

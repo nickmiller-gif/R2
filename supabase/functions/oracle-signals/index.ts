@@ -3,6 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import {
+  buildSafeSignalPatch,
+  formatAllowedSignalPatchFields,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -12,26 +16,12 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   return null;
 }
 
-const PATCH_ALLOWLIST = new Set([
-  'score',
-  'confidence',
-  'reasons',
-  'tags',
-  'status',
-  'analysis_document_id',
-  'source_asset_id',
-  'producer_ref',
-  'publication_notes',
-]);
-
-function buildSafeSignalPatch(body: Record<string, unknown>): Record<string, unknown> {
-  const patch: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  for (const [key, value] of Object.entries(body)) {
-    if (PATCH_ALLOWLIST.has(key)) patch[key] = value;
-  }
-  return patch;
+function preserveExplicitNullableField(
+  body: Record<string, unknown>,
+  key: string,
+  fallback: unknown,
+): unknown {
+  return Object.prototype.hasOwnProperty.call(body, key) ? body[key] : fallback;
 }
 
 Deno.serve(async (req) => {
@@ -173,28 +163,88 @@ Deno.serve(async (req) => {
         }
         return jsonResponse(data);
       } else if (action === 'rescore') {
-        // RESCORE signal (in-place score refresh; supersede/version path lives in TS service)
-        const signalId = body.id;
-        if (!signalId) {
+        // RESCORE signal: mark the previous row as superseded and insert a
+        // new versioned row. Mirrors createOracleSignalService.rescore().
+        const previousId = body.id;
+        if (!previousId) {
           return errorResponse('id required in body', 400);
         }
         if (body.score === undefined || body.score === null) {
           return errorResponse('score required for rescore', 400);
         }
+        const score = Number(body.score);
+        if (!Number.isFinite(score) || score < 0 || score > 100) {
+          return errorResponse('score must be a number between 0 and 100', 400);
+        }
+
+        const { data: previous, error: findError } = await client
+          .from('oracle_signals')
+          .select('*')
+          .eq('id', previousId)
+          .single();
+        if (findError || !previous) {
+          return errorResponse(findError?.message ?? `Oracle signal not found: ${previousId}`, 404);
+        }
+        if (previous.status === 'superseded') {
+          return errorResponse('Only the latest non-superseded signal version can be rescored', 409);
+        }
+
+        const { data: latestVersions, error: latestError } = await client
+          .from('oracle_signals')
+          .select('id, version')
+          .eq('entity_asset_id', previous.entity_asset_id)
+          .order('version', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (latestError) {
+          return errorResponse(latestError.message, 400);
+        }
+        const latest = latestVersions?.[0];
+        if (latest && latest.id !== previousId) {
+          return errorResponse('Only the latest non-superseded signal version can be rescored', 409);
+        }
 
         const now = new Date().toISOString();
-        const patch: Record<string, unknown> = {
-          score: body.score,
+
+        const { error: supersedeError } = await client
+          .from('oracle_signals')
+          .update({ status: 'superseded', updated_at: now })
+          .eq('id', previousId);
+        if (supersedeError) {
+          return errorResponse(supersedeError.message, 400);
+        }
+
+        const newRow: Record<string, unknown> = {
+          entity_asset_id: previous.entity_asset_id,
+          score,
+          confidence: body.confidence ?? previous.confidence,
+          reasons: body.reasons ?? previous.reasons,
+          tags: body.tags ?? previous.tags,
+          status: 'scored',
+          analysis_document_id: preserveExplicitNullableField(
+            body as Record<string, unknown>,
+            'analysis_document_id',
+            previous.analysis_document_id,
+          ),
+          source_asset_id: preserveExplicitNullableField(
+            body as Record<string, unknown>,
+            'source_asset_id',
+            previous.source_asset_id,
+          ),
+          producer_ref: previous.producer_ref,
+          version: (latest?.version ?? previous.version ?? 1) + 1,
+          publication_state: 'pending_review',
+          published_at: null,
+          published_by: null,
+          publication_notes: null,
+          scored_at: now,
+          created_at: now,
           updated_at: now,
         };
-        if (body.confidence !== undefined) patch.confidence = body.confidence;
-        if (body.reasons !== undefined) patch.reasons = body.reasons;
-        if (body.tags !== undefined) patch.tags = body.tags;
 
         const { data, error } = await client
           .from('oracle_signals')
-          .update(patch)
-          .eq('id', signalId)
+          .insert([newRow])
           .select()
           .single();
 
@@ -202,7 +252,7 @@ Deno.serve(async (req) => {
           return errorResponse(error.message, 400);
         }
 
-        return jsonResponse(data);
+        return jsonResponse(data, 201);
       } else {
         // CREATE signal
         const { data, error } = await client
@@ -234,7 +284,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeSignalPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+          `No patchable fields provided. Allowed fields: ${formatAllowedSignalPatchFields()}`,
           400,
         );
       }

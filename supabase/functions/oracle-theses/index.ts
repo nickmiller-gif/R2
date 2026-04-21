@@ -3,7 +3,35 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+
+// Columns the client may populate on CREATE. `profile_id` is always pulled
+// from the JWT so operators cannot attribute a thesis to another user.
+// Publication columns (`publication_state`, `published_at`, `published_by`),
+// decision audit columns (`last_decision_at`, `last_decision_by`,
+// `decision_metadata`), and `superseded_by_thesis_id` are server-controlled
+// and only mutable via the publish / challenge / supersede actions.
+const THESIS_INSERT_FIELDS = [
+  'title',
+  'thesis_statement',
+  'meg_entity_id',
+  'status',
+  'novelty_status',
+  'duplicate_of_thesis_id',
+  'inspiration_signal_ids',
+  'inspiration_evidence_item_ids',
+  'validation_evidence_item_ids',
+  'contradiction_evidence_item_ids',
+  'confidence',
+  'evidence_strength',
+  'uncertainty_summary',
+  'metadata',
+  'platform_id',
+  'site_domain',
+  'visibility_class',
+  'access_policy',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -206,10 +234,17 @@ Deno.serve(async (req) => {
 
         return jsonResponse(data);
       } else {
-        // CREATE thesis
+        // CREATE thesis. profile_id is server-injected from the JWT; the
+        // publication + decision audit columns ride DB defaults and can only
+        // be mutated via the publish / approve / reject / defer /
+        // challenge / supersede actions above.
+        const row = sanitizeInsert(body, THESIS_INSERT_FIELDS, {
+          profile_id: auth.claims.userId,
+        });
+
         const { data, error } = await client
           .from('oracle_theses')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 
@@ -236,7 +271,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeThesisPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+          'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, metadata. To change publication_state use action=publish|approve|reject|defer.',
           400,
         );
       }

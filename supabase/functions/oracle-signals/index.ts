@@ -3,10 +3,26 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import {
   buildSafeSignalPatch,
   formatAllowedSignalPatchFields,
 } from '../../../src/services/oracle/oracle-patch-builders.ts';
+
+// Columns the client may populate on CREATE. All publication-workflow columns
+// (`publication_state`, `published_at`, `published_by`, `publication_notes`),
+// the rescore-only `version`/`status`, and DB-defaulted audit columns are
+// server-controlled and dropped by sanitizeInsert.
+const SIGNAL_INSERT_FIELDS = [
+  'entity_asset_id',
+  'score',
+  'confidence',
+  'reasons',
+  'tags',
+  'analysis_document_id',
+  'source_asset_id',
+  'producer_ref',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -254,10 +270,15 @@ Deno.serve(async (req) => {
 
         return jsonResponse(data, 201);
       } else {
-        // CREATE signal
+        // CREATE signal. The raw body is filtered to a column allowlist —
+        // publication state / version / status ride the DB defaults
+        // (`pending_review` / `1` / `scored`) and can only be mutated via the
+        // publish / approve / reject / defer / rescore actions above.
+        const row = sanitizeInsert(body, SIGNAL_INSERT_FIELDS, {});
+
         const { data, error } = await client
           .from('oracle_signals')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 

@@ -59,6 +59,32 @@ describe('oracle patch builders', () => {
     expect(typeof patch.updated_at).toBe('string');
   });
 
+  it('drops publication_state from thesis patches so the publish action is the only path', () => {
+    // publication_state mutations must flow through the publish / approve /
+    // reject / defer actions on the oracle-theses edge function, which write
+    // a matching oracle_publication_events audit row. A bare PATCH cannot be
+    // allowed to flip the state silently.
+    const patch = buildSafeThesisPatch({
+      title: 'Drift',
+      publication_state: 'published',
+      published_at: '2026-04-21T00:00:00Z',
+      published_by: 'should-not-pass',
+      last_decision_by: 'should-not-pass',
+      last_decision_at: '2026-04-21T00:00:00Z',
+      decision_metadata: { hijack: true },
+      superseded_by_thesis_id: 'should-not-pass',
+    });
+
+    expect(patch.title).toBe('Drift');
+    expect(patch.publication_state).toBeUndefined();
+    expect(patch.published_at).toBeUndefined();
+    expect(patch.published_by).toBeUndefined();
+    expect(patch.last_decision_by).toBeUndefined();
+    expect(patch.last_decision_at).toBeUndefined();
+    expect(patch.decision_metadata).toBeUndefined();
+    expect(patch.superseded_by_thesis_id).toBeUndefined();
+  });
+
   it('keeps only allowlisted evidence item fields', () => {
     const patch = buildSafeEvidenceItemPatch({
       source_lane: 'market',

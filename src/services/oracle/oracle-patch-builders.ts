@@ -12,6 +12,11 @@ const SIGNAL_PATCH_FIELDS = [
 
 const SIGNAL_PATCH_ALLOWLIST = new Set(SIGNAL_PATCH_FIELDS);
 
+// Note: `publication_state` is intentionally excluded. It is audit-critical
+// and must only be mutated via the publish / approve / reject / defer
+// actions on the oracle-theses edge function, which write a matching
+// `oracle_publication_events` row. Allowing a bare PATCH would bypass that
+// audit trail.
 const THESIS_PATCH_ALLOWLIST = new Set([
   'title',
   'thesis_statement',
@@ -21,7 +26,6 @@ const THESIS_PATCH_ALLOWLIST = new Set([
   'confidence',
   'evidence_strength',
   'uncertainty_summary',
-  'publication_state',
   'metadata',
 ]);
 

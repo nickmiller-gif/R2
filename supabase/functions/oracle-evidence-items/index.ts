@@ -3,7 +3,25 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import { buildSafeEvidenceItemPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+
+// Columns the client may populate on CREATE. `profile_id` is server-injected
+// from the JWT so operators cannot attribute evidence to another user. DB
+// defaults cover timestamps and the jsonb metadata columns.
+const EVIDENCE_INSERT_FIELDS = [
+  'signal_id',
+  'source_lane',
+  'source_class',
+  'source_ref',
+  'content_summary',
+  'confidence',
+  'evidence_strength',
+  'source_date',
+  'publication_url',
+  'author_info',
+  'metadata',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -61,9 +79,13 @@ Deno.serve(async (req) => {
       if (idemError) return idemError;
 
       const body = await req.json();
+      const row = sanitizeInsert(body, EVIDENCE_INSERT_FIELDS, {
+        profile_id: auth.claims.userId,
+      });
+
       const { data, error } = await client
         .from('oracle_evidence_items')
-        .insert([body])
+        .insert([row])
         .select()
         .single();
 

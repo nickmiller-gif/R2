@@ -1,66 +1,140 @@
 /*
- * R2 semantic token contract
- * Canonical values use OkLCh. Legacy HSL channels are provided in
- * companion variables for mixed-generation consumers.
+ * R2 Semantic Token Contract
+ * ==========================
+ * The canonical role contract for the R2 ecosystem. Every brand surface
+ * (operator consoles, public pages, embedded widget) resolves these
+ * semantic roles rather than raw palette literals.
+ *
+ * Design philosophy (R2 Community - Design Philosophy.md): institutional
+ * cartography. Deep navy ink anchors light-warm paper; a surveyor's warm
+ * accent creates focal gravity. This file is the LIGHT UI canonical;
+ * `.dark` below provides the institutional-cartography inverse (deep-navy
+ * ground, warm cream ink) for dark-themed surfaces and print art.
+ *
+ * Canonical values are OkLCh. Legacy HSL shim channels are provided for
+ * consumers whose generation uses `hsl(var(--token-hsl))`.
  */
 
 :root {
-  /* Canonical OkLCh roles */
-  --surface-ground: oklch(0.98 0.004 255);
-  --surface-plate: oklch(0.995 0.002 255);
-  --surface-card: oklch(0.965 0.006 255);
-  --ink-primary: oklch(0.22 0.02 255);
-  --ink-muted: oklch(0.52 0.01 255);
-  --ink-inverse: oklch(0.99 0.003 255);
-  --accent-primary: oklch(0.58 0.16 252);
-  --accent-mark: oklch(0.7 0.14 220);
-  --status-verified: oklch(0.58 0.14 245);
-  --status-tentative: oklch(0.67 0.14 170);
-  --status-unverified: oklch(0.62 0.02 255);
-  --status-error: oklch(0.55 0.2 25);
-  --border-hairline: oklch(0.88 0.01 255);
-  --focus-ring: oklch(0.58 0.16 252 / 0.45);
+  /* ── Canonical OkLCh surface/ink/accent roles ──────────────── */
+  --surface-ground: oklch(0.97 0.01 80);      /* warm paper — page background */
+  --surface-plate: oklch(1 0 0);              /* pure white — card/panel */
+  --surface-card: oklch(0.985 0.005 80);      /* slightly warmed white — elevated card */
+  --surface-inset: oklch(0.935 0.015 80);     /* well/tray background */
+  --surface-elevated: var(--surface-plate);
+  --surface-glass: oklch(1 0 0 / 0.72);
 
-  /* Legacy HSL channels (space-separated channels for hsl(var())) */
-  --surface-ground-hsl: 220 28% 98%;
-  --surface-plate-hsl: 220 25% 99%;
-  --surface-card-hsl: 220 20% 96%;
-  --ink-primary-hsl: 224 28% 16%;
-  --ink-muted-hsl: 220 10% 42%;
-  --ink-inverse-hsl: 220 25% 99%;
-  --accent-primary-hsl: 227 86% 57%;
-  --accent-mark-hsl: 210 76% 58%;
-  --status-verified-hsl: 224 76% 55%;
-  --status-tentative-hsl: 160 58% 43%;
-  --status-unverified-hsl: 220 10% 52%;
-  --status-error-hsl: 8 58% 44%;
-  --border-hairline-hsl: 40 8% 82%;
-  --focus-ring-hsl: 18 56% 44%;
+  --ink-primary: oklch(0.22 0.04 250);        /* deep navy */
+  --ink-muted: oklch(0.50 0.02 250);          /* muted navy-gray */
+  --ink-inverse: oklch(0.97 0.01 80);         /* warm paper for dark surfaces */
 
-  /* Shared semantic extension tokens used across apps */
+  --accent-primary: oklch(0.55 0.16 40);      /* surveyor's red */
+  --accent-mark: oklch(0.74 0.14 70);         /* aged amber / cartographic highlight */
+
+  --status-verified: oklch(0.52 0.14 150);    /* institutional green */
+  --status-tentative: oklch(0.74 0.14 70);    /* amber (== accent-mark) */
+  --status-unverified: oklch(0.50 0.02 250);  /* muted */
+  --status-error: oklch(0.55 0.20 25);        /* warning red */
+
+  --border-hairline: oklch(0.88 0.01 80);     /* cartographic grid line */
+  --focus-ring: oklch(0.55 0.16 40 / 0.6);
+
+  /* ── Extension tokens (re-exports & derivations) ────────────── */
   --status-success: var(--status-verified);
   --status-success-foreground: var(--ink-inverse);
   --status-warning: var(--status-tentative);
   --status-warning-foreground: var(--ink-primary);
   --status-danger: var(--status-error);
   --status-danger-foreground: var(--ink-inverse);
-  --status-info: oklch(0.52 0.1 245);
+  --status-info: oklch(0.52 0.10 245);
   --status-info-foreground: var(--ink-inverse);
-
-  --surface-elevated: var(--surface-card);
-  --surface-inset: oklch(0.95 0.005 255);
-  --surface-glass: oklch(0.985 0.004 255 / 0.78);
 
   --chart-1: oklch(0.55 0.16 40);
   --chart-2: oklch(0.74 0.14 70);
-  --chart-3: oklch(0.5 0.08 250);
-  --chart-4: oklch(0.68 0.1 140);
-  --chart-5: oklch(0.6 0.11 300);
+  --chart-3: oklch(0.50 0.08 250);
+  --chart-4: oklch(0.58 0.10 150);
+  --chart-5: oklch(0.60 0.11 300);
 
-  --font-display: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-  --font-body: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  /* ── Typography role tokens ─────────────────────────────────── */
+  --font-display: "IBM Plex Serif", Georgia, serif;
+  --font-body: "IBM Plex Serif", Georgia, serif;
   --font-ui: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-label: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-caption: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+
+  /* ── Legacy HSL shim (space-separated channels for hsl(var())) ── */
+  /* These match the OkLCh values above within the sRGB gamut. */
+  --surface-ground-hsl: 40 14% 97%;
+  --surface-plate-hsl: 0 0% 100%;
+  --surface-card-hsl: 40 12% 98%;
+  --surface-inset-hsl: 40 10% 93%;
+  --surface-elevated-hsl: 0 0% 100%;
+
+  --ink-primary-hsl: 220 18% 14%;
+  --ink-muted-hsl: 220 10% 42%;
+  --ink-inverse-hsl: 40 14% 97%;
+
+  --accent-primary-hsl: 18 56% 44%;
+  --accent-mark-hsl: 40 60% 56%;
+
+  --status-verified-hsl: 150 50% 34%;
+  --status-tentative-hsl: 40 60% 56%;
+  --status-unverified-hsl: 220 10% 42%;
+  --status-error-hsl: 8 58% 44%;
+
+  --border-hairline-hsl: 40 8% 82%;
+  --focus-ring-hsl: 18 56% 44%;
+}
+
+/*
+ * Institutional-cartography dark variant. Matches the design philosophy's
+ * "deep navy — nearly black — anchors the composition like the ocean floor
+ * of an old admiralty chart" description. Any surface that opts in via
+ * `class="dark"` or `[data-theme="dark"]` inverts to the navy ground.
+ */
+.dark,
+[data-theme="dark"] {
+  --surface-ground: oklch(0.18 0.02 250);
+  --surface-plate: oklch(0.22 0.02 250);
+  --surface-card: oklch(0.25 0.02 250);
+  --surface-inset: oklch(0.20 0.02 250);
+  --surface-elevated: oklch(0.25 0.02 250);
+  --surface-glass: oklch(0.22 0.02 250 / 0.72);
+
+  --ink-primary: oklch(0.94 0.02 80);
+  --ink-muted: oklch(0.70 0.02 80);
+  --ink-inverse: oklch(0.22 0.04 250);
+
+  --accent-primary: oklch(0.72 0.16 40);
+  --accent-mark: oklch(0.82 0.14 70);
+
+  --status-verified: oklch(0.68 0.16 150);
+  --status-tentative: oklch(0.82 0.14 70);
+  --status-unverified: oklch(0.70 0.02 80);
+  --status-error: oklch(0.68 0.20 25);
+
+  --border-hairline: oklch(0.32 0.02 250);
+  --focus-ring: oklch(0.72 0.16 40 / 0.6);
+
+  --surface-ground-hsl: 220 40% 9%;
+  --surface-plate-hsl: 220 25% 15%;
+  --surface-card-hsl: 220 22% 18%;
+  --surface-inset-hsl: 220 30% 12%;
+  --surface-elevated-hsl: 220 22% 18%;
+
+  --ink-primary-hsl: 40 40% 90%;
+  --ink-muted-hsl: 40 15% 65%;
+  --ink-inverse-hsl: 220 18% 14%;
+
+  --accent-primary-hsl: 18 76% 58%;
+  --accent-mark-hsl: 40 70% 68%;
+
+  --status-verified-hsl: 150 60% 52%;
+  --status-tentative-hsl: 40 70% 68%;
+  --status-unverified-hsl: 40 15% 65%;
+  --status-error-hsl: 8 78% 58%;
+
+  --border-hairline-hsl: 220 18% 26%;
+  --focus-ring-hsl: 18 76% 58%;
 }

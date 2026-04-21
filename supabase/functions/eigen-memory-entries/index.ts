@@ -3,6 +3,20 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeUpdate } from '../_shared/sanitize.ts';
+
+// `owner_id`, `id`, `created_at`, and supersede-chain columns must never be
+// mutated via the plain PATCH path — that would let a user transfer ownership
+// of an entry to another user or break the supersede lineage.
+const UPDATE_FIELDS = [
+  'scope',
+  'key',
+  'value',
+  'retention_class',
+  'expires_at',
+  'confidence_band',
+  'conflict_group',
+] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -194,9 +208,14 @@ Deno.serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
+      const patch = sanitizeUpdate(body, UPDATE_FIELDS);
+      if (Object.keys(patch).length === 0) {
+        return errorResponse('No updatable fields in body', 400);
+      }
+
       const { data, error } = await client
         .from('memory_entries')
-        .update(body)
+        .update(patch)
         .eq('id', id)
         .eq('owner_id', auth.claims.userId)
         .select()

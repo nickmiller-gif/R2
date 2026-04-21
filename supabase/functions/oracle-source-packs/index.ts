@@ -1,8 +1,13 @@
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
+
+// profile_id is bound to the authenticated user server-side so an operator
+// can never create a pack attributed to someone else's profile.
+const INSERT_FIELDS = ['source_lane', 'source_ids', 'metadata'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -58,9 +63,12 @@ Deno.serve(async (req) => {
       if (idemError) return idemError;
 
       const body = await req.json();
+      const row = sanitizeInsert(body, INSERT_FIELDS, {
+        profile_id: auth.claims.userId,
+      });
       const { data, error } = await client
         .from('oracle_source_packs')
-        .insert([body])
+        .insert([row])
         .select()
         .single();
 

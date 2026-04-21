@@ -3,6 +3,9 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { pickFields } from '../_shared/sanitize.ts';
+
+const INSERT_FIELDS = ['thesis_id', 'evidence_item_id', 'role', 'weight', 'notes'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -43,9 +46,10 @@ Deno.serve(async (req) => {
       if (idemError) return idemError;
 
       const body = await req.json();
+      const row = pickFields(body, INSERT_FIELDS);
       const { data, error } = await client
         .from('oracle_thesis_evidence_links')
-        .insert([body])
+        .insert([row])
         .select()
         .single();
 

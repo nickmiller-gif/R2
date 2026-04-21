@@ -3,6 +3,9 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
+
+const INSERT_FIELDS = ['entity_type', 'canonical_name', 'status', 'external_ids', 'attributes', 'metadata'] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -82,10 +85,15 @@ Deno.serve(async (req) => {
         if (error) return errorResponse(error.message, 400);
         return jsonResponse(data);
       } else {
-        // CREATE entity
+        // CREATE entity — `profile_id` is bound to the authenticated user so
+        // an operator cannot create an entity that claims it belongs to
+        // someone else's profile.
+        const row = sanitizeInsert(body, INSERT_FIELDS, {
+          profile_id: auth.claims.userId,
+        });
         const { data, error } = await client
           .from('meg_entities')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
         if (error) return errorResponse(error.message, 400);

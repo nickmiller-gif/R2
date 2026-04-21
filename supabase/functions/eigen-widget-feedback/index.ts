@@ -110,16 +110,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: updateError } = await client
-      .from('conversation_turn')
-      .update({
-        feedback_value: body.value,
-        feedback_text: body.note ?? null,
-      })
-      .eq('id', body.turn_id);
-    if (updateError) return errorResponse(updateError.message, 500);
+    // Only mirror the feedback onto the parent turn when we actually inserted
+    // a new feedback row. If the idempotent path was taken, the turn already
+    // reflects the correct value from the first call — an additional update
+    // would let a second call with a different `value`/`note` silently
+    // overwrite the turn's mirrored copy while the append-only
+    // conversation_turn_feedback row still carries the original.
+    if (!feedbackAlreadyRecorded) {
+      const { error: updateError } = await client
+        .from('conversation_turn')
+        .update({
+          feedback_value: body.value,
+          feedback_text: body.note ?? null,
+        })
+        .eq('id', body.turn_id);
+      if (updateError) return errorResponse(updateError.message, 500);
+    }
 
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, replayed: feedbackAlreadyRecorded });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return errorResponse(message, classifyRequestError(message));

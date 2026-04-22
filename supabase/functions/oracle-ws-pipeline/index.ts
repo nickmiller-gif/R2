@@ -477,31 +477,34 @@ async function scoreAndVerify(
     }
   }
 
+  const hypothesisUpdates: Promise<{ error: { message: string } | null }>[] = [];
   if (verifiedHypothesisIds.length > 0) {
-    const { error: verifiedUpdateError } = await serviceClient
-      .from('oracle_run_hypotheses')
-      .update({
-        publishable: true,
-        verification_passed: true,
-      })
-      .in('id', verifiedHypothesisIds);
-
-    if (verifiedUpdateError) {
-      throw new Error(`Failed to update verified hypotheses: ${verifiedUpdateError.message}`);
-    }
+    hypothesisUpdates.push(
+      serviceClient
+        .from('oracle_run_hypotheses')
+        .update({
+          publishable: true,
+          verification_passed: true,
+        })
+        .in('id', verifiedHypothesisIds),
+    );
   }
-
   if (unverifiedHypothesisIds.length > 0) {
-    const { error: unverifiedUpdateError } = await serviceClient
-      .from('oracle_run_hypotheses')
-      .update({
-        publishable: false,
-        verification_passed: false,
-      })
-      .in('id', unverifiedHypothesisIds);
-
-    if (unverifiedUpdateError) {
-      throw new Error(`Failed to update unverified hypotheses: ${unverifiedUpdateError.message}`);
+    hypothesisUpdates.push(
+      serviceClient
+        .from('oracle_run_hypotheses')
+        .update({
+          publishable: false,
+          verification_passed: false,
+        })
+        .in('id', unverifiedHypothesisIds),
+    );
+  }
+  if (hypothesisUpdates.length > 0) {
+    const updateResults = await Promise.all(hypothesisUpdates);
+    const firstErr = updateResults.find((r) => r.error)?.error;
+    if (firstErr) {
+      throw new Error(`Failed to update hypothesis verification flags: ${firstErr.message}`);
     }
   }
 

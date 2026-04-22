@@ -1,6 +1,5 @@
--- RLS initplan follow-up: oracle_outcomes SELECT (explicit TO authenticated) and eigen_oracle_outbox
--- service-role policies use (SELECT auth.role()) per Supabase lint 0003.
--- Remote schema_migrations version aligned to this filename (was 20260422010843 from MCP apply).
+-- RLS initplan follow-up: oracle_outcomes SELECT (explicit TO authenticated); eigen_oracle_outbox
+-- policies refined again in 202604230003_eigen_oracle_outbox_rls_to_service_role.sql.
 
 -- ── oracle_outcomes ───────────────────────────────────────────────────────
 

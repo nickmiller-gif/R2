@@ -3,6 +3,11 @@
  *
  * Evaluates capability requests against policy-tag-scoped allow/deny rules.
  */
+import {
+  evaluateEigenPolicyRules,
+  matchWildcard,
+  matchesRule,
+} from '../../lib/eigen/eigen-policy-eval.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import type {
   CreateEigenPolicyRuleInput,
@@ -11,7 +16,12 @@ import type {
   EvaluateEigenPolicyInput,
   EvaluateEigenPolicyResult,
 } from '../../types/eigen/policy-engine.js';
-import { ROLE_HIERARCHY } from '../../types/shared/roles.js';
+
+export {
+  evaluateEigenPolicyRules,
+  matchWildcard,
+  matchesRule,
+} from '../../lib/eigen/eigen-policy-eval.js';
 
 export interface DbEigenPolicyRuleRow {
   id: string;
@@ -51,61 +61,6 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
     metadata: row.metadata ?? {},
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
-  };
-}
-
-type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
-
-function isHierarchicalRole(value: string): value is HierarchicalRole {
-  return (ROLE_HIERARCHY as readonly string[]).includes(value);
-}
-
-function hasRequiredRole(callerRoles: string[], requiredRole: string | null): boolean {
-  if (!requiredRole) return true;
-  if (callerRoles.includes(requiredRole)) return true;
-  if (!isHierarchicalRole(requiredRole)) return false;
-  const minimumIndex = ROLE_HIERARCHY.indexOf(requiredRole);
-  return callerRoles.some((role) =>
-    isHierarchicalRole(role) && ROLE_HIERARCHY.indexOf(role) >= minimumIndex,
-  );
-}
-
-export function matchWildcard(pattern: string, value: string): boolean {
-  if (pattern === '*') return true;
-  if (!pattern.includes('*')) return pattern === value;
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(value);
-}
-
-export function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {
-  const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));
-  if (!policyTagMatch) return false;
-  const capabilityTagMatch = input.capabilityTags.some((tag) =>
-    matchWildcard(rule.capabilityTagPattern, tag),
-  );
-  if (!capabilityTagMatch) return false;
-  if (!hasRequiredRole(input.callerRoles, rule.requiredRole)) return false;
-  return true;
-}
-
-export function evaluateEigenPolicyRules(
-  rules: EigenPolicyRule[],
-  input: EvaluateEigenPolicyInput,
-): EvaluateEigenPolicyResult {
-  const matching = rules.filter((rule) => matchesRule(rule, input));
-  const denying = matching.filter((rule) => rule.effect === 'deny');
-  if (denying.length > 0) {
-    return {
-      allowed: false,
-      matchedRuleIds: matching.map((r) => r.id),
-      denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`),
-    };
-  }
-  const allowing = matching.filter((rule) => rule.effect === 'allow');
-  return {
-    allowed: allowing.length > 0,
-    matchedRuleIds: matching.map((r) => r.id),
-    denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'],
   };
 }
 
@@ -159,4 +114,3 @@ export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPo
     },
   };
 }
-

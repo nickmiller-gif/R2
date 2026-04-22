@@ -3,11 +3,7 @@
  *
  * Evaluates capability requests against policy-tag-scoped allow/deny rules.
  */
-import {
-  evaluateEigenPolicyRules,
-  matchWildcard,
-  matchesRule,
-} from '../../lib/eigen/eigen-policy-eval.js';
+import { evaluateEigenPolicyRules } from '../../lib/eigen/eigen-policy-eval.ts';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import type {
   CreateEigenPolicyRuleInput,
@@ -21,7 +17,7 @@ export {
   evaluateEigenPolicyRules,
   matchWildcard,
   matchesRule,
-} from '../../lib/eigen/eigen-policy-eval.js';
+} from '../../lib/eigen/eigen-policy-eval.ts';
 
 export interface DbEigenPolicyRuleRow {
   id: string;

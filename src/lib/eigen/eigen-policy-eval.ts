@@ -6,8 +6,8 @@ import type {
   EigenPolicyRule,
   EvaluateEigenPolicyInput,
   EvaluateEigenPolicyResult,
-} from '../../types/eigen/policy-engine.js';
-import { ROLE_HIERARCHY } from '../../types/shared/roles.js';
+} from '../../types/eigen/policy-engine.ts';
+import { ROLE_HIERARCHY } from '../../types/shared/roles.ts';
 
 type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
 
@@ -28,9 +28,15 @@ export function hasRequiredRole(callerRoles: string[], requiredRole: string | nu
 export function matchWildcard(pattern: string, value: string): boolean {
   if (pattern === '*') return true;
   if (!pattern.includes('*')) return pattern === value;
+  const regex = wildcardRegexCache.get(pattern);
+  if (regex) return regex.test(value);
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(value);
+  const compiled = new RegExp(`^${escaped}$`);
+  wildcardRegexCache.set(pattern, compiled);
+  return compiled.test(value);
 }
+
+const wildcardRegexCache = new Map<string, RegExp>();
 
 export function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {
   const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));

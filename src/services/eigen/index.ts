@@ -45,3 +45,10 @@ export {
   type AutonomousCaptureDb,
   type DbAutonomousCaptureRow,
 } from './autonomous-capture.service.js';
+
+export {
+  createEigenSiteRegistryService,
+  type EigenSiteRegistryService,
+  type EigenSiteRegistryDb,
+  type DbEigenSiteRegistryRow,
+} from './site-registry.service.js';

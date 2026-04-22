@@ -1,25 +1,14 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import type { CharterRole } from './rbac.ts';
-import { ROLE_HIERARCHY } from './roles.ts';
-
-interface EigenPolicyRule {
-  id: string;
-  policyTag: string;
-  capabilityTagPattern: string;
-  effect: 'allow' | 'deny';
-  requiredRole: CharterRole | null;
-  rationale: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
+import { evaluateEigenPolicyRulesPerCapability } from '../../../src/lib/eigen/eigen-policy-eval.ts';
+import type { EigenPolicyRule } from '../../../src/types/eigen/policy-engine.ts';
 
 interface DbEigenPolicyRuleRow {
   id: string;
   policy_tag: string;
   capability_tag_pattern: string;
   effect: 'allow' | 'deny';
-  required_role: CharterRole | null;
+  required_role: string | null;
   rationale: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -39,44 +28,6 @@ export interface ResolveEigenCapabilityAccessResult {
   deniedReasonsByCapability: Record<string, string[]>;
 }
 
-function hasRequiredRole(callerRoles: CharterRole[], requiredRole: CharterRole | null): boolean {
-  if (!requiredRole) return true;
-  if (callerRoles.includes(requiredRole)) return true;
-  const minimumIndex = ROLE_HIERARCHY.indexOf(requiredRole);
-  return callerRoles.some((role) => ROLE_HIERARCHY.indexOf(role) >= minimumIndex);
-}
-
-function matchWildcard(pattern: string, value: string): boolean {
-  if (pattern === '*') return true;
-  if (!pattern.includes('*')) return pattern === value;
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(value);
-}
-
-function matchesRule(
-  rule: EigenPolicyRule,
-  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
-): boolean {
-  const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));
-  if (!policyTagMatch) return false;
-  const capabilityTagMatch = input.capabilityTags.some((tag) => matchWildcard(rule.capabilityTagPattern, tag));
-  if (!capabilityTagMatch) return false;
-  return hasRequiredRole(input.callerRoles, rule.requiredRole);
-}
-
-function evaluateEigenPolicyRules(
-  rules: EigenPolicyRule[],
-  input: { policyTags: string[]; capabilityTags: string[]; callerRoles: CharterRole[] },
-): { allowed: boolean; denyReasons: string[] } {
-  const matching = rules.filter((rule) => matchesRule(rule, input));
-  const denying = matching.filter((rule) => rule.effect === 'deny');
-  if (denying.length > 0) {
-    return { allowed: false, denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`) };
-  }
-  const allowing = matching.filter((rule) => rule.effect === 'allow');
-  return { allowed: allowing.length > 0, denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'] };
-}
-
 function normalizeTags(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
@@ -90,8 +41,8 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
     requiredRole: row.required_role,
     rationale: row.rationale,
     metadata: row.metadata ?? {},
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
   };
 }
 
@@ -131,23 +82,8 @@ export async function resolveEigenCapabilityAccess(
     };
   }
 
-  const allowedCapabilityTags: string[] = [];
-  const deniedCapabilityTags: string[] = [];
-  const deniedReasonsByCapability: Record<string, string[]> = {};
-
-  for (const capabilityTag of capabilityTags) {
-    const evaluation = evaluateEigenPolicyRules(rules, {
-      policyTags,
-      capabilityTags: [capabilityTag],
-      callerRoles: input.callerRoles,
-    });
-    if (evaluation.allowed) {
-      allowedCapabilityTags.push(capabilityTag);
-    } else {
-      deniedCapabilityTags.push(capabilityTag);
-      deniedReasonsByCapability[capabilityTag] = evaluation.denyReasons;
-    }
-  }
+  const { allowedCapabilityTags, deniedCapabilityTags, deniedReasonsByCapability } =
+    evaluateEigenPolicyRulesPerCapability(rules, policyTags, capabilityTags, input.callerRoles);
 
   return {
     allowedCapabilityTags,

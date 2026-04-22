@@ -1,6 +1,10 @@
 -- RLS initplan batch 2: wrap auth.role() / auth.uid() in scalar subqueries (Supabase advisor lint 0003).
 -- Scope: MEG write policies, oracle_outcomes / oracle_thesis_knowledge_links writes (from 202604150001),
 -- and idempotent recreate of Charter Slice 01 authenticated read policies (USING true).
+--
+-- Policy edits use DROP POLICY + CREATE POLICY (same names). Repo migration hygiene
+-- (scripts/check-migrations.sh) warns on relation/column/schema drops, truncate, and bulk data deletes,
+-- not on RLS policy replacement; same pattern as 202604030003_optimize_rls_initplan_policies.sql.
 
 -- ── meg_entities ──────────────────────────────────────────────────────────
 

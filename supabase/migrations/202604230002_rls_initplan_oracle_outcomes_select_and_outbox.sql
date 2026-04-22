@@ -1,5 +1,6 @@
 -- RLS initplan follow-up: oracle_outcomes SELECT (explicit TO authenticated); eigen_oracle_outbox
--- policies refined again in 202604230003_eigen_oracle_outbox_rls_to_service_role.sql.
+-- interim policies (then superseded by 202604230003 for TO service_role). Two files because 002
+-- may already be applied on preview/prod before 003 landed—same DROP/CREATE policy pattern as 202604030003.
 
 -- ── oracle_outcomes ───────────────────────────────────────────────────────
 

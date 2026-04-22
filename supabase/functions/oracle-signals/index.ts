@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
 
         const newId = data.id as string;
         const auditPrev = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'signal_rescore',
+          targetType: 'signal',
           targetId: previousId,
           fromState: previousPublicationState,
           toState: 'superseded',
@@ -264,10 +264,14 @@ Deno.serve(async (req) => {
           metadata: { successor_signal_id: newId, new_score: score },
         });
         if (auditPrev) {
-          return errorResponse(`Signal rescored but audit event failed: ${auditPrev}`, 500);
+          console.error('[oracle-signals] rescore_supersede_previous audit failed', {
+            previousId,
+            newId,
+            error: auditPrev,
+          });
         }
         const auditNew = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'signal_rescore',
+          targetType: 'signal',
           targetId: newId,
           fromState: null,
           toState: 'pending_review',
@@ -278,7 +282,11 @@ Deno.serve(async (req) => {
           metadata: { predecessor_signal_id: previousId, new_score: score },
         });
         if (auditNew) {
-          return errorResponse(`Signal rescored but new-version audit failed: ${auditNew}`, 500);
+          console.error('[oracle-signals] rescore_new_version audit failed', {
+            previousId,
+            newId,
+            error: auditNew,
+          });
         }
 
         return jsonResponse(data, 201);

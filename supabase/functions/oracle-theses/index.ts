@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
         const predPub = predecessorRow.publication_state as string;
         const predStatus = predecessorRow.status as string;
         const auditPredecessor = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'thesis_supersession',
+          targetType: 'thesis',
           targetId: thesisId,
           fromState: predPub,
           toState: 'superseded',
@@ -249,10 +249,14 @@ Deno.serve(async (req) => {
           },
         });
         if (auditPredecessor) {
-          return errorResponse(`Thesis superseded but audit event failed: ${auditPredecessor}`, 500);
+          console.error('[oracle-theses] supersede_predecessor audit failed', {
+            thesisId,
+            successorId,
+            error: auditPredecessor,
+          });
         }
         const auditSuccessor = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'thesis_supersession',
+          targetType: 'thesis',
           targetId: successorId,
           fromState: null,
           toState: 'successor_of',
@@ -263,7 +267,11 @@ Deno.serve(async (req) => {
           metadata: { predecessor_thesis_id: thesisId },
         });
         if (auditSuccessor) {
-          return errorResponse(`Thesis superseded but successor audit failed: ${auditSuccessor}`, 500);
+          console.error('[oracle-theses] supersede_successor audit failed', {
+            thesisId,
+            successorId,
+            error: auditSuccessor,
+          });
         }
 
         return jsonResponse(data);

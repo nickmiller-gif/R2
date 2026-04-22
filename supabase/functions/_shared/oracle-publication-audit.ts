@@ -2,9 +2,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export type OraclePublicationTargetType =
   | 'signal'
-  | 'thesis'
-  | 'thesis_supersession'
-  | 'signal_rescore';
+  | 'thesis';
 
 /** Insert oracle_publication_events after publication or versioned operator workflows. */
 export async function insertOraclePublicationAuditEvent(
@@ -29,7 +27,7 @@ export async function insertOraclePublicationAuditEvent(
     decided_by: params.decidedBy,
     decided_at: params.decidedAt,
     notes: params.notes,
-    metadata: { action: params.action, ...(params.metadata ?? {}) },
+    metadata: { ...(params.metadata ?? {}), action: params.action },
   });
   return error?.message ?? null;
 }

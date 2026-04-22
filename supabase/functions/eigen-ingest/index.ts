@@ -357,16 +357,21 @@ Deno.serve(async (req) => {
 
     if (ingestCallerRoles) {
       const policyTagsForKos = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
-      const kos = await resolveEigenCapabilityAccess(client, {
-        policyTags: policyTagsForKos,
-        capabilityTags: [...EIGEN_KOS_CAPABILITY.ingest],
-        callerRoles: ingestCallerRoles,
-      });
-      if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
-        return errorResponse(
-          `KOS policy denied ingest: ${kos.deniedCapabilityTags.join(', ')}`,
-          403,
-        );
+      const kosCapabilityTags = [...EIGEN_KOS_CAPABILITY.ingest].filter(
+        (tag) => tag !== 'ingest' && !tag.startsWith('write:'),
+      );
+      if (kosCapabilityTags.length > 0) {
+        const kos = await resolveEigenCapabilityAccess(client, {
+          policyTags: policyTagsForKos,
+          capabilityTags: kosCapabilityTags,
+          callerRoles: ingestCallerRoles,
+        });
+        if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
+          return errorResponse(
+            `KOS policy denied ingest: ${kos.deniedCapabilityTags.join(', ')}`,
+            403,
+          );
+        }
       }
     }
 

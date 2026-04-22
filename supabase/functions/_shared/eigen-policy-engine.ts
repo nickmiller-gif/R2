@@ -46,11 +46,34 @@ function hasRequiredRole(callerRoles: CharterRole[], requiredRole: CharterRole |
   return callerRoles.some((role) => ROLE_HIERARCHY.indexOf(role) >= minimumIndex);
 }
 
+// Linear-time glob matcher. Only `*` is special (matches zero-or-more chars).
+// Uses two-pointer with single-level backtracking, so it cannot exhibit
+// catastrophic backtracking the way a regex with `.*` can — this matters
+// because `capability_tag_pattern` is operator-writable and the matcher runs
+// on the hot path of every Eigen request.
 function matchWildcard(pattern: string, value: string): boolean {
-  if (pattern === '*') return true;
-  if (!pattern.includes('*')) return pattern === value;
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(value);
+  let pi = 0;
+  let vi = 0;
+  let starPi = -1;
+  let starVi = -1;
+  while (vi < value.length) {
+    if (pi < pattern.length && pattern[pi] === value[vi]) {
+      pi++;
+      vi++;
+    } else if (pi < pattern.length && pattern[pi] === '*') {
+      starPi = pi;
+      starVi = vi;
+      pi++;
+    } else if (starPi !== -1) {
+      pi = starPi + 1;
+      starVi++;
+      vi = starVi;
+    } else {
+      return false;
+    }
+  }
+  while (pi < pattern.length && pattern[pi] === '*') pi++;
+  return pi === pattern.length;
 }
 
 function matchesRule(

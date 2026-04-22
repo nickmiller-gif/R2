@@ -252,6 +252,7 @@ Deno.serve(async (req) => {
         }
 
         const newId = data.id as string;
+        const auditWarnings: string[] = [];
         const auditPrev = await insertOraclePublicationAuditEvent(client, {
           targetType: 'signal',
           targetId: previousId,
@@ -269,6 +270,7 @@ Deno.serve(async (req) => {
             newId,
             error: auditPrev,
           });
+          auditWarnings.push(`rescore_supersede_previous:${auditPrev}`);
         }
         const auditNew = await insertOraclePublicationAuditEvent(client, {
           targetType: 'signal',
@@ -287,9 +289,14 @@ Deno.serve(async (req) => {
             newId,
             error: auditNew,
           });
+          auditWarnings.push(`rescore_new_version:${auditNew}`);
         }
 
-        return jsonResponse(data, 201);
+        const responseBody =
+          auditWarnings.length > 0 && data && typeof data === 'object'
+            ? { ...(data as Record<string, unknown>), auditWarnings }
+            : data;
+        return jsonResponse(responseBody, 201);
       } else {
         // CREATE signal
         const { data, error } = await client

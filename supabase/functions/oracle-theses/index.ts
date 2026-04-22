@@ -234,6 +234,7 @@ Deno.serve(async (req) => {
 
         const predPub = predecessorRow.publication_state as string;
         const predStatus = predecessorRow.status as string;
+        const auditWarnings: string[] = [];
         const auditPredecessor = await insertOraclePublicationAuditEvent(client, {
           targetType: 'thesis',
           targetId: thesisId,
@@ -254,6 +255,7 @@ Deno.serve(async (req) => {
             successorId,
             error: auditPredecessor,
           });
+          auditWarnings.push(`supersede_predecessor:${auditPredecessor}`);
         }
         const auditSuccessor = await insertOraclePublicationAuditEvent(client, {
           targetType: 'thesis',
@@ -272,9 +274,14 @@ Deno.serve(async (req) => {
             successorId,
             error: auditSuccessor,
           });
+          auditWarnings.push(`supersede_successor:${auditSuccessor}`);
         }
 
-        return jsonResponse(data);
+        const responseBody =
+          auditWarnings.length > 0 && data && typeof data === 'object'
+            ? { ...(data as Record<string, unknown>), auditWarnings }
+            : data;
+        return jsonResponse(responseBody);
       } else {
         // CREATE thesis
         const { data, error } = await client

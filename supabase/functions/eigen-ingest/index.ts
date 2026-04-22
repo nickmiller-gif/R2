@@ -11,6 +11,8 @@ import { inferCorpusTier, normalizeCorpusPolicyTags, POLICY_TAG_RAY_VOICE } from
 import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
+const JWT_INGEST_KOS_EXCLUDED_CAPABILITY_TAGS = new Set<string>(['ingest']);
+
 interface IngestDocumentPayload {
   title?: string;
   body?: string;
@@ -64,6 +66,11 @@ function resolveIngestIdentity(req: Request): IngestIdentity | null {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }
   return null;
+}
+
+function shouldEvaluateJwtIngestKosCapabilityTag(tag: string): boolean {
+  if (JWT_INGEST_KOS_EXCLUDED_CAPABILITY_TAGS.has(tag)) return false;
+  return !tag.startsWith('write:');
 }
 
 function readMaxBodyChars(): number {
@@ -358,7 +365,7 @@ Deno.serve(async (req) => {
     if (ingestCallerRoles) {
       const policyTagsForKos = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
       const kosCapabilityTags = [...EIGEN_KOS_CAPABILITY.ingest].filter(
-        (tag) => tag !== 'ingest' && !tag.startsWith('write:'),
+        shouldEvaluateJwtIngestKosCapabilityTag,
       );
       if (kosCapabilityTags.length > 0) {
         const kos = await resolveEigenCapabilityAccess(client, {

@@ -27,6 +27,7 @@ export async function insertOraclePublicationAuditEvent(
     decided_by: params.decidedBy,
     decided_at: params.decidedAt,
     notes: params.notes,
+    // Ensure canonical action cannot be overridden by caller-provided metadata.
     metadata: { ...(params.metadata ?? {}), action: params.action },
   });
   return error?.message ?? null;

@@ -3,7 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import {
+  buildSafeThesisPatch,
+  formatAllowedThesisPatchFields,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
 
 const supabaseClients = createSupabaseClientFactory();
@@ -178,7 +181,7 @@ Deno.serve(async (req) => {
 
         return jsonResponse(data);
       } else if (action === 'supersede') {
-        // SUPERSEDE thesis
+        // SUPERSEDE thesis — align with versioned supersede: successor must exist and differ from self.
         if (!body.superseded_by_thesis_id) {
           return errorResponse('superseded_by_thesis_id required', 400);
         }
@@ -187,12 +190,28 @@ Deno.serve(async (req) => {
         if (!thesisId) {
           return errorResponse('id required in body', 400);
         }
+        const successorId = String(body.superseded_by_thesis_id);
+        if (successorId === thesisId) {
+          return errorResponse('superseded_by_thesis_id must differ from id', 400);
+        }
+
+        const { data: successor, error: successorError } = await client
+          .from('oracle_theses')
+          .select('id')
+          .eq('id', successorId)
+          .maybeSingle();
+        if (successorError) {
+          return errorResponse(successorError.message, 500);
+        }
+        if (!successor) {
+          return errorResponse(`Successor thesis not found: ${successorId}`, 404);
+        }
 
         const { data, error } = await client
           .from('oracle_theses')
           .update({
             status: 'superseded',
-            superseded_by_thesis_id: body.superseded_by_thesis_id,
+            superseded_by_thesis_id: successorId,
           })
           .eq('id', thesisId)
           .select()
@@ -234,7 +253,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeThesisPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+          `No patchable fields provided. Allowed fields: ${formatAllowedThesisPatchFields()}`,
           400,
         );
       }

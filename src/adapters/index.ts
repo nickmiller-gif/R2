@@ -48,6 +48,13 @@ export {
 } from './smartplrx-trend-tracker/eigen-smartplrx-adapter.js';
 
 export {
+  createOracleOperatorEigenAdapter,
+  mapOracleOperatorEventToEigenDocument,
+  type OracleOperatorGroundingEvent,
+  type OracleOperatorAdapterConfig,
+} from './oracle-operator/eigen-oracle-operator-adapter.js';
+
+export {
   visibilityPolicyTags,
   type AdapterVisibility,
   type AdapterIngestMetadata,

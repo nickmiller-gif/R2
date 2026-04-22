@@ -1,8 +1,10 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-export type OraclePublicationTargetType = 'signal' | 'thesis';
+export type OraclePublicationTargetType =
+  | 'signal'
+  | 'thesis';
 
-/** Insert oracle_publication_events after a successful publication_state update. */
+/** Insert oracle_publication_events after publication or versioned operator workflows. */
 export async function insertOraclePublicationAuditEvent(
   client: SupabaseClient,
   params: {
@@ -14,6 +16,7 @@ export async function insertOraclePublicationAuditEvent(
     decidedAt: string;
     notes: string | null;
     action: string;
+    metadata?: Record<string, unknown>;
   },
 ): Promise<string | null> {
   const { error } = await client.from('oracle_publication_events').insert({
@@ -24,7 +27,8 @@ export async function insertOraclePublicationAuditEvent(
     decided_by: params.decidedBy,
     decided_at: params.decidedAt,
     notes: params.notes,
-    metadata: { action: params.action },
+    // Ensure canonical action cannot be overridden by caller-provided metadata.
+    metadata: { ...(params.metadata ?? {}), action: params.action },
   });
   return error?.message ?? null;
 }

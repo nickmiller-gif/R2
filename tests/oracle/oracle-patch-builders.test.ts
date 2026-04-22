@@ -48,6 +48,7 @@ describe('oracle patch builders', () => {
     const patch = buildSafeThesisPatch({
       title: 'Updated title',
       status: 'active',
+      publication_state: 'published',
       metadata: { source: 'manual' },
       profile_id: 'should-not-pass',
       id: 'should-not-pass',
@@ -55,6 +56,7 @@ describe('oracle patch builders', () => {
 
     expect(patch.title).toBe('Updated title');
     expect(patch.status).toBe('active');
+    expect(patch.publication_state).toBeUndefined();
     expect(patch.metadata).toEqual({ source: 'manual' });
     expect(patch.profile_id).toBeUndefined();
     expect(patch.id).toBeUndefined();
@@ -97,7 +99,7 @@ describe('oracle patch builders', () => {
 
   it('formats thesis and evidence allowlists from the shared source of truth', () => {
     expect(formatAllowedThesisPatchFields()).toBe(
-      'title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+      'title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, metadata',
     );
     expect(formatAllowedEvidenceItemPatchFields()).toBe(
       'signal_id, source_lane, source_class, source_ref, content_summary, confidence, evidence_strength, source_date, publication_url, author_info, metadata',

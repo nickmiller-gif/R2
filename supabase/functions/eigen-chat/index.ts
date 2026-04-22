@@ -7,6 +7,8 @@ import {
   type EigenRetrieveChunk,
 } from '../_shared/eigen-retrieve-core.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
+import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -210,6 +212,18 @@ Deno.serve(async (req) => {
       return errorResponse('No private policy scope access for this user', 403);
     }
     body.policy_scope = resolvedScope.effectivePolicyScope;
+
+    const kos = await resolveEigenCapabilityAccess(client, {
+      policyTags: resolvedScope.effectivePolicyScope,
+      capabilityTags: [...EIGEN_KOS_CAPABILITY.chat],
+      callerRoles: roleCheck.roles,
+    });
+    if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
+      return errorResponse(
+        `KOS policy denied chat: ${kos.deniedCapabilityTags.join(', ')}`,
+        403,
+      );
+    }
 
     let sessionId = body.session_id;
     if (!sessionId) {

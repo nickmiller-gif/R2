@@ -203,6 +203,7 @@ Deno.serve(async (req) => {
         }
 
         const now = new Date().toISOString();
+        const previousPublicationState = String(previous.publication_state ?? 'pending_review');
 
         const { error: supersedeError } = await client
           .from('oracle_signals')
@@ -250,7 +251,52 @@ Deno.serve(async (req) => {
           return errorResponse(error.message, 400);
         }
 
-        return jsonResponse(data, 201);
+        const newId = data.id as string;
+        const auditWarnings: string[] = [];
+        const auditPrev = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'signal',
+          targetId: previousId,
+          fromState: previousPublicationState,
+          toState: 'superseded',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'rescore_supersede_previous',
+          metadata: { successor_signal_id: newId, new_score: score },
+        });
+        if (auditPrev) {
+          console.error('[oracle-signals] rescore_supersede_previous audit failed', {
+            previousId,
+            newId,
+            error: auditPrev,
+          });
+          auditWarnings.push(`rescore_supersede_previous:${auditPrev}`);
+        }
+        const auditNew = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'signal',
+          targetId: newId,
+          fromState: null,
+          toState: 'pending_review',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'rescore_new_version',
+          metadata: { predecessor_signal_id: previousId, new_score: score },
+        });
+        if (auditNew) {
+          console.error('[oracle-signals] rescore_new_version audit failed', {
+            previousId,
+            newId,
+            error: auditNew,
+          });
+          auditWarnings.push(`rescore_new_version:${auditNew}`);
+        }
+
+        const responseBody =
+          auditWarnings.length > 0 && data && typeof data === 'object'
+            ? { ...(data as Record<string, unknown>), auditWarnings }
+            : data;
+        return jsonResponse(responseBody, 201);
       } else {
         // CREATE signal
         const { data, error } = await client

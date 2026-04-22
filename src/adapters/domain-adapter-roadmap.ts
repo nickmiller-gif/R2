@@ -35,9 +35,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p1',
     target_source_system: 'oracle-operator',
     corpus_tier: 'eigenx',
-    status: 'planned',
+    status: 'completed',
     notes:
-      'Ingest operator decisions, run outcomes, and evidence summaries for EigenX retrieval grounding.',
+      'R2 adapter `src/adapters/oracle-operator/eigen-oracle-operator-adapter.ts` maps operator grounding events to eigen-ingest (eigenx + oracle-operator tags). Wire from oracle-operator repo with service JWT + idempotency.',
   },
   {
     repo: 'smartplrx-trend-tracker',

@@ -3,6 +3,7 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody, type FieldSpec } from '../_shared/validate.ts';
+import { ROLE_HIERARCHY, type CharterRole } from '../_shared/roles.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -17,6 +18,10 @@ const CREATE_FIELDS: FieldSpec[] = [
 
 const EFFECTS = new Set(['allow', 'deny']);
 
+function isCharterRole(value: string): value is CharterRole {
+  return (ROLE_HIERARCHY as readonly string[]).includes(value);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
 
@@ -29,14 +34,13 @@ Deno.serve(async (req) => {
     const last = segments[segments.length - 1];
     const idParam = last && last !== 'eigen-policy-rules' ? last : null;
 
-    const serviceClient = supabaseClients.service();
-
     if (req.method === 'GET') {
       const roleCheck = await requireRole(auth.claims.userId, 'member');
       if (!roleCheck.ok) return roleCheck.response;
+      const userClient = supabaseClients.user(req);
 
       if (idParam) {
-        const { data, error } = await serviceClient
+        const { data, error } = await userClient
           .from('eigen_policy_rules')
           .select('*')
           .eq('id', idParam)
@@ -48,7 +52,7 @@ Deno.serve(async (req) => {
       const policyTag = url.searchParams.get('policy_tag');
       const effect = url.searchParams.get('effect');
 
-      let query = serviceClient.from('eigen_policy_rules').select('*').order('created_at', { ascending: false });
+      let query = userClient.from('eigen_policy_rules').select('*').order('created_at', { ascending: false });
       if (policyTag) query = query.eq('policy_tag', policyTag);
       if (effect) query = query.eq('effect', effect);
 
@@ -59,6 +63,7 @@ Deno.serve(async (req) => {
 
     const roleCheck = await requireRole(auth.claims.userId, 'operator');
     if (!roleCheck.ok) return roleCheck.response;
+    const serviceClient = supabaseClients.service();
 
     const idemError = requireIdempotencyKey(req);
     if (idemError) return idemError;
@@ -76,6 +81,12 @@ Deno.serve(async (req) => {
 
       if (!EFFECTS.has(body.data.effect)) {
         return errorResponse('effect must be allow or deny', 400);
+      }
+      if (body.data.required_role !== undefined && body.data.required_role !== null && !isCharterRole(body.data.required_role)) {
+        return errorResponse(`required_role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
+      }
+      if (body.data.metadata !== undefined && (typeof body.data.metadata !== 'object' || body.data.metadata === null || Array.isArray(body.data.metadata))) {
+        return errorResponse('metadata must be a JSON object', 400);
       }
 
       const insertRow: Record<string, unknown> = {
@@ -134,6 +145,9 @@ Deno.serve(async (req) => {
       if (obj.required_role !== undefined) {
         if (obj.required_role !== null && typeof obj.required_role !== 'string') {
           return errorResponse('required_role must be a string or null', 400);
+        }
+        if (typeof obj.required_role === 'string' && !isCharterRole(obj.required_role)) {
+          return errorResponse(`required_role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
         }
         patch.required_role = obj.required_role;
       }

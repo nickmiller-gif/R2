@@ -199,9 +199,12 @@ Deno.serve(async (req) => {
           .from('oracle_theses')
           .select('id')
           .eq('id', successorId)
-          .single();
-        if (successorError || !successor) {
-          return errorResponse(successorError?.message ?? `Successor thesis not found: ${successorId}`, 404);
+          .maybeSingle();
+        if (successorError) {
+          return errorResponse(successorError.message, 500);
+        }
+        if (!successor) {
+          return errorResponse(`Successor thesis not found: ${successorId}`, 404);
         }
 
         const { data, error } = await client

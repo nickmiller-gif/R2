@@ -10,6 +10,8 @@ import type {
 import { ROLE_HIERARCHY } from '../../types/shared/roles.ts';
 
 type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
+const WILDCARD_REGEX_CACHE_MAX_SIZE = 1024;
+const wildcardRegexCache = new Map<string, RegExp>();
 
 function isHierarchicalRole(value: string): value is HierarchicalRole {
   return (ROLE_HIERARCHY as readonly string[]).includes(value);
@@ -32,11 +34,13 @@ export function matchWildcard(pattern: string, value: string): boolean {
   if (regex) return regex.test(value);
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
   const compiled = new RegExp(`^${escaped}$`);
+  if (wildcardRegexCache.size >= WILDCARD_REGEX_CACHE_MAX_SIZE) {
+    const oldest = wildcardRegexCache.keys().next().value;
+    if (oldest) wildcardRegexCache.delete(oldest);
+  }
   wildcardRegexCache.set(pattern, compiled);
   return compiled.test(value);
 }
-
-const wildcardRegexCache = new Map<string, RegExp>();
 
 export function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {
   const policyTagMatch = input.policyTags.some((tag) => matchWildcard(rule.policyTag, tag));

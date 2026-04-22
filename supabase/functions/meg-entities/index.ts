@@ -1,11 +1,13 @@
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
+import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { sanitizeInsert } from '../_shared/sanitize.ts';
 
 const INSERT_FIELDS = ['entity_type', 'canonical_name', 'status', 'external_ids', 'attributes', 'metadata'] as const;
+
+const supabaseClients = createSupabaseClientFactory();
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -20,9 +22,8 @@ Deno.serve(async (req) => {
     const id = lastSegment === 'meg-entities' ? null : lastSegment;
     const action = url.searchParams.get('action');
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
-
     if (req.method === 'GET') {
+      const client = supabaseClients.user(req);
       if (id) {
         const { data, error } = await client
           .from('meg_entities')
@@ -51,6 +52,7 @@ Deno.serve(async (req) => {
       const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
       const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
       const body = await req.json();
+      const client = supabaseClients.service();
 
       if (action === 'merge') {
         // MERGE source entity into target entity
@@ -85,13 +87,12 @@ Deno.serve(async (req) => {
         if (error) return errorResponse(error.message, 400);
         return jsonResponse(data);
       } else {
-        // CREATE entity — `profile_id` is bound to the authenticated user so
-        // an operator cannot create an entity that claims it belongs to
-        // someone else's profile.
+        // CREATE entity — user-scoped client + RLS: inserts must satisfy profile_id = auth.uid().
         const row = sanitizeInsert(body, INSERT_FIELDS, {
           profile_id: auth.claims.userId,
         });
-        const { data, error } = await client
+        const userClient = supabaseClients.user(req);
+        const { data, error } = await userClient
           .from('meg_entities')
           .insert([row])
           .select()
@@ -107,6 +108,7 @@ Deno.serve(async (req) => {
       const entityId = body.id;
       if (!entityId) return errorResponse('id required in body', 400);
 
+      const client = supabaseClients.service();
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (body.canonical_name !== undefined) patch.canonical_name = body.canonical_name;
       if (body.entity_type !== undefined) patch.entity_type = body.entity_type;

@@ -3263,37 +3263,37 @@ export type Database = {
           created_at: string
           decided_at: string
           decided_by: string
-          from_state: Database["public"]["Enums"]["oracle_publication_state"] | null
+          from_state: string | null
           id: string
           metadata: Json
           notes: string | null
           target_id: string
           target_type: string
-          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+          to_state: string
         }
         Insert: {
           created_at?: string
           decided_at?: string
           decided_by: string
-          from_state?: Database["public"]["Enums"]["oracle_publication_state"] | null
+          from_state?: string | null
           id?: string
           metadata?: Json
           notes?: string | null
           target_id: string
           target_type: string
-          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+          to_state: string
         }
         Update: {
           created_at?: string
           decided_at?: string
           decided_by?: string
-          from_state?: Database["public"]["Enums"]["oracle_publication_state"] | null
+          from_state?: string | null
           id?: string
           metadata?: Json
           notes?: string | null
           target_id?: string
           target_type?: string
-          to_state?: Database["public"]["Enums"]["oracle_publication_state"]
+          to_state?: string
         }
         Relationships: []
       }

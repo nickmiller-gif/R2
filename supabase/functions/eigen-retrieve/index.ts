@@ -7,6 +7,8 @@ import {
   parseEigenRetrieveRequest,
 } from '../_shared/eigen-retrieve-core.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
+import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -31,6 +33,19 @@ Deno.serve(async (req) => {
       return errorResponse('No private policy scope access for this user', 403);
     }
     payload = { ...payload, policy_scope: resolvedScope.effectivePolicyScope };
+
+    const kos = await resolveEigenCapabilityAccess(client, {
+      policyTags: resolvedScope.effectivePolicyScope,
+      capabilityTags: [...EIGEN_KOS_CAPABILITY.retrieve],
+      callerRoles: roleCheck.roles,
+    });
+    if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
+      return errorResponse(
+        `KOS policy denied retrieval: ${kos.deniedCapabilityTags.join(', ')}`,
+        403,
+      );
+    }
+
     const result = await executeEigenRetrieve(client, payload);
     if (!result.ok) return errorResponse(result.message, result.status);
     return jsonResponse(result.body);

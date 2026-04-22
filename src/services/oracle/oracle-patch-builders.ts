@@ -22,7 +22,6 @@ const THESIS_PATCH_FIELDS = [
   'confidence',
   'evidence_strength',
   'uncertainty_summary',
-  'publication_state',
   'metadata',
 ] as const;
 

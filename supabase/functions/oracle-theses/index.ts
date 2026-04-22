@@ -195,6 +195,15 @@ Deno.serve(async (req) => {
           return errorResponse('superseded_by_thesis_id must differ from id', 400);
         }
 
+        const { data: predecessorRow, error: predecessorErr } = await client
+          .from('oracle_theses')
+          .select('publication_state,status')
+          .eq('id', thesisId)
+          .single();
+        if (predecessorErr || !predecessorRow) {
+          return errorResponse(predecessorErr?.message ?? 'Thesis not found', 404);
+        }
+
         const { data: successor, error: successorError } = await client
           .from('oracle_theses')
           .select('id')
@@ -207,11 +216,13 @@ Deno.serve(async (req) => {
           return errorResponse(`Successor thesis not found: ${successorId}`, 404);
         }
 
+        const now = new Date().toISOString();
         const { data, error } = await client
           .from('oracle_theses')
           .update({
             status: 'superseded',
             superseded_by_thesis_id: successorId,
+            updated_at: now,
           })
           .eq('id', thesisId)
           .select()
@@ -219,6 +230,40 @@ Deno.serve(async (req) => {
 
         if (error) {
           return errorResponse(error.message, 400);
+        }
+
+        const predPub = predecessorRow.publication_state as string;
+        const predStatus = predecessorRow.status as string;
+        const auditPredecessor = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'thesis_supersession',
+          targetId: thesisId,
+          fromState: predPub,
+          toState: 'superseded',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'supersede_predecessor',
+          metadata: {
+            successor_thesis_id: successorId,
+            predecessor_status_before: predStatus,
+          },
+        });
+        if (auditPredecessor) {
+          return errorResponse(`Thesis superseded but audit event failed: ${auditPredecessor}`, 500);
+        }
+        const auditSuccessor = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'thesis_supersession',
+          targetId: successorId,
+          fromState: null,
+          toState: 'successor_of',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'supersede_successor',
+          metadata: { predecessor_thesis_id: thesisId },
+        });
+        if (auditSuccessor) {
+          return errorResponse(`Thesis superseded but successor audit failed: ${auditSuccessor}`, 500);
         }
 
         return jsonResponse(data);
@@ -250,7 +295,21 @@ Deno.serve(async (req) => {
         return errorResponse('id required in body', 400);
       }
 
-      const patch = buildSafeThesisPatch(body as Record<string, unknown>);
+      const rawBody = body as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(rawBody, 'publication_state')) {
+        return errorResponse(
+          'publication_state cannot be changed via PATCH; use POST with action=publish|approve|reject|defer',
+          400,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(rawBody, 'superseded_by_thesis_id')) {
+        return errorResponse('superseded_by_thesis_id cannot be set via PATCH; use POST with action=supersede', 400);
+      }
+
+      const patch = buildSafeThesisPatch(rawBody);
+      if (patch.status === 'superseded') {
+        return errorResponse('status superseded is only allowed via POST action=supersede', 400);
+      }
       if (Object.keys(patch).length === 1) {
         return errorResponse(
           `No patchable fields provided. Allowed fields: ${formatAllowedThesisPatchFields()}`,

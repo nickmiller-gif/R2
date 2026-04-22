@@ -2,12 +2,14 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
-import { requireRole } from '../_shared/rbac.ts';
+import { requireRole, type CharterRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { extractDocumentText } from '../_shared/extract-document.ts';
 import { inferCorpusTier, normalizeCorpusPolicyTags, POLICY_TAG_RAY_VOICE } from '../_shared/eigen-policy.ts';
+import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 interface IngestDocumentPayload {
   title?: string;
@@ -331,6 +333,7 @@ Deno.serve(async (req) => {
 
   const serviceIdentity = resolveIngestIdentity(req);
   let ownerUserId: string;
+  let ingestCallerRoles: CharterRole[] | null = null;
   if (serviceIdentity) {
     ownerUserId = serviceIdentity.userId;
   } else {
@@ -339,6 +342,7 @@ Deno.serve(async (req) => {
     const roleCheck = await requireRole(auth.claims.userId, 'member');
     if (!roleCheck.ok) return roleCheck.response;
     ownerUserId = auth.claims.userId;
+    ingestCallerRoles = roleCheck.roles;
   }
 
   const idemError = requireIdempotencyKey(req);
@@ -350,6 +354,22 @@ Deno.serve(async (req) => {
   try {
     const requestMeta = extractRequestMeta(req);
     const requestBody = await parseRequest(req, client);
+
+    if (ingestCallerRoles) {
+      const policyTagsForKos = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+      const kos = await resolveEigenCapabilityAccess(client, {
+        policyTags: policyTagsForKos,
+        capabilityTags: [...EIGEN_KOS_CAPABILITY.ingest],
+        callerRoles: ingestCallerRoles,
+      });
+      if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
+        return errorResponse(
+          `KOS policy denied ingest: ${kos.deniedCapabilityTags.join(', ')}`,
+          403,
+        );
+      }
+    }
+
     const maxBodyChars = readMaxBodyChars();
     if (requestBody.document.body.length > maxBodyChars) {
       return errorResponse(

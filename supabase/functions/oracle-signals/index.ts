@@ -203,6 +203,7 @@ Deno.serve(async (req) => {
         }
 
         const now = new Date().toISOString();
+        const previousPublicationState = String(previous.publication_state ?? 'pending_review');
 
         const { error: supersedeError } = await client
           .from('oracle_signals')
@@ -248,6 +249,36 @@ Deno.serve(async (req) => {
 
         if (error) {
           return errorResponse(error.message, 400);
+        }
+
+        const newId = data.id as string;
+        const auditPrev = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'signal_rescore',
+          targetId: previousId,
+          fromState: previousPublicationState,
+          toState: 'superseded',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'rescore_supersede_previous',
+          metadata: { successor_signal_id: newId, new_score: score },
+        });
+        if (auditPrev) {
+          return errorResponse(`Signal rescored but audit event failed: ${auditPrev}`, 500);
+        }
+        const auditNew = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'signal_rescore',
+          targetId: newId,
+          fromState: null,
+          toState: 'pending_review',
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
+          notes: body.notes ?? null,
+          action: 'rescore_new_version',
+          metadata: { predecessor_signal_id: previousId, new_score: score },
+        });
+        if (auditNew) {
+          return errorResponse(`Signal rescored but new-version audit failed: ${auditNew}`, 500);
         }
 
         return jsonResponse(data, 201);

@@ -1,6 +1,7 @@
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -12,6 +13,9 @@ Deno.serve(async (req) => {
     if (req.method !== 'GET') {
       return errorResponse('Method not allowed', 405);
     }
+
+    const roleCheck = await requireRole(auth.claims.userId, 'member');
+    if (!roleCheck.ok) return roleCheck.response;
 
     const url = new URL(req.url);
     const pathname = url.pathname;

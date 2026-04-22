@@ -3,7 +3,9 @@ import {
   buildSafeEvidenceItemPatch,
   buildSafeSignalPatch,
   buildSafeThesisPatch,
+  formatAllowedEvidenceItemPatchFields,
   formatAllowedSignalPatchFields,
+  formatAllowedThesisPatchFields,
 } from '../../src/services/oracle/oracle-patch-builders.js';
 
 describe('oracle patch builders', () => {
@@ -90,6 +92,15 @@ describe('oracle patch builders', () => {
   it('formats the signal allowlisted fields from the shared source of truth', () => {
     expect(formatAllowedSignalPatchFields()).toBe(
       'score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+    );
+  });
+
+  it('formats thesis and evidence allowlists from the shared source of truth', () => {
+    expect(formatAllowedThesisPatchFields()).toBe(
+      'title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+    );
+    expect(formatAllowedEvidenceItemPatchFields()).toBe(
+      'signal_id, source_lane, source_class, source_ref, content_summary, confidence, evidence_strength, source_date, publication_url, author_info, metadata',
     );
   });
 });

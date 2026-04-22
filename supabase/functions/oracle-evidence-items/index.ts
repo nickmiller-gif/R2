@@ -3,7 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSafeEvidenceItemPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import {
+  buildSafeEvidenceItemPatch,
+  formatAllowedEvidenceItemPatchFields,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -89,7 +92,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeEvidenceItemPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: signal_id, source_lane, source_class, source_ref, content_summary, confidence, evidence_strength, source_date, publication_url, author_info, metadata',
+          `No patchable fields provided. Allowed fields: ${formatAllowedEvidenceItemPatchFields()}`,
           400,
         );
       }

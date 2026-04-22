@@ -56,10 +56,10 @@ Domain slices are ported with CI verification (`npm run check`):
 | **Charter** | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations | ✅ |
 | **MEG** | entities, aliases, edges | ✅ |
 | **Oracle** | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models | ✅ |
-| **Eigen** | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest | ✅ |
+| **Eigen** | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, tool-capabilities, policy-rules, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest | ✅ |
 | **Foundation** | documents, asset-registry | ✅ |
 
-There are **39** deployed function entrypoints under `supabase/functions/`. Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
+There are **45** deployed function entrypoints under `supabase/functions/` (each `*/index.ts` excluding `_shared`). Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
 
 ## Next priorities
 

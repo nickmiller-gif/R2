@@ -51,7 +51,7 @@ R2/
 │
 ├── supabase/
 │   ├── migrations/             # Additive-only SQL migrations (numbered by date)
-│   └── functions/              # 39 Deno Edge Function entrypoints
+│   └── functions/              # Deno Edge Function entrypoints (one per `*/index.ts`, excluding `_shared`)
 │       ├── _shared/            # Shared modules used across functions
 │       │   ├── auth.ts         # guardAuth() — offline JWT verification via jose/JWKS
 │       │   ├── supabase.ts     # DI-friendly Supabase client factory

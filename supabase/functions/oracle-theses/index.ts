@@ -4,6 +4,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -142,21 +143,18 @@ Deno.serve(async (req) => {
           return errorResponse(error.message, 400);
         }
 
-        const { error: auditError } = await client.from('oracle_publication_events').insert({
-          target_type: 'thesis',
-          target_id: thesisId,
-          from_state: beforeUpdate.publication_state,
-          to_state: nextState,
-          decided_by: auth.claims.userId,
-          decided_at: now,
+        const auditErr = await insertOraclePublicationAuditEvent(client, {
+          targetType: 'thesis',
+          targetId: thesisId,
+          fromState: beforeUpdate.publication_state,
+          toState: nextState,
+          decidedBy: auth.claims.userId,
+          decidedAt: now,
           notes: body.notes ?? null,
-          metadata: {
-            action,
-          },
+          action,
         });
-
-        if (auditError) {
-          return errorResponse(`Publication state updated but audit event failed: ${auditError.message}`, 500);
+        if (auditErr) {
+          return errorResponse(`Publication state updated but audit event failed: ${auditErr}`, 500);
         }
 
         return jsonResponse(data);

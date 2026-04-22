@@ -10,3 +10,4 @@ export * from './policy-engine.js';
 export * from './memory-entry.js';
 export * from './oracle-whitespace-intelligence.js';
 export * from './autonomous-capture.js';
+export * from './site-registry.js';

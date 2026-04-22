@@ -1939,36 +1939,42 @@ export type Database = {
       }
       eigen_site_registry: {
         Row: {
+          capability_profile: Json
           created_at: string
           default_policy_scope: Json
           display_name: string
           metadata: Json
           mode: Database["public"]["Enums"]["eigen_site_mode"]
           origins: Json
+          policy_notes: string | null
           site_id: string
           source_systems: Json
           status: Database["public"]["Enums"]["eigen_site_status"]
           updated_at: string
         }
         Insert: {
+          capability_profile?: Json
           created_at?: string
           default_policy_scope?: Json
           display_name: string
           metadata?: Json
           mode?: Database["public"]["Enums"]["eigen_site_mode"]
           origins?: Json
+          policy_notes?: string | null
           site_id: string
           source_systems?: Json
           status?: Database["public"]["Enums"]["eigen_site_status"]
           updated_at?: string
         }
         Update: {
+          capability_profile?: Json
           created_at?: string
           default_policy_scope?: Json
           display_name?: string
           metadata?: Json
           mode?: Database["public"]["Enums"]["eigen_site_mode"]
           origins?: Json
+          policy_notes?: string | null
           site_id?: string
           source_systems?: Json
           status?: Database["public"]["Enums"]["eigen_site_status"]
@@ -3252,6 +3258,45 @@ export type Database = {
           },
         ]
       }
+      oracle_publication_events: {
+        Row: {
+          created_at: string
+          decided_at: string
+          decided_by: string
+          from_state: Database["public"]["Enums"]["oracle_publication_state"] | null
+          id: string
+          metadata: Json
+          notes: string | null
+          target_id: string
+          target_type: string
+          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string
+          decided_by: string
+          from_state?: Database["public"]["Enums"]["oracle_publication_state"] | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          target_id: string
+          target_type: string
+          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string
+          decided_by?: string
+          from_state?: Database["public"]["Enums"]["oracle_publication_state"] | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          target_id?: string
+          target_type?: string
+          to_state?: Database["public"]["Enums"]["oracle_publication_state"]
+        }
+        Relationships: []
+      }
       oracle_profile_runs: {
         Row: {
           completed_at: string | null
@@ -3643,6 +3688,10 @@ export type Database = {
           entity_asset_id: string
           id: string
           producer_ref: string
+          publication_notes: string | null
+          publication_state: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at: string | null
+          published_by: string | null
           reasons: string[]
           score: number
           scored_at: string
@@ -3659,6 +3708,10 @@ export type Database = {
           entity_asset_id: string
           id?: string
           producer_ref: string
+          publication_notes?: string | null
+          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at?: string | null
+          published_by?: string | null
           reasons?: string[]
           score: number
           scored_at?: string
@@ -3675,6 +3728,10 @@ export type Database = {
           entity_asset_id?: string
           id?: string
           producer_ref?: string
+          publication_notes?: string | null
+          publication_state?: Database["public"]["Enums"]["oracle_publication_state"]
+          published_at?: string | null
+          published_by?: string | null
           reasons?: string[]
           score?: number
           scored_at?: string
@@ -5507,6 +5564,39 @@ export type Database = {
           payload_hash: string | null
           recorded_at: string | null
           ref_code: string | null
+        }
+        Relationships: []
+      }
+      oracle_briefings_read_model: {
+        Row: {
+          confidence: number | null
+          evidence_strength: number | null
+          published_at: string | null
+          published_by: string | null
+          thesis_id: string | null
+          thesis_statement: string | null
+          title: string | null
+          topic_tags: string[] | null
+        }
+        Relationships: []
+      }
+      oracle_feed_history_read_model: {
+        Row: {
+          item_id: string | null
+          item_type: string | null
+          metadata: Json | null
+          published_at: string | null
+          summary: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
+      oracle_theme_map_read_model: {
+        Row: {
+          avg_confidence: number | null
+          latest_published_at: string | null
+          theme: string | null
+          thesis_count: number | null
         }
         Relationships: []
       }

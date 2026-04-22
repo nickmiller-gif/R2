@@ -174,6 +174,8 @@ import {
   type DbMemoryEntryRow,
 } from '../../src/services/eigen/memory-entry.service.js';
 
+import { createEigenSiteRegistryService } from '../../src/services/eigen/site-registry.service.js';
+
 describe('R2 Service Pattern Contract', () => {
   it('every factory is a function', () => {
     const factories = [
@@ -199,6 +201,7 @@ describe('R2 Service Pattern Contract', () => {
       createRetrievalRunService,
       createToolCapabilityService,
       createMemoryEntryService,
+      createEigenSiteRegistryService,
     ];
 
     for (const factory of factories) {
@@ -209,7 +212,7 @@ describe('R2 Service Pattern Contract', () => {
     // - Each factory takes a Db interface
     // - Each factory returns a Service interface
     // - Each Db exposes DbXxxRow-shaped operations
-    expect(factories).toHaveLength(22);
+    expect(factories).toHaveLength(23);
   });
 });
 

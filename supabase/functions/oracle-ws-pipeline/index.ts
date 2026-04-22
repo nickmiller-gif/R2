@@ -477,7 +477,7 @@ async function scoreAndVerify(
     }
   }
 
-  const hypothesisUpdates: Promise<{ error: { message: string } | null }>[] = [];
+  const hypothesisUpdates = [];
   if (verifiedHypothesisIds.length > 0) {
     hypothesisUpdates.push(
       serviceClient

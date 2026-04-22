@@ -2,12 +2,163 @@
  * Pure Eigen/KOS policy evaluation (wildcard patterns, role hierarchy, deny-over-allow).
  * Shared by Node services and Deno edge functions.
  */
-import type {
-  EigenPolicyRule,
-  EvaluateEigenPolicyInput,
-  EvaluateEigenPolicyResult,
+import {
+  EIGEN_POLICY_RULE_LIMITS,
+  type EigenPolicyRule,
+  type EvaluateEigenPolicyInput,
+  type EvaluateEigenPolicyResult,
 } from '../../types/eigen/policy-engine.ts';
 import { ROLE_HIERARCHY } from '../../types/shared/roles.ts';
+
+export interface NormalizedPolicyRuleInput {
+  policyTag: string;
+  capabilityTagPattern: string;
+  rationale: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface NormalizePolicyRuleInput {
+  policyTag?: string | null;
+  capabilityTagPattern?: string | null;
+  rationale?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export class EigenPolicyRuleValidationError extends Error {
+  readonly field: string;
+  constructor(field: string, message: string) {
+    super(message);
+    this.name = 'EigenPolicyRuleValidationError';
+    this.field = field;
+  }
+}
+
+function requireNonEmptyString(
+  field: string,
+  value: string | null | undefined,
+  maxLength: number,
+): string {
+  if (typeof value !== 'string') {
+    throw new EigenPolicyRuleValidationError(field, `${field} is required`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new EigenPolicyRuleValidationError(field, `${field} must not be empty`);
+  }
+  if (trimmed.length > maxLength) {
+    throw new EigenPolicyRuleValidationError(
+      field,
+      `${field} exceeds maximum length of ${maxLength}`,
+    );
+  }
+  return trimmed;
+}
+
+function normalizeOptionalText(
+  field: string,
+  value: string | null | undefined,
+  maxLength: number,
+): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw new EigenPolicyRuleValidationError(field, `${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > maxLength) {
+    throw new EigenPolicyRuleValidationError(
+      field,
+      `${field} exceeds maximum length of ${maxLength}`,
+    );
+  }
+  return trimmed;
+}
+
+function normalizeMetadata(
+  value: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new EigenPolicyRuleValidationError('metadata', 'metadata must be a JSON object');
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new EigenPolicyRuleValidationError('metadata', 'metadata must be JSON-serializable');
+  }
+  if (serialized.length > EIGEN_POLICY_RULE_LIMITS.METADATA_BYTES_MAX) {
+    throw new EigenPolicyRuleValidationError(
+      'metadata',
+      `metadata exceeds maximum size of ${EIGEN_POLICY_RULE_LIMITS.METADATA_BYTES_MAX} bytes`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Trim + length-check user-supplied rule fields before they reach the DB.
+ * Mirrors the CHECK constraints on eigen_policy_rules and normalizes empty
+ * optionals to null so callers don't have to branch on " " vs "".
+ */
+export function normalizePolicyRuleInput(
+  input: NormalizePolicyRuleInput,
+): NormalizedPolicyRuleInput {
+  return {
+    policyTag: requireNonEmptyString(
+      'policy_tag',
+      input.policyTag,
+      EIGEN_POLICY_RULE_LIMITS.POLICY_TAG_MAX,
+    ),
+    capabilityTagPattern: requireNonEmptyString(
+      'capability_tag_pattern',
+      input.capabilityTagPattern,
+      EIGEN_POLICY_RULE_LIMITS.CAPABILITY_TAG_PATTERN_MAX,
+    ),
+    rationale: normalizeOptionalText(
+      'rationale',
+      input.rationale,
+      EIGEN_POLICY_RULE_LIMITS.RATIONALE_MAX,
+    ),
+    metadata: normalizeMetadata(input.metadata),
+  };
+}
+
+/**
+ * Variant for PATCH-style partial updates: only fields present in `input` are
+ * normalized and returned; undefined fields are omitted. Null rationale/metadata
+ * are passed through intentionally so callers can clear them.
+ */
+export function normalizePolicyRulePatch(
+  input: NormalizePolicyRuleInput,
+): Partial<NormalizedPolicyRuleInput> {
+  const patch: Partial<NormalizedPolicyRuleInput> = {};
+  if (input.policyTag !== undefined) {
+    patch.policyTag = requireNonEmptyString(
+      'policy_tag',
+      input.policyTag,
+      EIGEN_POLICY_RULE_LIMITS.POLICY_TAG_MAX,
+    );
+  }
+  if (input.capabilityTagPattern !== undefined) {
+    patch.capabilityTagPattern = requireNonEmptyString(
+      'capability_tag_pattern',
+      input.capabilityTagPattern,
+      EIGEN_POLICY_RULE_LIMITS.CAPABILITY_TAG_PATTERN_MAX,
+    );
+  }
+  if (input.rationale !== undefined) {
+    patch.rationale = normalizeOptionalText(
+      'rationale',
+      input.rationale,
+      EIGEN_POLICY_RULE_LIMITS.RATIONALE_MAX,
+    );
+  }
+  if (input.metadata !== undefined) {
+    patch.metadata = normalizeMetadata(input.metadata);
+  }
+  return patch;
+}
 
 type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
 const WILDCARD_REGEX_CACHE_MAX_SIZE = 1024;

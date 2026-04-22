@@ -4,6 +4,15 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody, type FieldSpec } from '../_shared/validate.ts';
 import { ROLE_HIERARCHY, type CharterRole } from '../_shared/roles.ts';
+import {
+  insertEigenPolicyRuleEvent,
+  type EigenPolicyRuleSnapshot,
+} from '../_shared/eigen-policy-engine.ts';
+import {
+  EigenPolicyRuleValidationError,
+  normalizePolicyRuleInput,
+  normalizePolicyRulePatch,
+} from '../../../src/lib/eigen/eigen-policy-eval.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -20,6 +29,34 @@ const EFFECTS = new Set(['allow', 'deny']);
 
 function isCharterRole(value: string): value is CharterRole {
   return (ROLE_HIERARCHY as readonly string[]).includes(value);
+}
+
+function validationErrorResponse(err: unknown): Response {
+  if (err instanceof EigenPolicyRuleValidationError) {
+    return errorResponse(err.message, 400);
+  }
+  throw err;
+}
+
+async function writeAuditEvent(
+  client: ReturnType<typeof supabaseClients.service>,
+  params: {
+    ruleId: string;
+    eventType: 'created' | 'updated';
+    actorId: string;
+    beforeSnapshot: EigenPolicyRuleSnapshot | null;
+    afterSnapshot: EigenPolicyRuleSnapshot;
+  },
+): Promise<void> {
+  const auditError = await insertEigenPolicyRuleEvent(client, params);
+  if (auditError) {
+    // Log but do not fail the mutation — the primary write already committed.
+    console.error('[eigen-policy-rules] audit event insert failed', {
+      ruleId: params.ruleId,
+      eventType: params.eventType,
+      error: auditError,
+    });
+  }
 }
 
 Deno.serve(async (req) => {
@@ -85,17 +122,26 @@ Deno.serve(async (req) => {
       if (body.data.required_role !== undefined && body.data.required_role !== null && !isCharterRole(body.data.required_role)) {
         return errorResponse(`required_role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
       }
-      if (body.data.metadata !== undefined && (typeof body.data.metadata !== 'object' || body.data.metadata === null || Array.isArray(body.data.metadata))) {
-        return errorResponse('metadata must be a JSON object', 400);
+
+      let normalized;
+      try {
+        normalized = normalizePolicyRuleInput({
+          policyTag: body.data.policy_tag,
+          capabilityTagPattern: body.data.capability_tag_pattern,
+          rationale: body.data.rationale ?? null,
+          metadata: body.data.metadata ?? {},
+        });
+      } catch (err) {
+        return validationErrorResponse(err);
       }
 
       const insertRow: Record<string, unknown> = {
-        policy_tag: body.data.policy_tag,
-        capability_tag_pattern: body.data.capability_tag_pattern,
+        policy_tag: normalized.policyTag,
+        capability_tag_pattern: normalized.capabilityTagPattern,
         effect: body.data.effect,
         required_role: body.data.required_role ?? null,
-        rationale: body.data.rationale ?? null,
-        metadata: body.data.metadata ?? {},
+        rationale: normalized.rationale,
+        metadata: normalized.metadata,
       };
 
       const { data, error } = await serviceClient
@@ -104,6 +150,15 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) return errorResponse(error.message, 400);
+
+      const created = data as EigenPolicyRuleSnapshot;
+      await writeAuditEvent(serviceClient, {
+        ruleId: created.id,
+        eventType: 'created',
+        actorId: auth.claims.userId,
+        beforeSnapshot: null,
+        afterSnapshot: created,
+      });
       return jsonResponse(data, 201);
     }
 
@@ -126,15 +181,21 @@ Deno.serve(async (req) => {
       }
 
       const patch: Record<string, unknown> = {};
-      if (obj.policy_tag !== undefined) {
-        if (typeof obj.policy_tag !== 'string') return errorResponse('policy_tag must be a string', 400);
-        patch.policy_tag = obj.policy_tag;
+      let normalized: ReturnType<typeof normalizePolicyRulePatch>;
+      try {
+        normalized = normalizePolicyRulePatch({
+          policyTag: obj.policy_tag as string | undefined,
+          capabilityTagPattern: obj.capability_tag_pattern as string | undefined,
+          rationale: obj.rationale as string | null | undefined,
+          metadata: obj.metadata as Record<string, unknown> | null | undefined,
+        });
+      } catch (err) {
+        return validationErrorResponse(err);
       }
-      if (obj.capability_tag_pattern !== undefined) {
-        if (typeof obj.capability_tag_pattern !== 'string') {
-          return errorResponse('capability_tag_pattern must be a string', 400);
-        }
-        patch.capability_tag_pattern = obj.capability_tag_pattern;
+
+      if (normalized.policyTag !== undefined) patch.policy_tag = normalized.policyTag;
+      if (normalized.capabilityTagPattern !== undefined) {
+        patch.capability_tag_pattern = normalized.capabilityTagPattern;
       }
       if (obj.effect !== undefined) {
         if (typeof obj.effect !== 'string' || !EFFECTS.has(obj.effect)) {
@@ -152,23 +213,25 @@ Deno.serve(async (req) => {
         patch.required_role = obj.required_role;
       }
       if (obj.rationale !== undefined) {
-        if (obj.rationale !== null && typeof obj.rationale !== 'string') {
-          return errorResponse('rationale must be a string or null', 400);
-        }
-        patch.rationale = obj.rationale;
+        patch.rationale = normalized.rationale ?? null;
       }
       if (obj.metadata !== undefined) {
-        if (typeof obj.metadata !== 'object' || obj.metadata === null || Array.isArray(obj.metadata)) {
-          return errorResponse('metadata must be a JSON object', 400);
-        }
-        patch.metadata = obj.metadata;
+        patch.metadata = normalized.metadata ?? {};
       }
-      patch.updated_at = new Date().toISOString();
 
-      const updatableKeys = Object.keys(patch).filter((k) => k !== 'updated_at');
+      const updatableKeys = Object.keys(patch);
       if (updatableKeys.length === 0) {
         return errorResponse('No updatable fields in body', 400);
       }
+      patch.updated_at = new Date().toISOString();
+
+      const { data: beforeData, error: beforeError } = await serviceClient
+        .from('eigen_policy_rules')
+        .select('*')
+        .eq('id', ruleId)
+        .maybeSingle();
+      if (beforeError) return errorResponse(beforeError.message, 400);
+      if (!beforeData) return errorResponse('Rule not found', 404);
 
       const { data, error } = await serviceClient
         .from('eigen_policy_rules')
@@ -177,6 +240,15 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) return errorResponse(error.message, 400);
+
+      const after = data as EigenPolicyRuleSnapshot;
+      await writeAuditEvent(serviceClient, {
+        ruleId: after.id,
+        eventType: 'updated',
+        actorId: auth.claims.userId,
+        beforeSnapshot: beforeData as EigenPolicyRuleSnapshot,
+        afterSnapshot: after,
+      });
       return jsonResponse(data);
     }
 

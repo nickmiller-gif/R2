@@ -37,6 +37,44 @@ function readCapabilityTags(row: unknown): string[] {
   return tags.map((tag) => String(tag).trim()).filter(Boolean);
 }
 
+const TOOL_CAPABILITY_WRITABLE_FIELDS = [
+  'tool_id',
+  'name',
+  'capability_tags',
+  'io_schema_ref',
+  'mode',
+  'approval_policy',
+  'role_requirements',
+  'connector_dependencies',
+  'blast_radius',
+  'fallback_mode',
+] as const;
+
+type JsonObjectParseResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; response: Response };
+
+async function parseJsonObject(req: Request): Promise<JsonObjectParseResult> {
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return { ok: false, response: errorResponse('Invalid JSON body', 400) };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, response: errorResponse('Request body must be a JSON object', 400) };
+  }
+  return { ok: true, data: parsed as Record<string, unknown> };
+}
+
+function pickToolCapabilityFields(body: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of TOOL_CAPABILITY_WRITABLE_FIELDS) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return corsResponse();
@@ -130,11 +168,22 @@ Deno.serve(async (req) => {
     } else if (req.method === 'POST') {
       const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
       const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
-      const body = await req.json();
+      const parsed = await parseJsonObject(req);
+      if (!parsed.ok) return parsed.response;
+      const insertRow = pickToolCapabilityFields(parsed.data);
+      if (typeof insertRow.tool_id !== 'string' || insertRow.tool_id.trim().length === 0) {
+        return errorResponse('tool_id is required', 400);
+      }
+      if (typeof insertRow.name !== 'string' || insertRow.name.trim().length === 0) {
+        return errorResponse('name is required', 400);
+      }
+      if (typeof insertRow.mode !== 'string' || (insertRow.mode !== 'read' && insertRow.mode !== 'write')) {
+        return errorResponse("mode must be 'read' or 'write'", 400);
+      }
 
       const { data, error } = await serviceClient
         .from('tool_capabilities')
-        .insert([body])
+        .insert([insertRow])
         .select()
         .single();
 
@@ -146,16 +195,26 @@ Deno.serve(async (req) => {
     } else if (req.method === 'PATCH') {
       const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
       const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
-      const body = await req.json();
-      const id = body.id;
+      const parsed = await parseJsonObject(req);
+      if (!parsed.ok) return parsed.response;
+      const body = parsed.data;
+      const id = typeof body.id === 'string' ? body.id : null;
 
       if (!id) {
         return errorResponse('id required in body', 400);
       }
 
+      const updateRow = pickToolCapabilityFields(body);
+      if (typeof updateRow.mode === 'string' && updateRow.mode !== 'read' && updateRow.mode !== 'write') {
+        return errorResponse("mode must be 'read' or 'write'", 400);
+      }
+      if (Object.keys(updateRow).length === 0) {
+        return errorResponse('No updatable fields in body', 400);
+      }
+
       const { data, error } = await serviceClient
         .from('tool_capabilities')
-        .update(body)
+        .update(updateRow)
         .eq('id', id)
         .select()
         .single();

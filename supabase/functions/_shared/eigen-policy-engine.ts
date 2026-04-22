@@ -57,6 +57,46 @@ async function loadPolicyRules(client: SupabaseClient): Promise<EigenPolicyRule[
   return rows.map(rowToRule);
 }
 
+export type EigenPolicyRuleEventType = 'created' | 'updated';
+
+export interface EigenPolicyRuleSnapshot {
+  id: string;
+  policy_tag: string;
+  capability_tag_pattern: string;
+  effect: 'allow' | 'deny';
+  required_role: string | null;
+  rationale: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Append an immutable entry to eigen_policy_rule_events. Called after
+ * successful rule mutations from the eigen-policy-rules edge function.
+ * Errors are surfaced as a string (not thrown) so the caller can log
+ * without masking the primary mutation's success.
+ */
+export async function insertEigenPolicyRuleEvent(
+  client: SupabaseClient,
+  params: {
+    ruleId: string;
+    eventType: EigenPolicyRuleEventType;
+    actorId: string | null;
+    beforeSnapshot: EigenPolicyRuleSnapshot | null;
+    afterSnapshot: EigenPolicyRuleSnapshot;
+  },
+): Promise<string | null> {
+  const { error } = await client.from('eigen_policy_rule_events').insert({
+    rule_id: params.ruleId,
+    event_type: params.eventType,
+    actor_id: params.actorId,
+    before_snapshot: params.beforeSnapshot,
+    after_snapshot: params.afterSnapshot,
+  });
+  return error?.message ?? null;
+}
+
 export async function resolveEigenCapabilityAccess(
   client: SupabaseClient,
   input: ResolveEigenCapabilityAccessInput,

@@ -1880,6 +1880,44 @@ export type Database = {
         }
         Relationships: []
       }
+      eigen_policy_rule_events: {
+        Row: {
+          actor_id: string | null
+          after_snapshot: Json
+          before_snapshot: Json | null
+          created_at: string
+          event_type: string
+          id: string
+          rule_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          after_snapshot: Json
+          before_snapshot?: Json | null
+          created_at?: string
+          event_type: string
+          id?: string
+          rule_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          after_snapshot?: Json
+          before_snapshot?: Json | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_policy_rule_events_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eigen_policy_rules: {
         Row: {
           capability_tag_pattern: string

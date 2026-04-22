@@ -3,7 +3,11 @@
  *
  * Evaluates capability requests against policy-tag-scoped allow/deny rules.
  */
-import { evaluateEigenPolicyRules } from '../../lib/eigen/eigen-policy-eval.ts';
+import {
+  evaluateEigenPolicyRules,
+  normalizePolicyRuleInput,
+  normalizePolicyRulePatch,
+} from '../../lib/eigen/eigen-policy-eval.ts';
 import { nowUtc } from '../../lib/provenance/clock.js';
 import type {
   CreateEigenPolicyRuleInput,
@@ -14,9 +18,12 @@ import type {
 } from '../../types/eigen/policy-engine.js';
 
 export {
+  EigenPolicyRuleValidationError,
   evaluateEigenPolicyRules,
   matchWildcard,
   matchesRule,
+  normalizePolicyRuleInput,
+  normalizePolicyRulePatch,
 } from '../../lib/eigen/eigen-policy-eval.ts';
 
 export interface DbEigenPolicyRuleRow {
@@ -63,15 +70,21 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
 export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPolicyEngineService {
   return {
     async createRule(input) {
+      const normalized = normalizePolicyRuleInput({
+        policyTag: input.policyTag,
+        capabilityTagPattern: input.capabilityTagPattern,
+        rationale: input.rationale ?? null,
+        metadata: input.metadata ?? {},
+      });
       const now = nowUtc().toISOString();
       const row = await db.insertRule({
         id: crypto.randomUUID(),
-        policy_tag: input.policyTag,
-        capability_tag_pattern: input.capabilityTagPattern,
+        policy_tag: normalized.policyTag,
+        capability_tag_pattern: normalized.capabilityTagPattern,
         effect: input.effect,
         required_role: input.requiredRole ?? null,
-        rationale: input.rationale ?? null,
-        metadata: input.metadata ?? {},
+        rationale: normalized.rationale,
+        metadata: normalized.metadata,
         created_at: now,
         updated_at: now,
       });
@@ -89,17 +102,23 @@ export function createEigenPolicyEngineService(db: EigenPolicyEngineDb): EigenPo
     },
 
     async updateRule(id, input) {
+      const normalized = normalizePolicyRulePatch({
+        policyTag: input.policyTag,
+        capabilityTagPattern: input.capabilityTagPattern,
+        rationale: input.rationale,
+        metadata: input.metadata,
+      });
       const patch: Partial<DbEigenPolicyRuleRow> = {
         updated_at: nowUtc().toISOString(),
       };
-      if (input.policyTag !== undefined) patch.policy_tag = input.policyTag;
-      if (input.capabilityTagPattern !== undefined) {
-        patch.capability_tag_pattern = input.capabilityTagPattern;
+      if (normalized.policyTag !== undefined) patch.policy_tag = normalized.policyTag;
+      if (normalized.capabilityTagPattern !== undefined) {
+        patch.capability_tag_pattern = normalized.capabilityTagPattern;
       }
       if (input.effect !== undefined) patch.effect = input.effect;
       if (input.requiredRole !== undefined) patch.required_role = input.requiredRole;
-      if (input.rationale !== undefined) patch.rationale = input.rationale;
-      if (input.metadata !== undefined) patch.metadata = input.metadata;
+      if (input.rationale !== undefined) patch.rationale = normalized.rationale ?? null;
+      if (input.metadata !== undefined) patch.metadata = normalized.metadata ?? {};
       const row = await db.updateRule(id, patch);
       return rowToRule(row);
     },

@@ -31,7 +31,11 @@ export function matchWildcard(pattern: string, value: string): boolean {
   if (pattern === '*') return true;
   if (!pattern.includes('*')) return pattern === value;
   const regex = wildcardRegexCache.get(pattern);
-  if (regex) return regex.test(value);
+  if (regex) {
+    wildcardRegexCache.delete(pattern);
+    wildcardRegexCache.set(pattern, regex);
+    return regex.test(value);
+  }
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
   const compiled = new RegExp(`^${escaped}$`);
   if (wildcardRegexCache.size >= WILDCARD_REGEX_CACHE_MAX_SIZE) {

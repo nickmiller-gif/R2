@@ -5,6 +5,7 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logError } from '../_shared/log.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -312,7 +313,8 @@ Deno.serve(
           },
         });
         if (auditPredecessor) {
-          console.error('[oracle-theses] supersede_predecessor audit failed', {
+          logError('supersede_predecessor audit failed', {
+            functionName: 'oracle-theses',
             thesisId,
             successorId,
             error: auditPredecessor,
@@ -331,7 +333,8 @@ Deno.serve(
           metadata: { predecessor_thesis_id: thesisId },
         });
         if (auditSuccessor) {
-          console.error('[oracle-theses] supersede_successor audit failed', {
+          logError('supersede_successor audit failed', {
+            functionName: 'oracle-theses',
             thesisId,
             successorId,
             error: auditSuccessor,

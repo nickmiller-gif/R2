@@ -4,6 +4,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logError } from '../_shared/log.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -265,7 +266,8 @@ Deno.serve(
           metadata: { successor_signal_id: newId, new_score: score },
         });
         if (auditPrev) {
-          console.error('[oracle-signals] rescore_supersede_previous audit failed', {
+          logError('rescore_supersede_previous audit failed', {
+            functionName: 'oracle-signals',
             previousId,
             newId,
             error: auditPrev,
@@ -284,7 +286,8 @@ Deno.serve(
           metadata: { predecessor_signal_id: previousId, new_score: score },
         });
         if (auditNew) {
-          console.error('[oracle-signals] rescore_new_version audit failed', {
+          logError('rescore_new_version audit failed', {
+            functionName: 'oracle-signals',
             previousId,
             newId,
             error: auditNew,

@@ -1,5 +1,6 @@
 import type { EigenRetrieveChunk } from './eigen-retrieve-core.ts';
 import type { getServiceClient } from './supabase.ts';
+import { logWarn } from './log.ts';
 
 export const CONVERSATION_TURN_TELEMETRY_OWNERSHIP = {
   write_path_owner: 'R2 Platform',
@@ -64,8 +65,14 @@ export async function insertConversationTurn(
       .select('id')
       .eq('mode', params.mode)
       .eq('idempotency_key', params.idempotencyKey);
-    existingQuery = params.siteId === null ? existingQuery.is('site_id', null) : existingQuery.eq('site_id', params.siteId);
-    existingQuery = params.userId === null ? existingQuery.is('user_id', null) : existingQuery.eq('user_id', params.userId);
+    existingQuery =
+      params.siteId === null
+        ? existingQuery.is('site_id', null)
+        : existingQuery.eq('site_id', params.siteId);
+    existingQuery =
+      params.userId === null
+        ? existingQuery.is('user_id', null)
+        : existingQuery.eq('user_id', params.userId);
     const { data: existing } = await existingQuery.maybeSingle();
     if (existing && (existing as { id?: string }).id) {
       return (existing as { id: string }).id;
@@ -98,14 +105,23 @@ export async function insertConversationTurn(
         .select('id')
         .eq('mode', params.mode)
         .eq('idempotency_key', params.idempotencyKey);
-      existingQuery = params.siteId === null ? existingQuery.is('site_id', null) : existingQuery.eq('site_id', params.siteId);
-      existingQuery = params.userId === null ? existingQuery.is('user_id', null) : existingQuery.eq('user_id', params.userId);
+      existingQuery =
+        params.siteId === null
+          ? existingQuery.is('site_id', null)
+          : existingQuery.eq('site_id', params.siteId);
+      existingQuery =
+        params.userId === null
+          ? existingQuery.is('user_id', null)
+          : existingQuery.eq('user_id', params.userId);
       const { data: existing } = await existingQuery.maybeSingle();
       if (existing && (existing as { id?: string }).id) {
         return (existing as { id: string }).id;
       }
     }
-    console.warn('conversation_turn insert failed', error.message);
+    logWarn('conversation_turn insert failed', {
+      functionName: 'conversation-turn',
+      error: error.message,
+    });
     return null;
   }
   return (data as { id: string }).id;

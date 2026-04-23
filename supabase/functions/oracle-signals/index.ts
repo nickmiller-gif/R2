@@ -3,6 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import {
+  buildSafeSignalPatch,
+  SIGNAL_PATCH_ALLOWED_FIELDS,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -10,28 +14,6 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   const roleCheck = await requireRole(userId, 'operator');
   if (!roleCheck.ok) return roleCheck.response;
   return null;
-}
-
-const PATCH_ALLOWLIST = new Set([
-  'score',
-  'confidence',
-  'reasons',
-  'tags',
-  'status',
-  'analysis_document_id',
-  'source_asset_id',
-  'producer_ref',
-  'publication_notes',
-]);
-
-function buildSafeSignalPatch(body: Record<string, unknown>): Record<string, unknown> {
-  const patch: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  for (const [key, value] of Object.entries(body)) {
-    if (PATCH_ALLOWLIST.has(key)) patch[key] = value;
-  }
-  return patch;
 }
 
 Deno.serve(async (req) => {
@@ -173,36 +155,74 @@ Deno.serve(async (req) => {
         }
         return jsonResponse(data);
       } else if (action === 'rescore') {
-        // RESCORE signal (in-place score refresh; supersede/version path lives in TS service)
-        const signalId = body.id;
-        if (!signalId) {
+        // RESCORE signal: mark previous as superseded and insert a new row with
+        // version + 1 and publication_state 'pending_review'. Mirrors the
+        // oracle-signal.service `rescore()` contract so the edge surface never
+        // mutates a historical score in place.
+        const previousId = body.id;
+        if (!previousId) {
           return errorResponse('id required in body', 400);
         }
         if (body.score === undefined || body.score === null) {
           return errorResponse('score required for rescore', 400);
         }
 
+        const { data: previous, error: previousError } = await client
+          .from('oracle_signals')
+          .select('*')
+          .eq('id', previousId)
+          .single();
+        if (previousError || !previous) {
+          return errorResponse(previousError?.message ?? 'signal not found', 404);
+        }
+        if (previous.status === 'superseded') {
+          return errorResponse('cannot rescore an already superseded signal', 409);
+        }
+
         const now = new Date().toISOString();
-        const patch: Record<string, unknown> = {
+        const newRow = {
+          entity_asset_id: previous.entity_asset_id,
           score: body.score,
+          confidence: body.confidence ?? previous.confidence,
+          reasons: body.reasons ?? previous.reasons,
+          tags: body.tags ?? previous.tags,
+          status: 'scored',
+          analysis_document_id:
+            body.analysis_document_id !== undefined
+              ? body.analysis_document_id
+              : previous.analysis_document_id,
+          source_asset_id:
+            body.source_asset_id !== undefined ? body.source_asset_id : previous.source_asset_id,
+          producer_ref: body.producer_ref ?? previous.producer_ref,
+          version: previous.version + 1,
+          publication_state: 'pending_review',
+          published_at: null,
+          published_by: null,
+          publication_notes: null,
+          scored_at: now,
+          created_at: now,
           updated_at: now,
         };
-        if (body.confidence !== undefined) patch.confidence = body.confidence;
-        if (body.reasons !== undefined) patch.reasons = body.reasons;
-        if (body.tags !== undefined) patch.tags = body.tags;
+
+        const { error: supersedeError } = await client
+          .from('oracle_signals')
+          .update({ status: 'superseded', updated_at: now })
+          .eq('id', previousId)
+          .eq('status', previous.status);
+        if (supersedeError) {
+          return errorResponse(supersedeError.message, 400);
+        }
 
         const { data, error } = await client
           .from('oracle_signals')
-          .update(patch)
-          .eq('id', signalId)
+          .insert([newRow])
           .select()
           .single();
-
         if (error) {
           return errorResponse(error.message, 400);
         }
 
-        return jsonResponse(data);
+        return jsonResponse(data, 201);
       } else {
         // CREATE signal
         const { data, error } = await client
@@ -234,7 +254,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeSignalPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+          `No patchable fields provided. Allowed fields: ${SIGNAL_PATCH_ALLOWED_FIELDS.join(', ')}. Status transitions must use action=rescore (supersede+new version) or the dedicated publication actions.`,
           400,
         );
       }

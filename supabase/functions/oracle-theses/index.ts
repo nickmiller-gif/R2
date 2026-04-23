@@ -3,7 +3,10 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import {
+  buildSafeThesisPatch,
+  THESIS_PATCH_ALLOWED_FIELDS,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -236,7 +239,7 @@ Deno.serve(async (req) => {
       const patch = buildSafeThesisPatch(body as Record<string, unknown>);
       if (Object.keys(patch).length === 1) {
         return errorResponse(
-          'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+          `No patchable fields provided. Allowed fields: ${THESIS_PATCH_ALLOWED_FIELDS.join(', ')}. Use action=challenge/supersede to change status and action=publish/approve/reject/defer to change publication_state.`,
           400,
         );
       }

@@ -17,9 +17,7 @@ import {
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
-import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
-import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -90,7 +88,9 @@ function parseRequest(value: unknown): PublicChatRequest {
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     llm_provider:
-      body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
+      body.llm_provider === 'openai' ||
+      body.llm_provider === 'anthropic' ||
+      body.llm_provider === 'perplexity'
         ? (body.llm_provider as LlmProvider)
         : undefined,
     llm_model: typeof body.llm_model === 'string' ? body.llm_model.trim() : undefined,
@@ -110,9 +110,7 @@ function parseRequest(value: unknown): PublicChatRequest {
 }
 
 function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
-  return chunks
-    .map((chunk, index) => `[${index + 1}] ${chunk.content}`)
-    .join('\n\n');
+  return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
 }
 
 function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
@@ -168,7 +166,12 @@ async function synthesizePublicResponse(
   llmProvider: LlmProvider | undefined,
   llmModel: string | undefined,
   confidenceLabel: ConfidenceLabel,
-): Promise<{ text: string; critic_used: boolean; critic_provider?: LlmProvider; critic_model?: string }> {
+): Promise<{
+  text: string;
+  critic_used: boolean;
+  critic_provider?: LlmProvider;
+  critic_model?: string;
+}> {
   const hasContext = retrievedChunks.length > 0;
 
   const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
@@ -214,234 +217,97 @@ async function synthesizePublicResponse(
   };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
-  const idemError = requireIdempotencyKey(req);
-  if (idemError) return idemError;
-  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
-  const acceptHeader = (req.headers.get('accept') ?? '').toLowerCase();
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  try {
-    const client = getServiceClient();
-    const rate = await enforceEigenPublicRateLimit(client, req);
-    if (!rate.ok) {
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded', retry_after_sec: rate.retryAfterSec }),
-        {
-          status: 429,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': String(rate.retryAfterSec),
+    try {
+      const client = getServiceClient();
+      const rate = await enforceEigenPublicRateLimit(client, req);
+      if (!rate.ok) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded', retry_after_sec: rate.retryAfterSec }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Retry-After': String(rate.retryAfterSec),
+            },
           },
-        },
+        );
+      }
+
+      const body = parseRequest(await req.json());
+      const retreatScoped = body.site_id === 'raysretreat';
+      const r2AppScoped = body.site_id === 'r2app';
+      const outsideDomainIntent = inferOutsideDomainIntent(body.message);
+      const retrieveResult = await executeEigenRetrieve(client, {
+        query: body.message,
+        entity_scope: [],
+        policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
+        site_id: body.site_id,
+        site_source_systems: body.site_source_systems ?? [],
+        site_boost: body.site_boost ?? (retreatScoped ? 0.7 : r2AppScoped ? 0.6 : undefined),
+        global_penalty:
+          body.global_penalty ?? (retreatScoped ? -0.4 : r2AppScoped ? -0.35 : undefined),
+        site_relevance_min: retreatScoped ? 0.36 : r2AppScoped ? 0.3 : undefined,
+        cross_source_max_ratio: retreatScoped ? 0.2 : r2AppScoped ? 0.15 : undefined,
+        allow_cross_source_when_low_confidence: retreatScoped,
+        outside_domain_intent: outsideDomainIntent,
+        disallowed_source_systems:
+          (retreatScoped &&
+            body.conversation_intent === 'retreat_content' &&
+            !outsideDomainIntent) ||
+          (r2AppScoped && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
+            ? ['health-supplement-tr', 'smartplrx']
+            : [],
+        budget_profile: body.budget_profile
+          ? {
+              ...body.budget_profile,
+              strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+            }
+          : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
+        rerank: true,
+        include_provenance: true,
+      });
+
+      if (!retrieveResult.ok) {
+        return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
+      }
+
+      const citations = buildCitations(retrieveResult.body.chunks);
+      const confidence = buildCompositeConfidence(citations);
+      const synthesis = await synthesizePublicResponse(
+        client,
+        body.message,
+        retrieveResult.body.chunks,
+        body.response_format ?? 'structured',
+        body.llm_provider,
+        body.llm_model,
+        confidence.overall,
       );
-    }
 
-    const body = parseRequest(await req.json());
-    const retreatScoped = body.site_id === 'raysretreat';
-    const r2AppScoped = body.site_id === 'r2app';
-    const outsideDomainIntent = inferOutsideDomainIntent(body.message);
-    const retrieveResult = await executeEigenRetrieve(client, {
-      query: body.message,
-      entity_scope: [],
-      policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
-      site_id: body.site_id,
-      site_source_systems: body.site_source_systems ?? [],
-      site_boost: body.site_boost ?? (retreatScoped ? 0.7 : (r2AppScoped ? 0.6 : undefined)),
-      global_penalty: body.global_penalty ?? (retreatScoped ? -0.4 : (r2AppScoped ? -0.35 : undefined)),
-      site_relevance_min: retreatScoped ? 0.36 : (r2AppScoped ? 0.3 : undefined),
-      cross_source_max_ratio: retreatScoped ? 0.2 : (r2AppScoped ? 0.15 : undefined),
-      allow_cross_source_when_low_confidence: retreatScoped,
-      outside_domain_intent: outsideDomainIntent,
-      disallowed_source_systems:
-        (retreatScoped && body.conversation_intent === 'retreat_content' && !outsideDomainIntent) ||
-        (r2AppScoped && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
-          ? ['health-supplement-tr', 'smartplrx']
-          : [],
-      budget_profile: body.budget_profile
-        ? {
-            ...body.budget_profile,
-            strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
-          }
-        : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
-      rerank: true,
-      include_provenance: true,
-    });
-
-    if (!retrieveResult.ok) {
-      return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
-    }
-
-    const citations = buildCitations(retrieveResult.body.chunks);
-    const confidence = buildCompositeConfidence(citations);
-    const retrievalPlan = buildRetrievalPlan(
-      [POLICY_TAG_EIGEN_PUBLIC],
-      retrieveResult.body.chunks,
-      retrieveResult.body.retrieval_run_id,
-    );
-    const startedAt = Date.now();
-    const format = body.response_format ?? 'structured';
-
-    if (body.stream === true || acceptHeader.includes('text/event-stream')) {
-      const hasContext = retrieveResult.body.chunks.length > 0;
-      const envPrompt = Deno.env.get('EIGEN_PUBLIC_SYSTEM_PROMPT')?.trim();
-      const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
-        message: body.message,
-        includePrivate: false,
-        policyScope: [POLICY_TAG_EIGEN_PUBLIC],
-      });
-      const basePrompt = withEigenChatProseStyle(
-        envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
-      );
-      const systemPrompt = [
-        basePrompt,
-        'Primary domain corpus decides answer direction; secondary corpus is additive only.',
-        voiceStyleAddendum,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-      const userContent = hasContext
-        ? buildUserMessageWithContext(body.message, retrieveResult.body.chunks)
-        : `Question: ${body.message}`;
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        start: async (controller) => {
-          const emit = (event: string, data: string) => {
-            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
-          };
-          const deltas: string[] = [];
-          try {
-            const iterator = streamLlmChatDeltas({
-              provider: body.llm_provider,
-              model: body.llm_model,
-              systemPrompt,
-              userContent,
-              temperature: readPublicChatTemperature(),
-              maxTokens: readMaxCompletionTokens(),
-            });
-            while (true) {
-              const next = await iterator.next();
-              if (next.done) {
-                if (next.value?.text && !deltas.length) {
-                  deltas.push(next.value.text);
-                }
-                break;
-              }
-              const delta = next.value;
-              deltas.push(delta);
-              emit('delta', JSON.stringify({ delta }));
-            }
-            const responseText = deltas.join('').trim() || 'No response generated.';
-            const turnId = await insertConversationTurn(client, {
-              siteId: body.site_id ?? null,
-              mode: 'public',
-              userId: null,
-              question: body.message,
-              answer: responseText,
-              retrievalRunId: retrieveResult.body.retrieval_run_id,
-              effectivePolicyScope: [POLICY_TAG_EIGEN_PUBLIC],
-              citations,
-              confidence,
-              retrievalPlan,
-              latencyMs: Date.now() - startedAt,
-              idempotencyKey,
-            });
-            emit('final', JSON.stringify({
-              response: responseText,
-              citations,
-              confidence,
-              evidence_notice: buildEvidenceNotice(confidence),
-              llm_provider: body.llm_provider ?? 'openai',
-              llm_model: body.llm_model ?? null,
-              llm_critic_used: false,
-              llm_critic_provider: null,
-              llm_critic_model: null,
-              conversation_turn_id: turnId,
-              retrieval_run_id: retrieveResult.body.retrieval_run_id,
-              retrieval_plan: retrievalPlan,
-              policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
-              policy_scope_mode: 'public_only',
-              rate_limit: {
-                limit_per_minute: rate.limit,
-                remaining: rate.remaining,
-              },
-            }));
-          } catch (error) {
-            try {
-              const message = error instanceof Error ? error.message : 'Unknown stream error';
-              emit('error', JSON.stringify({ message }));
-            } catch {
-              // Client disconnect can close the stream before error delivery.
-            }
-          } finally {
-            try {
-              controller.close();
-            } catch {
-              // Stream may already be closed/errored.
-            }
-          }
+      return jsonResponse({
+        response: synthesis.text,
+        citations,
+        confidence,
+        llm_provider: body.llm_provider ?? 'openai',
+        llm_model: body.llm_model ?? null,
+        llm_critic_used: synthesis.critic_used,
+        llm_critic_provider: synthesis.critic_provider ?? null,
+        llm_critic_model: synthesis.critic_model ?? null,
+        retrieval_run_id: retrieveResult.body.retrieval_run_id,
+        policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
+        rate_limit: {
+          limit_per_minute: rate.limit,
+          remaining: rate.remaining,
         },
       });
-
-      return new Response(stream, {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
-        },
-      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    const synthesis = await synthesizePublicResponse(
-      client,
-      body.message,
-      retrieveResult.body.chunks,
-      format,
-      body.llm_provider,
-      body.llm_model,
-      confidence.overall,
-    );
-    const turnId = await insertConversationTurn(client, {
-      siteId: body.site_id ?? null,
-      mode: 'public',
-      userId: null,
-      question: body.message,
-      answer: synthesis.text,
-      retrievalRunId: retrieveResult.body.retrieval_run_id,
-      effectivePolicyScope: [POLICY_TAG_EIGEN_PUBLIC],
-      citations,
-      confidence,
-      retrievalPlan,
-      latencyMs: Date.now() - startedAt,
-      idempotencyKey,
-    });
-
-    return jsonResponse({
-      response: synthesis.text,
-      citations,
-      confidence,
-      evidence_notice: buildEvidenceNotice(confidence),
-      conversation_turn_id: turnId,
-      retrieval_plan: retrievalPlan,
-      llm_provider: body.llm_provider ?? 'openai',
-      llm_model: body.llm_model ?? null,
-      llm_critic_used: synthesis.critic_used,
-      llm_critic_provider: synthesis.critic_provider ?? null,
-      llm_critic_model: synthesis.critic_model ?? null,
-      retrieval_run_id: retrieveResult.body.retrieval_run_id,
-      policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
-      policy_scope_mode: 'public_only',
-      rate_limit: {
-        limit_per_minute: rate.limit,
-        remaining: rate.remaining,
-      },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

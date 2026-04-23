@@ -1,5 +1,6 @@
 import * as jose from 'jsr:@panva/jose@6';
 import { corsHeaders } from './cors.ts';
+import { logError } from './log.ts';
 
 /**
  * Edge-function auth guard — jose + JWKS (ADR-002).
@@ -25,8 +26,7 @@ if (!_rawSupabaseUrl) {
 }
 const SUPABASE_URL = _rawSupabaseUrl.replace(/\/+$/, '');
 
-const SUPABASE_JWT_ISSUER =
-  Deno.env.get('SB_JWT_ISSUER') ?? `${SUPABASE_URL}/auth/v1`;
+const SUPABASE_JWT_ISSUER = Deno.env.get('SB_JWT_ISSUER') ?? `${SUPABASE_URL}/auth/v1`;
 
 const SUPABASE_JWT_KEYS = jose.createRemoteJWKSet(
   new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`),
@@ -64,17 +64,14 @@ export function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.get('authorization');
   if (!authHeader) return null;
   const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-  return match ? match[1] ?? null : null;
+  return match ? (match[1] ?? null) : null;
 }
 
 function authError(message: string, status = 401): Response {
-  return new Response(
-    JSON.stringify({ error: message }),
-    {
-      status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    },
-  );
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +119,7 @@ export async function guardAuth(req: Request): Promise<AuthGuardResult> {
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error('[auth] jwt verification failed', { error: errorMessage });
+    logError('jwt verification failed', { functionName: 'auth', error: errorMessage });
     return { ok: false, response: authError('Invalid or expired token') };
   }
 }

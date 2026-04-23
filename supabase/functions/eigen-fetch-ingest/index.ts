@@ -3,6 +3,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { sha256Hex } from '../_shared/eigen.ts';
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 interface FetchIngestRequest {
   url: string;
@@ -92,119 +93,123 @@ function parseRequest(value: unknown): FetchIngestRequest {
     policy_tags: toList(body.policy_tags),
     entity_ids: toList(body.entity_ids),
     chunking_mode: body.chunking_mode === 'flat' ? 'flat' : 'hierarchical',
-    embedding_model: typeof body.embedding_model === 'string' ? body.embedding_model.trim() : undefined,
+    embedding_model:
+      typeof body.embedding_model === 'string' ? body.embedding_model.trim() : undefined,
   };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
-  const roleCheck = await requireRole(auth.claims.userId, 'member');
-  if (!roleCheck.ok) return roleCheck.response;
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
+    const roleCheck = await requireRole(auth.claims.userId, 'member');
+    if (!roleCheck.ok) return roleCheck.response;
 
-  try {
-    const body = parseRequest(await req.json());
-    const targetUrl = new URL(body.url);
-    if (targetUrl.protocol !== 'https:' && targetUrl.protocol !== 'http:') {
-      return errorResponse('Only http(s) URLs are supported', 400);
-    }
-
-    const allowlist = readAllowlist();
-    if (allowlist.length === 0) {
-      return errorResponse('EIGEN_FETCH_ALLOWLIST is not configured', 500);
-    }
-    if (!isAllowedHost(targetUrl.hostname, allowlist)) {
-      return errorResponse(`Host is not allowlisted: ${targetUrl.hostname}`, 403);
-    }
-
-    const fetchRes = await fetch(targetUrl.toString(), { redirect: 'follow' });
-    if (!fetchRes.ok) {
-      return errorResponse(`Failed to fetch URL: ${fetchRes.status}`, 400);
-    }
-
-    const contentType = (fetchRes.headers.get('content-type') ?? '').toLowerCase();
-    const raw = await fetchRes.text();
-    const maxChars = readMaxFetchedChars();
-    const capped = raw.length > maxChars ? raw.slice(0, maxChars) : raw;
-
-    const extractedBody = contentType.includes('html') ? htmlToText(capped) : normalizeText(capped);
-    if (!extractedBody) {
-      return errorResponse('Fetched content produced empty extracted text', 400);
-    }
-
-    const fallbackTitle =
-      extractTitleFromHtml(capped) ??
-      targetUrl.hostname;
-    const chosenTitle = body.title && body.title.length > 0 ? body.title : fallbackTitle;
-
-    const sourceSystem = body.source_system && body.source_system.length > 0
-      ? body.source_system
-      : `web:${targetUrl.hostname}`;
-    const sourceRef = body.source_ref && body.source_ref.length > 0
-      ? body.source_ref
-      : targetUrl.toString();
-
-    // HTTP(S) fetch may only index the public corpus. Dual-tagging with internal tiers would still
-    // match public retrieval (policy filter is "any tag overlaps") and could expose non-public material.
-    if (body.policy_tags && body.policy_tags.length > 0) {
-      const onlyPublic = body.policy_tags.length === 1 &&
-        body.policy_tags[0].trim().toLowerCase() === POLICY_TAG_EIGEN_PUBLIC;
-      if (!onlyPublic) {
-        return errorResponse(
-          'eigen-fetch-ingest only supports public web content: omit policy_tags or use ["eigen_public"] only',
-          400,
-        );
+    try {
+      const body = parseRequest(await req.json());
+      const targetUrl = new URL(body.url);
+      if (targetUrl.protocol !== 'https:' && targetUrl.protocol !== 'http:') {
+        return errorResponse('Only http(s) URLs are supported', 400);
       }
-    }
 
-    const ingestPayload = {
-      source_system: sourceSystem,
-      source_ref: sourceRef,
-      document: {
-        title: chosenTitle,
-        body: extractedBody,
-        content_type: contentType || 'text/html',
-        metadata: {
-          fetched_url: targetUrl.toString(),
-          fetched_at: new Date().toISOString(),
-          public_web_ingest: true,
+      const allowlist = readAllowlist();
+      if (allowlist.length === 0) {
+        return errorResponse('EIGEN_FETCH_ALLOWLIST is not configured', 500);
+      }
+      if (!isAllowedHost(targetUrl.hostname, allowlist)) {
+        return errorResponse(`Host is not allowlisted: ${targetUrl.hostname}`, 403);
+      }
+
+      const fetchRes = await fetch(targetUrl.toString(), { redirect: 'follow' });
+      if (!fetchRes.ok) {
+        return errorResponse(`Failed to fetch URL: ${fetchRes.status}`, 400);
+      }
+
+      const contentType = (fetchRes.headers.get('content-type') ?? '').toLowerCase();
+      const raw = await fetchRes.text();
+      const maxChars = readMaxFetchedChars();
+      const capped = raw.length > maxChars ? raw.slice(0, maxChars) : raw;
+
+      const extractedBody = contentType.includes('html')
+        ? htmlToText(capped)
+        : normalizeText(capped);
+      if (!extractedBody) {
+        return errorResponse('Fetched content produced empty extracted text', 400);
+      }
+
+      const fallbackTitle = extractTitleFromHtml(capped) ?? targetUrl.hostname;
+      const chosenTitle = body.title && body.title.length > 0 ? body.title : fallbackTitle;
+
+      const sourceSystem =
+        body.source_system && body.source_system.length > 0
+          ? body.source_system
+          : `web:${targetUrl.hostname}`;
+      const sourceRef =
+        body.source_ref && body.source_ref.length > 0 ? body.source_ref : targetUrl.toString();
+
+      // HTTP(S) fetch may only index the public corpus. Dual-tagging with internal tiers would still
+      // match public retrieval (policy filter is "any tag overlaps") and could expose non-public material.
+      if (body.policy_tags && body.policy_tags.length > 0) {
+        const onlyPublic =
+          body.policy_tags.length === 1 &&
+          body.policy_tags[0].trim().toLowerCase() === POLICY_TAG_EIGEN_PUBLIC;
+        if (!onlyPublic) {
+          return errorResponse(
+            'eigen-fetch-ingest only supports public web content: omit policy_tags or use ["eigen_public"] only',
+            400,
+          );
+        }
+      }
+
+      const ingestPayload = {
+        source_system: sourceSystem,
+        source_ref: sourceRef,
+        document: {
+          title: chosenTitle,
+          body: extractedBody,
+          content_type: contentType || 'text/html',
+          metadata: {
+            fetched_url: targetUrl.toString(),
+            fetched_at: new Date().toISOString(),
+            public_web_ingest: true,
+          },
         },
-      },
-      chunking_mode: body.chunking_mode ?? 'hierarchical',
-      policy_tags: [POLICY_TAG_EIGEN_PUBLIC],
-      entity_ids: body.entity_ids ?? [],
-      embedding_model: body.embedding_model,
-    };
+        chunking_mode: body.chunking_mode ?? 'hierarchical',
+        policy_tags: [POLICY_TAG_EIGEN_PUBLIC],
+        entity_ids: body.entity_ids ?? [],
+        embedding_model: body.embedding_model,
+      };
 
-    const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
-    const idempotency = await sha256Hex(`${sourceSystem}|${sourceRef}|${targetUrl.toString()}`);
-    const ingestRes = await fetch(`${supabaseUrl}/functions/v1/eigen-ingest`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: req.headers.get('Authorization') ?? '',
-        'x-idempotency-key': `fetch:${idempotency}`,
-      },
-      body: JSON.stringify(ingestPayload),
-    });
+      const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
+      const idempotency = await sha256Hex(`${sourceSystem}|${sourceRef}|${targetUrl.toString()}`);
+      const ingestRes = await fetch(`${supabaseUrl}/functions/v1/eigen-ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: req.headers.get('Authorization') ?? '',
+          'x-idempotency-key': `fetch:${idempotency}`,
+        },
+        body: JSON.stringify(ingestPayload),
+      });
 
-    if (!ingestRes.ok) {
-      const text = await ingestRes.text();
-      return errorResponse(`eigen-ingest failed: ${text}`, 500);
+      if (!ingestRes.ok) {
+        const text = await ingestRes.text();
+        return errorResponse(`eigen-ingest failed: ${text}`, 500);
+      }
+
+      const ingestData = await ingestRes.json();
+      return jsonResponse({
+        fetched_url: targetUrl.toString(),
+        source_system: sourceSystem,
+        source_ref: sourceRef,
+        ingest: ingestData,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    const ingestData = await ingestRes.json();
-    return jsonResponse({
-      fetched_url: targetUrl.toString(),
-      source_system: sourceSystem,
-      source_ref: sourceRef,
-      ingest: ingestData,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

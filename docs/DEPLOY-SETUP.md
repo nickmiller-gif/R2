@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `deploy.yml` workflow automatically deploys migrations and all 24 edge functions to Supabase when code is pushed to `main` (or via manual `workflow_dispatch`). It requires manual approval via a GitHub environment gate. This replaces the previous `deploy-supabase.yml` workflow, adding a CI gate before deploy.
+The `deploy.yml` workflow automatically deploys migrations and all deployable edge functions to Supabase when code is pushed to `main` (or via manual `workflow_dispatch`). It requires manual approval via a GitHub environment gate. This replaces the previous `deploy-supabase.yml` workflow, adding a CI gate before deploy.
 
 ## Step 1: Create the `production` environment
 
@@ -16,11 +16,11 @@ The `deploy.yml` workflow automatically deploys migrations and all 24 edge funct
 
 Go to **GitHub repo → Settings → Secrets and variables → Actions** and add:
 
-| Secret | Value | Where to find it |
-|--------|-------|-------------------|
+| Secret                  | Value                      | Where to find it                                                                       |
+| ----------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
 | `SUPABASE_ACCESS_TOKEN` | Your personal access token | [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) |
-| `SUPABASE_PROJECT_REF` | `zudslxucibosjwefojtm` | Already known |
-| `SUPABASE_DB_PASSWORD` | Your database password | Supabase Dashboard → Project Settings → Database |
+| `SUPABASE_PROJECT_REF`  | `zudslxucibosjwefojtm`     | Already known                                                                          |
+| `SUPABASE_DB_PASSWORD`  | Your database password     | Supabase Dashboard → Project Settings → Database                                       |
 
 ## Step 3: Test the workflow
 
@@ -40,12 +40,13 @@ Push to main
        └─ deploy job (needs: ci, environment: production)
             ├─ supabase link
             ├─ supabase db push (migrations)
-            └─ supabase functions deploy (all 24 functions)
+            └─ supabase functions deploy (all deployable functions)
 ```
 
 ## Edge function deploy flags
 
-- `--no-verify-jwt` is set because JWT verification is handled in application code (`guardAuth()` via jose+JWKS), not by the Supabase gateway. This is intentional per ADR-002.
+- `--no-verify-jwt` is only set for widget-facing public functions (`eigen-widget-session`, `eigen-widget-chat`).
+- All other functions are deployed with gateway JWT verification enabled.
 
 ## Rollback
 

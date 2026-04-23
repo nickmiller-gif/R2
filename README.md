@@ -3,6 +3,7 @@
 R2 is the clean backend/core repository for the revised ecosystem.
 
 It is the shared backend backbone for:
+
 - **Charter** (governance layer)
 - **Oracle** (intelligence/opportunity layer)
 - **Eigen** (shared runtime primitives where relevant)
@@ -21,6 +22,7 @@ It is the shared backend backbone for:
 ## Scope of This Repository
 
 Included:
+
 - Supabase schema and function lifecycle
 - Shared backend services and libraries
 - Shared backend types
@@ -28,6 +30,7 @@ Included:
 - Migration/import planning docs
 
 Excluded:
+
 - UI components
 - Frontend pages/routes
 - Legacy multi-domain frontend shell
@@ -51,25 +54,26 @@ plan.md
 
 Domain slices are ported with CI verification (`npm run check`):
 
-| Domain | Edge functions (indicative) | Tests |
-|--------|----------------------------|-------|
-| **Charter** | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations | ✅ |
-| **MEG** | entities, aliases, edges | ✅ |
-| **Oracle** | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models | ✅ |
-| **Eigen** | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, tool-capabilities, policy-rules, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest | ✅ |
-| **Foundation** | documents, asset-registry | ✅ |
+| Domain         | Edge functions (indicative)                                                                                                                                                                               | Tests |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **Charter**    | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations                                                                                  | ✅    |
+| **MEG**        | entities, aliases, edges                                                                                                                                                                                  | ✅    |
+| **Oracle**     | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models                                                                                                        | ✅    |
+| **Eigen**      | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest | ✅    |
+| **Foundation** | documents, asset-registry                                                                                                                                                                                 | ✅    |
 
 There are **45** deployed function entrypoints under `supabase/functions/` (each `*/index.ts` excluding `_shared`). Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
 
 ## Next priorities
 
-1. Supabase client injection pattern (DI-friendly client factory)
-2. Eigen policy engine + capability registry (EigenX/KOS upgrade)
-3. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+1. Eigen policy engine + capability registry completion (EigenX/KOS operator surfaces and contract tests)
+2. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+3. Expand observability baseline (correlation-id propagation and structured logging across all edge functions)
 
 ## Supabase Client Factory Pattern
 
-- Edge functions should instantiate `const supabaseClients = createSupabaseClientFactory()` once at module scope, then use `supabaseClients.user(req)` for caller-scoped reads and `supabaseClients.service()` for operator writes.
+- Preferred edge-function pattern is module-scope `const supabaseClients = createSupabaseClientFactory()`, then `supabaseClients.user(req)` for caller-scoped reads and `supabaseClients.service()` for operator writes.
+- Convenience shortcuts `getSupabaseClient(req)` and `getServiceClient()` are allowed where they reduce boilerplate; both delegate to the same default factory under the hood.
 - Shared Deno helper lives at `supabase/functions/_shared/supabase.ts`.
 - Node/Vitest helper mirrors the same contract at `src/lib/supabase/create-client-factory.ts` so test harnesses and tooling can inject clients without coupling to Deno globals.
 
@@ -89,3 +93,5 @@ For multi-repo Eigen rollout safety, see [`docs/eigen-safe-rollout-checklist.md`
 For which repos tag **`eigen_public`** (anonymous retrieval) vs internal **`eigenx`**, see [`docs/eigen-ingest-producers.md`](./docs/eigen-ingest-producers.md).
 
 For production release procedure and preflight, see [`docs/production-deploy-checklist.md`](./docs/production-deploy-checklist.md).
+
+For Supabase per-PR preview DB tradeoffs and rollout phases, see [`docs/supabase-pr-preview-evaluation.md`](./docs/supabase-pr-preview-evaluation.md).

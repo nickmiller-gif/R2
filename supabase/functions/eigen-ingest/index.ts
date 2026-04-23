@@ -4,14 +4,15 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole, type CharterRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { extractRequestMeta } from '../_shared/correlation.ts';
+import { extractRequestMeta, withRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { extractDocumentText } from '../_shared/extract-document.ts';
-import { inferCorpusTier, normalizeCorpusPolicyTags, POLICY_TAG_RAY_VOICE } from '../_shared/eigen-policy.ts';
-import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
-import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
-
-const JWT_INGEST_KOS_EXCLUDED_CAPABILITY_TAGS = new Set<string>(['ingest']);
+import {
+  inferCorpusTier,
+  normalizeCorpusPolicyTags,
+  POLICY_TAG_RAY_VOICE,
+} from '../_shared/eigen-policy.ts';
+import { logError } from '../_shared/log.ts';
 
 interface IngestDocumentPayload {
   title?: string;
@@ -99,7 +100,10 @@ async function ensureEigenDocumentAsset(
     { onConflict: 'kind,ref_id,domain' },
   );
   if (error) {
-    console.error(`[eigen-ingest] asset_registry upsert failed: ${error.message}`);
+    logError('asset_registry upsert failed', {
+      functionName: 'eigen-ingest',
+      error: error.message,
+    });
   }
 }
 
@@ -122,7 +126,10 @@ function normalizeStringList(value: unknown): string[] {
         // fall through to comma-split parsing.
       }
     }
-    return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   return [];
 }
@@ -156,7 +163,12 @@ function cleanString(value: unknown): string | undefined {
 async function resolveDocumentPayload(
   payload: IngestDocumentPayload,
   client: ReturnType<typeof getServiceClient>,
-): Promise<{ title: string; body: string; contentType: string; metadata: Record<string, unknown> }> {
+): Promise<{
+  title: string;
+  body: string;
+  contentType: string;
+  metadata: Record<string, unknown>;
+}> {
   const metadata = isObject(payload.metadata) ? payload.metadata : {};
   if (typeof payload.body === 'string' && payload.body.trim().length > 0) {
     if (!payload.title || payload.title.trim().length === 0) {
@@ -208,12 +220,15 @@ async function resolveDocumentPayload(
   };
 }
 
-async function parseMultipartRequest(
-  req: Request,
-): Promise<{
+async function parseMultipartRequest(req: Request): Promise<{
   source_system: string;
   source_ref: string;
-  document: { title: string; body: string; content_type?: string; metadata?: Record<string, unknown> };
+  document: {
+    title: string;
+    body: string;
+    content_type?: string;
+    metadata?: Record<string, unknown>;
+  };
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
@@ -270,9 +285,10 @@ async function parseMultipartRequest(
       title: docTitle,
       body: docBody,
       content_type: resolvedContentType,
-      metadata: Object.keys(extractionMeta).length > 0
-        ? { ...metadata, extraction: extractionMeta }
-        : metadata,
+      metadata:
+        Object.keys(extractionMeta).length > 0
+          ? { ...metadata, extraction: extractionMeta }
+          : metadata,
     },
     chunking_mode: toChunkingMode(form.get('chunking_mode')),
     policy_tags: normalizeStringList(form.get('policy_tags')),
@@ -334,435 +350,379 @@ async function parseRequest(
   return parseJsonRequest(req, client);
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  const serviceIdentity = resolveIngestIdentity(req);
-  let ownerUserId: string;
-  let ingestCallerRoles: CharterRole[] | null = null;
-  if (serviceIdentity) {
-    ownerUserId = serviceIdentity.userId;
-  } else {
-    const auth = await guardAuth(req);
-    if (!auth.ok) return auth.response;
-    const roleCheck = await requireRole(auth.claims.userId, 'member');
-    if (!roleCheck.ok) return roleCheck.response;
-    ownerUserId = auth.claims.userId;
-    ingestCallerRoles = roleCheck.roles;
-  }
+    const serviceIdentity = resolveIngestIdentity(req);
+    let ownerUserId: string;
+    if (serviceIdentity) {
+      ownerUserId = serviceIdentity.userId;
+    } else {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      const roleCheck = await requireRole(auth.claims.userId, 'member');
+      if (!roleCheck.ok) return roleCheck.response;
+      ownerUserId = auth.claims.userId;
+    }
 
-  const idemError = requireIdempotencyKey(req);
-  if (idemError) return idemError;
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
 
-  const client = getServiceClient();
-  let activeIngestionRunId: string | undefined;
-
-  try {
-    const requestMeta = extractRequestMeta(req);
-    const requestBody = await parseRequest(req, client);
-
-    if (ingestCallerRoles) {
-      const policyTagsForKos = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
-      const kosCapabilityTags = [...EIGEN_KOS_CAPABILITY.ingest].filter(
-        shouldEvaluateJwtIngestKosCapabilityTag,
-      );
-      if (kosCapabilityTags.length > 0) {
-        const kos = await resolveEigenCapabilityAccess(client, {
-          policyTags: policyTagsForKos,
-          capabilityTags: kosCapabilityTags,
-          callerRoles: ingestCallerRoles,
-        });
-        if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
-          return errorResponse(
-            `KOS policy denied ingest: ${kos.deniedCapabilityTags.join(', ')}`,
-            403,
-          );
+    try {
+      const requestMeta = extractRequestMeta(req);
+      const client = getServiceClient();
+      const requestBody = await parseRequest(req, client);
+      const maxBodyChars = readMaxBodyChars();
+      if (requestBody.document.body.length > maxBodyChars) {
+        return errorResponse(
+          `document.body exceeds ${maxBodyChars} chars; split into multiple documents or increase EIGEN_INGEST_MAX_BODY_CHARS`,
+          400,
+        );
+      }
+      const sourceSystemLower = requestBody.source_system.toLowerCase();
+      const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+      if (
+        sourceSystemLower.includes('upload') ||
+        sourceSystemLower.includes('manual') ||
+        sourceSystemLower.includes('autonomous')
+      ) {
+        if (!policyTags.includes('user_upload')) {
+          policyTags.push('user_upload');
         }
       }
-    }
+      if (sourceSystemLower.includes('ray_voice') || sourceSystemLower.includes('ray-podcast')) {
+        if (!policyTags.includes(POLICY_TAG_RAY_VOICE)) {
+          policyTags.push(POLICY_TAG_RAY_VOICE);
+        }
+        // Keep voice docs highly trusted for style guidance, while topic selection
+        // is still constrained by retrieval relevance controls.
+        if (!policyTags.includes('voice_style')) {
+          policyTags.push('voice_style');
+        }
+      }
 
-    const maxBodyChars = readMaxBodyChars();
-    if (requestBody.document.body.length > maxBodyChars) {
-      return errorResponse(
-        `document.body exceeds ${maxBodyChars} chars; split into multiple documents or increase EIGEN_INGEST_MAX_BODY_CHARS`,
-        400,
+      const effectiveEmbeddingModel =
+        typeof requestBody.embedding_model === 'string' &&
+        requestBody.embedding_model.trim().length > 0
+          ? requestBody.embedding_model.trim()
+          : 'text-embedding-3-small';
+
+      const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
+      const policyKey = [...policyTags].sort().join('\u0002');
+      const documentHash = await sha256Hex(
+        `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
       );
-    }
-    const sourceSystemLower = requestBody.source_system.toLowerCase();
-    const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
-    if (
-      sourceSystemLower.includes('upload') ||
-      sourceSystemLower.includes('manual') ||
-      sourceSystemLower.includes('autonomous')
-    ) {
-      if (!policyTags.includes('user_upload')) {
-        policyTags.push('user_upload');
+
+      const [existingRunResult, existingDocResult] = await Promise.all([
+        client
+          .from('ingestion_runs')
+          .select('*')
+          .eq('source_system', requestBody.source_system)
+          .eq('source_ref', requestBody.source_ref)
+          .limit(1)
+          .maybeSingle(),
+        client
+          .from('documents')
+          .select('id, content_hash')
+          .eq('source_system', requestBody.source_system)
+          .eq('source_ref', requestBody.source_ref)
+          .maybeSingle(),
+      ]);
+
+      if (existingRunResult.error) {
+        return errorResponse(existingRunResult.error.message, 400);
       }
-    }
-    if (sourceSystemLower.includes('ray_voice') || sourceSystemLower.includes('ray-podcast')) {
-      if (!policyTags.includes(POLICY_TAG_RAY_VOICE)) {
-        policyTags.push(POLICY_TAG_RAY_VOICE);
-      }
-      // Keep voice docs highly trusted for style guidance, while topic selection
-      // is still constrained by retrieval relevance controls.
-      if (!policyTags.includes('voice_style')) {
-        policyTags.push('voice_style');
-      }
-    }
-
-    const effectiveEmbeddingModel =
-      typeof requestBody.embedding_model === 'string' && requestBody.embedding_model.trim().length > 0
-        ? requestBody.embedding_model.trim()
-        : 'text-embedding-3-small';
-
-    const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
-    const policyKey = [...policyTags].sort().join('\u0002');
-    const documentHash = await sha256Hex(
-      `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
-    );
-
-    const [existingRunResult, existingDocResult] = await Promise.all([
-      client
-        .from('ingestion_runs')
-        .select('*')
-        .eq('source_system', requestBody.source_system)
-        .eq('source_ref', requestBody.source_ref)
-        .limit(1)
-        .maybeSingle(),
-      client
-        .from('documents')
-        .select('id, content_hash')
-        .eq('source_system', requestBody.source_system)
-        .eq('source_ref', requestBody.source_ref)
-        .maybeSingle(),
-    ]);
-
-    if (existingRunResult.error) {
-      return errorResponse(existingRunResult.error.message, 400);
-    }
-    if (existingDocResult.error) {
-      return errorResponse(existingDocResult.error.message, 400);
-    }
-
-    const existingDoc = existingDocResult.data;
-    if (existingDoc && existingDoc.content_hash === documentHash) {
-      const chunkHead = await client
-        .from('knowledge_chunks')
-        .select('id', { count: 'exact', head: true })
-        .eq('document_id', existingDoc.id);
-
-      if (chunkHead.error) {
-        return errorResponse(chunkHead.error.message, 400);
+      if (existingDocResult.error) {
+        return errorResponse(existingDocResult.error.message, 400);
       }
 
-      const chunkCount = chunkHead.count ?? 0;
-      if (chunkCount > 0) {
-        let ingestionRunId = existingRunResult.data?.id as string | undefined;
-        const nowIso = new Date().toISOString();
+      const existingDoc = existingDocResult.data;
+      if (existingDoc && existingDoc.content_hash === documentHash) {
+        const chunkHead = await client
+          .from('knowledge_chunks')
+          .select('id', { count: 'exact', head: true })
+          .eq('document_id', existingDoc.id);
 
-        if (!ingestionRunId) {
-          const runInsert = await client
-            .from('ingestion_runs')
-            .insert([
-              {
-                source_system: requestBody.source_system,
-                source_ref: requestBody.source_ref,
-                chunking_mode: requestBody.chunking_mode,
-                embedding_model: effectiveEmbeddingModel,
+        if (chunkHead.error) {
+          return errorResponse(chunkHead.error.message, 400);
+        }
+
+        const chunkCount = chunkHead.count ?? 0;
+        if (chunkCount > 0) {
+          let ingestionRunId = existingRunResult.data?.id as string | undefined;
+          const nowIso = new Date().toISOString();
+
+          if (!ingestionRunId) {
+            const runInsert = await client
+              .from('ingestion_runs')
+              .insert([
+                {
+                  source_system: requestBody.source_system,
+                  source_ref: requestBody.source_ref,
+                  chunking_mode: requestBody.chunking_mode,
+                  embedding_model: effectiveEmbeddingModel,
+                  status: 'completed',
+                  document_id: existingDoc.id,
+                  chunk_count: chunkCount,
+                  completed_at: nowIso,
+                  metadata: { content_unchanged_fast_path: true },
+                },
+              ])
+              .select('*')
+              .single();
+
+            if (runInsert.error) return errorResponse(runInsert.error.message, 400);
+            ingestionRunId = runInsert.data.id;
+          } else {
+            const prev = existingRunResult.data?.metadata;
+            const prevMeta =
+              prev && typeof prev === 'object' && prev !== null && !Array.isArray(prev)
+                ? (prev as Record<string, unknown>)
+                : {};
+            const runUpdate = await client
+              .from('ingestion_runs')
+              .update({
                 status: 'completed',
                 document_id: existingDoc.id,
                 chunk_count: chunkCount,
                 completed_at: nowIso,
-                metadata: { content_unchanged_fast_path: true },
-              },
-            ])
-            .select('*')
-            .single();
+                embedding_model: effectiveEmbeddingModel,
+                metadata: {
+                  ...prevMeta,
+                  content_unchanged_fast_path: true,
+                },
+              })
+              .eq('id', ingestionRunId);
 
-          if (runInsert.error) return errorResponse(runInsert.error.message, 400);
-          ingestionRunId = runInsert.data.id;
-        } else {
-          const prev = existingRunResult.data?.metadata;
-          const prevMeta =
-            prev && typeof prev === 'object' && prev !== null && !Array.isArray(prev)
-              ? (prev as Record<string, unknown>)
-              : {};
-          const runUpdate = await client
-            .from('ingestion_runs')
-            .update({
-              status: 'completed',
-              document_id: existingDoc.id,
-              chunk_count: chunkCount,
-              completed_at: nowIso,
-              embedding_model: effectiveEmbeddingModel,
-              metadata: {
-                ...prevMeta,
-                content_unchanged_fast_path: true,
-              },
-            })
-            .eq('id', ingestionRunId);
+            if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
+          }
 
-          if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
+          const runMeta = existingRunResult.data?.metadata as Record<string, unknown> | undefined;
+          await ensureEigenDocumentAsset(client, {
+            documentId: existingDoc.id as string,
+            title: requestBody.document.title,
+            sourceSystem: requestBody.source_system,
+          });
+          return jsonResponse({
+            document_id: existingDoc.id,
+            ingestion_run_id: ingestionRunId,
+            chunks_created: chunkCount,
+            embedding_dimensions: 1536,
+            oracle_outbox_event_id:
+              (runMeta?.oracle_outbox_event_id as string | null | undefined) ?? null,
+            content_unchanged: true,
+            idempotent_replay: true,
+          });
         }
-
-        const runMeta = existingRunResult.data?.metadata as Record<string, unknown> | undefined;
-        await ensureEigenDocumentAsset(client, {
-          documentId: existingDoc.id as string,
-          title: requestBody.document.title,
-          sourceSystem: requestBody.source_system,
-        });
-        return jsonResponse({
-          document_id: existingDoc.id,
-          ingestion_run_id: ingestionRunId,
-          chunks_created: chunkCount,
-          embedding_dimensions: 1536,
-          oracle_outbox_event_id: (runMeta?.oracle_outbox_event_id as string | null | undefined) ?? null,
-          content_unchanged: true,
-          idempotent_replay: true,
-        });
       }
-    }
 
-    let ingestionRunId = existingRunResult.data?.id as string | undefined;
-    if (!ingestionRunId) {
-      const runInsert = await client
-        .from('ingestion_runs')
-        .insert([
+      let ingestionRunId = existingRunResult.data?.id as string | undefined;
+      if (!ingestionRunId) {
+        const runInsert = await client
+          .from('ingestion_runs')
+          .insert([
+            {
+              source_system: requestBody.source_system,
+              source_ref: requestBody.source_ref,
+              chunking_mode: requestBody.chunking_mode,
+              embedding_model: effectiveEmbeddingModel,
+              status: 'running',
+            },
+          ])
+          .select('*')
+          .single();
+
+        if (runInsert.error) return errorResponse(runInsert.error.message, 400);
+        ingestionRunId = runInsert.data.id;
+      } else {
+        const runUpdate = await client
+          .from('ingestion_runs')
+          .update({
+            status: 'running',
+            completed_at: null,
+            metadata: {
+              resumed_from_existing: true,
+            },
+          })
+          .eq('id', ingestionRunId);
+        if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
+      }
+
+      const upsertDoc = await client
+        .from('documents')
+        .upsert(
           {
             source_system: requestBody.source_system,
             source_ref: requestBody.source_ref,
-            chunking_mode: requestBody.chunking_mode,
-            embedding_model: effectiveEmbeddingModel,
-            status: 'running',
+            owner_id: ownerUserId,
+            title: requestBody.document.title,
+            body: requestBody.document.body,
+            content_type: requestBody.document.content_type,
+            content_hash: documentHash,
+            index_status: 'indexed',
+            embedding_status: 'embedded',
+            extracted_text_status: 'extracted',
+            updated_at: new Date().toISOString(),
           },
-        ])
-        .select('*')
+          { onConflict: 'source_system,source_ref' },
+        )
+        .select('id')
         .single();
 
-      if (runInsert.error) return errorResponse(runInsert.error.message, 400);
-      ingestionRunId = runInsert.data.id;
-    } else {
-      const runUpdate = await client
-        .from('ingestion_runs')
-        .update({
-          status: 'running',
-          completed_at: null,
-          metadata: {
-            resumed_from_existing: true,
-          },
-        })
-        .eq('id', ingestionRunId);
-      if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
-    }
-    activeIngestionRunId = ingestionRunId;
+      if (upsertDoc.error) return errorResponse(upsertDoc.error.message, 400);
+      const documentId = upsertDoc.data.id as string;
 
-    const upsertDoc = await client
-      .from('documents')
-      .upsert(
-        {
-          source_system: requestBody.source_system,
-          source_ref: requestBody.source_ref,
-          owner_id: ownerUserId,
-          title: requestBody.document.title,
-          body: requestBody.document.body,
-          content_type: requestBody.document.content_type,
-          content_hash: documentHash,
-          index_status: 'indexed',
-          embedding_status: 'embedded',
-          extracted_text_status: 'extracted',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'source_system,source_ref' },
-      )
-      .select('id')
-      .single();
-
-    if (upsertDoc.error) throwIngestHttpError(upsertDoc.error.message, 400);
-    const documentId = upsertDoc.data.id as string;
-
-    const chunks = buildChunks(
-      requestBody.document.title,
-      requestBody.document.body,
-      requestBody.chunking_mode ?? 'hierarchical',
-    );
-
-    const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
-      chunks.map((chunk) => chunk.content),
-      effectiveEmbeddingModel,
-    );
-
-    await ensureEigenDocumentAsset(client, {
-      documentId,
-      title: requestBody.document.title,
-      sourceSystem: requestBody.source_system,
-    });
-
-    const deleteChunks = await client.from('knowledge_chunks').delete().eq('document_id', documentId);
-    if (deleteChunks.error) throwIngestHttpError(deleteChunks.error.message, 400);
-
-    const linkDocToRun = await client
-      .from('ingestion_runs')
-      .update({ document_id: documentId })
-      .eq('id', ingestionRunId);
-    if (linkDocToRun.error) throwIngestHttpError(linkDocToRun.error.message, 400);
-
-    const chunkContentHashes = await Promise.all(
-      chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
-    );
-
-    const chunkRows: Record<string, unknown>[] = [];
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunk = chunks[index]!;
-      const embedding = embeddings[index];
-      if (!embedding) {
-        throwIngestHttpError(`Missing embedding for chunk index ${index}`, 500);
-      }
-      chunkRows.push({
-        document_id: documentId,
-        chunk_level: chunk.chunkLevel,
-        heading_path: chunk.headingPath,
-        entity_ids: requestBody.entity_ids ?? [],
-        policy_tags: policyTags,
-        authority_score:
-          sourceSystemLower.includes('upload') || sourceSystemLower.includes('manual')
-            ? 92
-            : chunk.chunkLevel === 'claim'
-            ? 85
-            : chunk.chunkLevel === 'paragraph'
-            ? 70
-            : chunk.chunkLevel === 'section'
-            ? 60
-            : 55,
-        freshness_score: 100,
-        provenance_completeness: 100,
-        content: chunk.content,
-        content_hash: chunkContentHashes[index],
-        embedding_version: resolvedEmbeddingModel,
-        ingestion_run_id: ingestionRunId,
-        embedding,
+      await ensureEigenDocumentAsset(client, {
+        documentId,
+        title: requestBody.document.title,
+        sourceSystem: requestBody.source_system,
       });
-    }
 
-    const CHUNK_INSERT_BATCH = 150;
-    for (let offset = 0; offset < chunkRows.length; offset += CHUNK_INSERT_BATCH) {
-      const slice = chunkRows.slice(offset, offset + CHUNK_INSERT_BATCH);
-      const chunkInsert = await client.from('knowledge_chunks').insert(slice);
-      if (chunkInsert.error) throwIngestHttpError(chunkInsert.error.message, 400);
-    }
+      const deleteChunks = await client
+        .from('knowledge_chunks')
+        .delete()
+        .eq('document_id', documentId);
+      if (deleteChunks.error) return errorResponse(deleteChunks.error.message, 400);
 
-    let oracleOutboxEventId: string | null = null;
-    const outboxEnabled = (Deno.env.get('EIGEN_ORACLE_OUTBOX_ENABLED') ?? 'false') === 'true';
-    if (outboxEnabled && requestMeta.idempotencyKey) {
-      const existingOutbox = await client
-        .from('eigen_oracle_outbox')
-        .select('id')
-        .eq('idempotency_key', requestMeta.idempotencyKey)
-        .maybeSingle();
+      const linkDocToRun = await client
+        .from('ingestion_runs')
+        .update({ document_id: documentId })
+        .eq('id', ingestionRunId);
+      if (linkDocToRun.error) return errorResponse(linkDocToRun.error.message, 400);
 
-      if (existingOutbox.error) throwIngestHttpError(existingOutbox.error.message, 400);
-      if (existingOutbox.data?.id) {
-        oracleOutboxEventId = existingOutbox.data.id as string;
-      } else {
-        const outboxInsert = await client
+      const chunks = buildChunks(
+        requestBody.document.title,
+        requestBody.document.body,
+        requestBody.chunking_mode ?? 'hierarchical',
+      );
+
+      const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
+        chunks.map((chunk) => chunk.content),
+        effectiveEmbeddingModel,
+      );
+
+      const chunkContentHashes = await Promise.all(
+        chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
+      );
+
+      const chunkRows: Record<string, unknown>[] = [];
+      for (let index = 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index]!;
+        const embedding = embeddings[index];
+        if (!embedding) {
+          return errorResponse(`Missing embedding for chunk index ${index}`, 500);
+        }
+        chunkRows.push({
+          document_id: documentId,
+          chunk_level: chunk.chunkLevel,
+          heading_path: chunk.headingPath,
+          entity_ids: requestBody.entity_ids ?? [],
+          policy_tags: policyTags,
+          authority_score:
+            sourceSystemLower.includes('upload') || sourceSystemLower.includes('manual')
+              ? 92
+              : chunk.chunkLevel === 'claim'
+                ? 85
+                : chunk.chunkLevel === 'paragraph'
+                  ? 70
+                  : chunk.chunkLevel === 'section'
+                    ? 60
+                    : 55,
+          freshness_score: 100,
+          provenance_completeness: 100,
+          content: chunk.content,
+          content_hash: chunkContentHashes[index],
+          embedding_version: resolvedEmbeddingModel,
+          ingestion_run_id: ingestionRunId,
+          embedding,
+        });
+      }
+
+      const CHUNK_INSERT_BATCH = 150;
+      for (let offset = 0; offset < chunkRows.length; offset += CHUNK_INSERT_BATCH) {
+        const slice = chunkRows.slice(offset, offset + CHUNK_INSERT_BATCH);
+        const chunkInsert = await client.from('knowledge_chunks').insert(slice);
+        if (chunkInsert.error) return errorResponse(chunkInsert.error.message, 400);
+      }
+
+      let oracleOutboxEventId: string | null = null;
+      const outboxEnabled = (Deno.env.get('EIGEN_ORACLE_OUTBOX_ENABLED') ?? 'false') === 'true';
+      if (outboxEnabled && requestMeta.idempotencyKey) {
+        const existingOutbox = await client
           .from('eigen_oracle_outbox')
-          .insert([
-            {
-              event_type: 'signal_candidate',
-              payload: {
+          .select('id')
+          .eq('idempotency_key', requestMeta.idempotencyKey)
+          .maybeSingle();
+
+        if (existingOutbox.error) return errorResponse(existingOutbox.error.message, 400);
+        if (existingOutbox.data?.id) {
+          oracleOutboxEventId = existingOutbox.data.id as string;
+        } else {
+          const outboxInsert = await client
+            .from('eigen_oracle_outbox')
+            .insert([
+              {
+                event_type: 'signal_candidate',
+                payload: {
+                  source_document_id: documentId,
+                  source_system: requestBody.source_system,
+                  source_ref: requestBody.source_ref,
+                  signal_type: 'knowledge_ingest',
+                  suggested_score: null,
+                  confidence_band: null,
+                  reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
+                  entity_ids: requestBody.entity_ids ?? [],
+                  tags: policyTags,
+                  analysis_document_id: null,
+                },
                 source_document_id: documentId,
                 source_system: requestBody.source_system,
                 source_ref: requestBody.source_ref,
-                signal_type: 'knowledge_ingest',
-                suggested_score: null,
-                confidence_band: null,
-                reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
-                entity_ids: requestBody.entity_ids ?? [],
-                tags: policyTags,
-                analysis_document_id: null,
+                correlation_id: requestMeta.correlationId,
+                idempotency_key: requestMeta.idempotencyKey,
+                status: 'pending',
               },
-              source_document_id: documentId,
-              source_system: requestBody.source_system,
-              source_ref: requestBody.source_ref,
-              correlation_id: requestMeta.correlationId,
-              idempotency_key: requestMeta.idempotencyKey,
-              status: 'pending',
-            },
-          ])
-          .select('id')
-          .single();
+            ])
+            .select('id')
+            .single();
 
-        if (outboxInsert.error) throwIngestHttpError(outboxInsert.error.message, 400);
-        oracleOutboxEventId = outboxInsert.data.id as string;
-      }
-    }
-
-    const runComplete = await client
-      .from('ingestion_runs')
-      .update({
-        status: 'completed',
-        document_id: documentId,
-        chunk_count: chunkRows.length,
-        embedding_model: resolvedEmbeddingModel,
-        completed_at: new Date().toISOString(),
-        metadata: {
-          oracle_outbox_event_id: oracleOutboxEventId,
-          request_metadata: requestBody.document.metadata ?? {},
-          corpus_tier: inferCorpusTier(policyTags),
-        },
-      })
-      .eq('id', ingestionRunId);
-    if (runComplete.error) throwIngestHttpError(runComplete.error.message, 400);
-
-    return jsonResponse(
-      {
-        document_id: documentId,
-        ingestion_run_id: ingestionRunId,
-        chunks_created: chunkRows.length,
-        embedding_dimensions: 1536,
-        oracle_outbox_event_id: oracleOutboxEventId,
-      },
-      201,
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    if (activeIngestionRunId) {
-      const failedAt = new Date().toISOString();
-      let existingMetadata: Record<string, unknown> = {};
-      const existingRunResult = await client
-        .from('ingestion_runs')
-        .select('metadata')
-        .eq('id', activeIngestionRunId)
-        .maybeSingle();
-      if (existingRunResult.error) {
-        console.error(
-          `[eigen-ingest] failed to load existing ingestion run metadata: ${existingRunResult.error.message}`,
-        );
-      } else {
-        const metadata = existingRunResult.data?.metadata;
-        if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-          existingMetadata = metadata as Record<string, unknown>;
+          if (outboxInsert.error) return errorResponse(outboxInsert.error.message, 400);
+          oracleOutboxEventId = outboxInsert.data.id as string;
         }
       }
-      const markFailed = await client
+
+      const runComplete = await client
         .from('ingestion_runs')
         .update({
-          status: 'failed',
-          completed_at: failedAt,
+          status: 'completed',
+          document_id: documentId,
+          chunk_count: chunkRows.length,
+          embedding_model: resolvedEmbeddingModel,
+          completed_at: new Date().toISOString(),
           metadata: {
-            ...existingMetadata,
-            failure_reason: message,
-            failed_at: failedAt,
+            oracle_outbox_event_id: oracleOutboxEventId,
+            request_metadata: requestBody.document.metadata ?? {},
+            corpus_tier: inferCorpusTier(policyTags),
           },
         })
-        .eq('id', activeIngestionRunId);
-      if (markFailed.error) {
-        console.error(`[eigen-ingest] failed to mark ingestion run as failed: ${markFailed.error.message}`);
-      }
+        .eq('id', ingestionRunId);
+      if (runComplete.error) return errorResponse(runComplete.error.message, 400);
+
+      return jsonResponse(
+        {
+          document_id: documentId,
+          ingestion_run_id: ingestionRunId,
+          chunks_created: chunkRows.length,
+          embedding_dimensions: 1536,
+          oracle_outbox_event_id: oracleOutboxEventId,
+        },
+        201,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-    if (err instanceof IngestHttpError) {
-      return errorResponse(err.message, err.status);
-    }
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

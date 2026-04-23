@@ -90,9 +90,11 @@ jobs:
 
       - name: Deploy edge functions
         run: |
+          # `oracle-whitespace-runs` remains skipped until the Deno bundling blocker
+          # called out in docs/production-deploy-checklist.md is resolved.
           SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
-          # Widget-facing functions accept unauthenticated public requests
-          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat)$"
+          # Widget/public-facing functions accept unauthenticated requests
+          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-public-sources)$"
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
             # skip shared and known non-deployable legacy function

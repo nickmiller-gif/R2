@@ -8,17 +8,25 @@
     "test": "tests"
   },
   "scripts": {
+    "lint": "eslint \"src/**/*.ts\" \"supabase/functions/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check .",
+    "format:write": "prettier --write .",
+    "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint:imports": "bash scripts/check-banned-imports.sh",
+    "lint:imports": "eslint src --max-warnings=0",
     "lint:migrations": "bash scripts/check-migrations.sh",
     "lint:supabase:drift": "bash scripts/check-supabase-migration-drift.sh",
     "lint:supabase:types": "bash scripts/check-supabase-generated-types.sh",
-    "check": "npm run typecheck && npm run test && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types",
-    "deploy:widget": "npx wrangler@3 pages deploy apps/eigen-widget --project-name eigen",
-    "deploy:widget:list-projects": "npx wrangler@3 pages project list"
+    "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "repository": {
     "type": "git",
@@ -33,10 +41,19 @@
   },
   "homepage": "https://github.com/nickmiller-gif/R2#readme",
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^25.5.2",
     "@vitest/coverage-v8": "^4.1.2",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.9",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "globals": "^15.15.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.59.0",
+    "vite": "^8.0.7",
     "vitest": "^4.1.2"
   },
   "dependencies": {

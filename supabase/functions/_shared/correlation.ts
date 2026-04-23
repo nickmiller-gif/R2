@@ -31,3 +31,23 @@ export function extractRequestMeta(req: Request): RequestMeta {
 export function metaResponseHeaders(correlationId: string): Record<string, string> {
   return { [CORRELATION_ID_HEADER]: correlationId };
 }
+
+type RequestMetaHandler = (req: Request, meta: RequestMeta) => Promise<Response> | Response;
+
+/**
+ * Wraps a Deno.serve handler and guarantees `x-correlation-id` is echoed on
+ * all successful handler responses.
+ */
+export function withRequestMeta(handler: RequestMetaHandler) {
+  return async (req: Request): Promise<Response> => {
+    const meta = extractRequestMeta(req);
+    const response = await handler(req, meta);
+    const headers = new Headers(response.headers);
+    headers.set(CORRELATION_ID_HEADER, meta.correlationId);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  };
+}

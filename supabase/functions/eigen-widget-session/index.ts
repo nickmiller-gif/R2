@@ -9,7 +9,7 @@ import { requireRole } from '../_shared/rbac.ts';
 import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-session.ts';
 import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
-import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 interface WidgetSessionRequest {
   site_id: string;
@@ -55,7 +55,9 @@ function parseSiteMapEnv(): Record<string, RegistryConfig> {
         site_id: siteId,
         mode: v.mode === 'eigenx' || v.mode === 'mixed' ? v.mode : 'public',
         origins: Array.isArray(v.origins) ? v.origins.map((o) => normalizeOrigin(String(o))) : [],
-        source_systems: Array.isArray(v.source_systems) ? v.source_systems.map((s) => String(s)) : [],
+        source_systems: Array.isArray(v.source_systems)
+          ? v.source_systems.map((s) => String(s))
+          : [],
         default_policy_scope: Array.isArray(v.default_policy_scope)
           ? v.default_policy_scope.map((s) => String(s))
           : [],
@@ -68,9 +70,7 @@ function parseSiteMapEnv(): Record<string, RegistryConfig> {
   }
 }
 
-async function loadRegistryConfig(
-  siteId: string,
-): Promise<RegistryConfig | null> {
+async function loadRegistryConfig(siteId: string): Promise<RegistryConfig | null> {
   const envMap = parseSiteMapEnv();
   if (envMap[siteId]) return envMap[siteId];
 
@@ -87,9 +87,7 @@ async function loadRegistryConfig(
   return {
     site_id: String(row.site_id),
     mode: row.mode === 'eigenx' || row.mode === 'mixed' ? row.mode : 'public',
-    origins: Array.isArray(row.origins)
-      ? row.origins.map((o) => normalizeOrigin(String(o)))
-      : [],
+    origins: Array.isArray(row.origins) ? row.origins.map((o) => normalizeOrigin(String(o))) : [],
     source_systems: Array.isArray(row.source_systems)
       ? row.source_systems.map((s) => String(s))
       : [],
@@ -100,92 +98,85 @@ async function loadRegistryConfig(
   };
 }
 
-Deno.serve(async (req) => {
-  const rawOrigin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
-  if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  try {
-    const body = parseRequest(await req.json());
-    if (!rawOrigin) return reflectedErrorResponse(rawOrigin, 'Missing Origin header', 400);
-    const origin = normalizeOrigin(rawOrigin);
+    try {
+      const body = parseRequest(await req.json());
+      const originHeader = req.headers.get('origin');
+      if (!originHeader) return errorResponse('Missing Origin header', 400);
+      const origin = normalizeOrigin(originHeader);
 
-    const config = await loadRegistryConfig(body.site_id);
-    if (!config) return reflectedErrorResponse(rawOrigin, `Unknown site_id: ${body.site_id}`, 404);
-    if (config.status !== 'active') return reflectedErrorResponse(rawOrigin, 'Site is not active', 403);
-    if (!config.origins.includes(origin)) {
-      return reflectedErrorResponse(rawOrigin, 'Origin not allowed for site', 403);
-    }
+      const config = await loadRegistryConfig(body.site_id);
+      if (!config) return errorResponse(`Unknown site_id: ${body.site_id}`, 404);
+      if (config.status !== 'active') return errorResponse('Site is not active', 403);
+      if (!config.origins.includes(origin))
+        return errorResponse('Origin not allowed for site', 403);
 
-    const requestedMode: WidgetMode = body.mode ?? 'public';
-    if (requestedMode === 'eigenx') {
-      if (config.mode === 'public') {
-        return reflectedErrorResponse(rawOrigin, 'Site is configured for public mode only', 403);
+      const requestedMode: WidgetMode = body.mode ?? 'public';
+      if (requestedMode === 'eigenx') {
+        if (config.mode === 'public') {
+          return errorResponse('Site is configured for public mode only', 403);
+        }
+        const auth = await guardAuth(req);
+        if (!auth.ok) return auth.response;
+        const roleCheck = await requireRole(auth.claims.userId, 'member');
+        if (!roleCheck.ok) return roleCheck.response;
+
+        const scopeResolution = await resolveEffectiveEigenxScope({
+          client: getServiceClient(),
+          userId: auth.claims.userId,
+          roles: roleCheck.roles,
+        });
+        if (scopeResolution.emptyAfterGrantIntersection) {
+          return errorResponse('No private policy scope access for this user', 403);
+        }
+        const scope = scopeResolution.effectivePolicyScope;
+
+        const issued = await createWidgetSessionToken({
+          site_id: body.site_id,
+          mode: 'eigenx',
+          origin,
+          site_source_systems: config.source_systems,
+          default_policy_scope: scope,
+          user_id: auth.claims.userId,
+        });
+        return jsonResponse({
+          widget_token: issued.token,
+          expires_at: issued.expires_at,
+          site_id: body.site_id,
+          mode: 'eigenx',
+          site_source_systems: config.source_systems,
+          default_policy_scope: scope,
+          grants_configured: scopeResolution.grantsConfigured,
+        });
       }
-      const auth = await guardAuth(req);
-      if (!auth.ok) return auth.response;
-      const roleCheck = await requireRole(auth.claims.userId, 'member');
-      if (!roleCheck.ok) return roleCheck.response;
 
-      const scopeResolution = await resolveEffectiveEigenxScope({
-        client: getServiceClient(),
-        userId: auth.claims.userId,
-        roles: roleCheck.roles,
-      });
-      if (scopeResolution.emptyAfterGrantIntersection) {
-        return reflectedErrorResponse(rawOrigin, 'No private policy scope access for this user', 403);
-      }
-      const scope = scopeResolution.effectivePolicyScope;
+      const publicScope =
+        config.default_policy_scope.length > 0
+          ? config.default_policy_scope
+          : [POLICY_TAG_EIGEN_PUBLIC];
 
       const issued = await createWidgetSessionToken({
         site_id: body.site_id,
-        mode: 'eigenx',
+        mode: 'public',
         origin,
         site_source_systems: config.source_systems,
-        default_policy_scope: scope,
-        user_id: auth.claims.userId,
+        default_policy_scope: publicScope,
       });
       return reflectedJsonResponse(rawOrigin, {
         widget_token: issued.token,
         expires_at: issued.expires_at,
         site_id: body.site_id,
-        mode: 'eigenx',
+        mode: 'public',
         site_source_systems: config.source_systems,
-        default_policy_scope: scope,
-        grants_configured: scopeResolution.grantsConfigured,
+        default_policy_scope: publicScope,
       });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    // Hard guarantee: a public (unauthenticated) widget session MUST NOT carry
-    // the private `eigenx` policy tag. Even if a registry row has `eigenx` in
-    // `default_policy_scope` (legacy config, misconfiguration, or a mixed-mode
-    // row), we strip it here so the token cannot authorize private retrieval.
-    // The only path that grants `eigenx` scope is the authenticated `eigenx`
-    // branch above, which performs RBAC + grant intersection.
-    const publicScopeFromConfig = config.default_policy_scope.filter(
-      (tag) => tag !== POLICY_TAG_EIGENX,
-    );
-    const publicScope = publicScopeFromConfig.length > 0
-      ? publicScopeFromConfig
-      : [POLICY_TAG_EIGEN_PUBLIC];
-
-    const issued = await createWidgetSessionToken({
-      site_id: body.site_id,
-      mode: 'public',
-      origin,
-      site_source_systems: config.source_systems,
-      default_policy_scope: publicScope,
-    });
-    return reflectedJsonResponse(rawOrigin, {
-      widget_token: issued.token,
-      expires_at: issued.expires_at,
-      site_id: body.site_id,
-      mode: 'public',
-      site_source_systems: config.source_systems,
-      default_policy_scope: publicScope,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return reflectedErrorResponse(rawOrigin, message, 500);
-  }
-});
+  }),
+);

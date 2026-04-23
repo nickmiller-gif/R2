@@ -2,10 +2,7 @@ import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shar
 import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
-import {
-  executeEigenRetrieve,
-  type EigenRetrieveChunk,
-} from '../_shared/eigen-retrieve-core.ts';
+import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
@@ -21,8 +18,13 @@ import {
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { loadRecentTurns, persistTurnPair } from '../_shared/eigen-chat-history.ts';
-import { trimHistoryToBudget, type ConversationTurn } from '../../../src/lib/eigen/chat-history-utils.ts';
+import {
+  trimHistoryToBudget,
+  type ConversationTurn,
+} from '../../../src/lib/eigen/chat-history-utils.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import { logError } from '../_shared/log.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 interface ChatRequest {
   message: string;
@@ -76,7 +78,8 @@ function readMaxMessageChars(): number {
 }
 
 function readMaxCompletionTokens(): number {
-  const raw = Deno.env.get('EIGEN_CHAT_MAX_TOKENS') ?? Deno.env.get('OPENAI_CHAT_MAX_TOKENS') ?? '1200';
+  const raw =
+    Deno.env.get('EIGEN_CHAT_MAX_TOKENS') ?? Deno.env.get('OPENAI_CHAT_MAX_TOKENS') ?? '1200';
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(n, 16_000);
@@ -161,12 +164,15 @@ function parseRequest(value: unknown): ChatRequest {
     global_penalty: typeof body.global_penalty === 'number' ? body.global_penalty : undefined,
     budget_profile,
     llm_provider:
-      body.llm_provider === 'openai' || body.llm_provider === 'anthropic' || body.llm_provider === 'perplexity'
+      body.llm_provider === 'openai' ||
+      body.llm_provider === 'anthropic' ||
+      body.llm_provider === 'perplexity'
         ? (body.llm_provider as LlmProvider)
         : undefined,
     llm_model: typeof body.llm_model === 'string' ? body.llm_model.trim() : undefined,
     oracle_run_id: typeof body.oracle_run_id === 'string' ? body.oracle_run_id.trim() : undefined,
-    charter_decision_id: typeof body.charter_decision_id === 'string' ? body.charter_decision_id.trim() : undefined,
+    charter_decision_id:
+      typeof body.charter_decision_id === 'string' ? body.charter_decision_id.trim() : undefined,
   };
 }
 
@@ -190,370 +196,370 @@ function buildUserMessageWithContext(
   return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}${buildContextHandlesMessage(body)}`;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
-  const roleCheck = await requireRole(auth.claims.userId, 'member');
-  if (!roleCheck.ok) return roleCheck.response;
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
+    const roleCheck = await requireRole(auth.claims.userId, 'member');
+    if (!roleCheck.ok) return roleCheck.response;
 
-  try {
-    const body = parseRequest(await req.json());
-    const client = supabaseClients.service();
-    const resolvedScope = await resolveEffectiveEigenxScope({
-      client,
-      userId: auth.claims.userId,
-      roles: roleCheck.roles,
-      explicitScope: body.policy_scope_explicit ? body.policy_scope : undefined,
-    });
-    if (resolvedScope.emptyAfterGrantIntersection) {
-      return errorResponse('No private policy scope access for this user', 403);
-    }
-    body.policy_scope = resolvedScope.effectivePolicyScope;
-
-    const kos = await resolveEigenCapabilityAccess(client, {
-      policyTags: resolvedScope.effectivePolicyScope,
-      capabilityTags: [...EIGEN_KOS_CAPABILITY.chat],
-      callerRoles: roleCheck.roles,
-    });
-    if (kos.rulesConfigured && kos.deniedCapabilityTags.length > 0) {
-      return errorResponse(
-        `KOS policy denied chat: ${kos.deniedCapabilityTags.join(', ')}`,
-        403,
-      );
-    }
-
-    let sessionId = body.session_id;
-    if (!sessionId) {
-      const sessionInsert = await client
-        .from('eigen_chat_sessions')
-        .insert([
-          {
-            owner_id: auth.claims.userId,
-            title: body.message.slice(0, 80),
-            entity_scope: body.entity_scope ?? [],
-            policy_scope: resolvedScope.effectivePolicyScope,
-          },
-        ])
-        .select('id')
-        .single();
-      if (sessionInsert.error) return errorResponse(sessionInsert.error.message, 400);
-      sessionId = sessionInsert.data.id as string;
-    } else {
-      const { data: existingSession, error: sessionLookupError } = await client
-        .from('eigen_chat_sessions')
-        .select('id')
-        .eq('id', sessionId)
-        .eq('owner_id', auth.claims.userId)
-        .maybeSingle();
-      if (sessionLookupError) return errorResponse(sessionLookupError.message, 400);
-      if (!existingSession) {
-        return errorResponse('session_id not found or not owned by caller', 404);
+    try {
+      const body = parseRequest(await req.json());
+      const client = supabaseClients.service();
+      const resolvedScope = await resolveEffectiveEigenxScope({
+        client,
+        userId: auth.claims.userId,
+        roles: roleCheck.roles,
+        explicitScope: body.policy_scope_explicit ? body.policy_scope : undefined,
+      });
+      if (resolvedScope.emptyAfterGrantIntersection) {
+        return errorResponse('No private policy scope access for this user', 403);
       }
-    }
+      body.policy_scope = resolvedScope.effectivePolicyScope;
 
-    const retrieveResult = await executeEigenRetrieve(client, {
-      query: body.message,
-      entity_scope: body.entity_scope ?? [],
-      policy_scope: body.policy_scope ?? [],
-      site_id: body.site_id,
-      site_source_systems: body.site_source_systems ?? [],
-      site_boost: body.site_boost,
-      global_penalty: body.global_penalty,
-      budget_profile: body.budget_profile
-        ? {
-            ...body.budget_profile,
-            strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
-          }
-        : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
-      rerank: true,
-      include_provenance: true,
-    });
-
-    if (!retrieveResult.ok) {
-      return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
-    }
-
-    const retrievedChunks = retrieveResult.body.chunks;
-    const citations = buildCitations(retrievedChunks);
-    const confidence = buildCompositeConfidence(citations);
-    const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
-      message: body.message,
-      includePrivate: true,
-      policyScope: resolvedScope.effectivePolicyScope,
-    });
-
-    const maxHistoryTurns = readMaxHistoryTurns();
-    let conversationHistory: ConversationTurn[] = [];
-    if (body.conversation_context !== 'none') {
-      const rawTurns = await loadRecentTurns(client, sessionId, auth.claims.userId, maxHistoryTurns);
-      conversationHistory = trimHistoryToBudget(rawTurns, maxHistoryTurns);
-    }
-
-    if (body.stream) {
-      const encoder = new TextEncoder();
-      const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks, body);
-      const sseHeaders = {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-      };
-
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const send = (obj: unknown) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-          };
-
-          try {
-            let fullText = '';
-            let providerUsed: LlmProvider | undefined;
-            let modelUsed: string | null = null;
-            let fallbackUsed = false;
-            let criticUsed = false;
-            let criticProvider: LlmProvider | undefined;
-            let criticModel: string | undefined;
-
-            const generationStartedAt = Date.now();
-            if (retrievedChunks.length === 0) {
-              fullText = readNoContextResponse();
-              send({ text: fullText });
-            } else {
-              const stream = streamLlmChatDeltas({
-                provider: body.llm_provider,
-                model: body.llm_model,
-                systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
-                userContent: streamUserContent,
-                conversationHistory,
-                maxTokens: readMaxCompletionTokens(),
-                temperature: 0.1,
-                critic: {
-                  enabled: true,
-                  confidence_label: confidence.overall,
-                  trigger_at: 'medium',
-                },
-              });
-              while (true) {
-                const step = await stream.next();
-                if (step.done) {
-                  providerUsed = step.value.provider;
-                  modelUsed = step.value.model;
-                  fallbackUsed = step.value.fallback_used;
-                  criticUsed = step.value.critic_used === true;
-                  criticProvider = step.value.critic_provider;
-                  criticModel = step.value.critic_model;
-                  break;
-                }
-                const delta = step.value;
-                fullText += delta;
-                send({ text: delta });
-              }
-            }
-            const turnLatencyMs = Math.max(0, Date.now() - generationStartedAt);
-
-            const [memoryUpsert, sessionUpdate] = await Promise.all([
-              client.from('memory_entries').upsert(
-                [
-                  {
-                    scope: 'session',
-                    key: `chat:last_turn:${sessionId}`,
-                    value: {
-                      message: body.message,
-                      response: fullText,
-                      citations,
-                      timestamp: new Date().toISOString(),
-                    },
-                    retention_class: 'short_term',
-                    owner_id: auth.claims.userId,
-                    confidence_band: 'high',
-                  },
-                ],
-                { onConflict: 'scope,owner_id,key' },
-              ),
-              client
-                .from('eigen_chat_sessions')
-                .update({
-                  last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', sessionId)
-                .eq('owner_id', auth.claims.userId),
-            ]);
-
-            if (memoryUpsert.error) {
-              send({ error: memoryUpsert.error.message });
-              return;
-            }
-            if (sessionUpdate.error) {
-              send({ error: sessionUpdate.error.message });
-              return;
-            }
-
-            const usedLlmForTurn = retrievedChunks.length !== 0;
-            const resolvedLlmProvider = usedLlmForTurn
-              ? (providerUsed ?? body.llm_provider ?? 'openai')
-              : null;
-            const resolvedLlmModel = usedLlmForTurn
-              ? (modelUsed ?? body.llm_model ?? null)
-              : null;
-            const resolvedLlmFallbackUsed = usedLlmForTurn ? fallbackUsed : false;
-            const resolvedLlmCriticUsed = usedLlmForTurn ? criticUsed : false;
-
-            const persistResult = await persistTurnPair(client, {
-              sessionId,
-              ownerId: auth.claims.userId,
-              userMessage: body.message,
-              assistantMessage: fullText,
-              retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
-              citations,
-              confidence,
-              llmProvider: resolvedLlmProvider,
-              llmModel: resolvedLlmModel,
-              llmFallbackUsed: resolvedLlmFallbackUsed,
-              llmCriticUsed: resolvedLlmCriticUsed,
-              latencyMs: turnLatencyMs,
-            });
-            if (!persistResult.ok) {
-              console.error('[eigen-chat] persistTurnPair failed:', persistResult.error);
-            }
-
-            send({
-              done: true,
-              response: fullText,
-              citations,
-              confidence,
-              evidence_notice: buildEvidenceNotice(confidence),
-              retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
-              memory_updated: true,
-              session_id: sessionId,
-              llm_provider: resolvedLlmProvider,
-              llm_model: resolvedLlmModel,
-              llm_fallback_used: resolvedLlmFallbackUsed,
-              llm_critic_used: resolvedLlmCriticUsed,
-              llm_critic_provider: criticProvider ?? null,
-              llm_critic_model: criticModel ?? null,
-              effective_policy_scope: resolvedScope.effectivePolicyScope,
-              policy_scope_mode: resolvePolicyScopeMode(resolvedScope.effectivePolicyScope),
-            });
-          } catch (streamErr) {
-            const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
-            send({ error: msg });
-          } finally {
-            controller.close();
-          }
-        },
-      });
-
-      return new Response(stream, { headers: sseHeaders });
-    }
-
-    let responseText = '';
-    let llmProvider: LlmProvider = body.llm_provider ?? 'openai';
-    let llmModel: string | null = body.llm_model ?? null;
-    let llmFallbackUsed = false;
-    let llmCriticUsed = false;
-    let llmCriticProvider: LlmProvider | null = null;
-    let llmCriticModel: string | null = null;
-
-    const nonStreamGenerationStartedAt = Date.now();
-    if (retrievedChunks.length === 0) {
-      responseText = readNoContextResponse();
-    } else {
-      const llmResult = await completeLlmChat({
-        provider: body.llm_provider,
-        model: body.llm_model,
-        systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
-        userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
-        conversationHistory,
-        maxTokens: readMaxCompletionTokens(),
-        temperature: 0.1,
-        critic: {
-          enabled: true,
-          confidence_label: confidence.overall,
-          trigger_at: 'medium',
-        },
-      });
-      responseText = llmResult.text;
-      llmProvider = llmResult.provider;
-      llmModel = llmResult.model;
-      llmFallbackUsed = llmResult.fallback_used;
-      llmCriticUsed = llmResult.critic_used === true;
-      llmCriticProvider = llmResult.critic_provider ?? null;
-      llmCriticModel = llmResult.critic_model ?? null;
-    }
-    const nonStreamTurnLatencyMs = Math.max(0, Date.now() - nonStreamGenerationStartedAt);
-
-    const [memoryUpsert, sessionUpdate] = await Promise.all([
-      client.from('memory_entries').upsert(
-        [
-          {
-            scope: 'session',
-            key: `chat:last_turn:${sessionId}`,
-            value: {
-              message: body.message,
-              response: responseText,
-              citations,
-              timestamp: new Date().toISOString(),
+      let sessionId = body.session_id;
+      if (!sessionId) {
+        const sessionInsert = await client
+          .from('eigen_chat_sessions')
+          .insert([
+            {
+              owner_id: auth.claims.userId,
+              title: body.message.slice(0, 80),
+              entity_scope: body.entity_scope ?? [],
+              policy_scope: resolvedScope.effectivePolicyScope,
             },
-            retention_class: 'short_term',
-            owner_id: auth.claims.userId,
-            confidence_band: 'high',
+          ])
+          .select('id')
+          .single();
+        if (sessionInsert.error) return errorResponse(sessionInsert.error.message, 400);
+        sessionId = sessionInsert.data.id as string;
+      } else {
+        const { data: existingSession, error: sessionLookupError } = await client
+          .from('eigen_chat_sessions')
+          .select('id')
+          .eq('id', sessionId)
+          .eq('owner_id', auth.claims.userId)
+          .maybeSingle();
+        if (sessionLookupError) return errorResponse(sessionLookupError.message, 400);
+        if (!existingSession) {
+          return errorResponse('session_id not found or not owned by caller', 404);
+        }
+      }
+
+      const retrieveResult = await executeEigenRetrieve(client, {
+        query: body.message,
+        entity_scope: body.entity_scope ?? [],
+        policy_scope: body.policy_scope ?? [],
+        site_id: body.site_id,
+        site_source_systems: body.site_source_systems ?? [],
+        site_boost: body.site_boost,
+        global_penalty: body.global_penalty,
+        budget_profile: body.budget_profile
+          ? {
+              ...body.budget_profile,
+              strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+            }
+          : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
+        rerank: true,
+        include_provenance: true,
+      });
+
+      if (!retrieveResult.ok) {
+        return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
+      }
+
+      const retrievedChunks = retrieveResult.body.chunks;
+      const citations = buildCitations(retrievedChunks);
+      const confidence = buildCompositeConfidence(citations);
+      const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
+        message: body.message,
+        includePrivate: true,
+        policyScope: resolvedScope.effectivePolicyScope,
+      });
+
+      const maxHistoryTurns = readMaxHistoryTurns();
+      let conversationHistory: ConversationTurn[] = [];
+      if (body.conversation_context !== 'none') {
+        const rawTurns = await loadRecentTurns(
+          client,
+          sessionId,
+          auth.claims.userId,
+          maxHistoryTurns,
+        );
+        conversationHistory = trimHistoryToBudget(rawTurns, maxHistoryTurns);
+      }
+
+      if (body.stream) {
+        const encoder = new TextEncoder();
+        const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks, body);
+        const sseHeaders = {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        };
+
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const send = (obj: unknown) => {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+            };
+
+            try {
+              let fullText = '';
+              let providerUsed: LlmProvider | undefined;
+              let modelUsed: string | null = null;
+              let fallbackUsed = false;
+              let criticUsed = false;
+              let criticProvider: LlmProvider | undefined;
+              let criticModel: string | undefined;
+
+              const generationStartedAt = Date.now();
+              if (retrievedChunks.length === 0) {
+                fullText = readNoContextResponse();
+                send({ text: fullText });
+              } else {
+                const stream = streamLlmChatDeltas({
+                  provider: body.llm_provider,
+                  model: body.llm_model,
+                  systemPrompt: readSystemPrompt(
+                    body.response_format ?? 'structured',
+                    voiceStyleAddendum,
+                  ),
+                  userContent: streamUserContent,
+                  conversationHistory,
+                  maxTokens: readMaxCompletionTokens(),
+                  temperature: 0.1,
+                  critic: {
+                    enabled: true,
+                    confidence_label: confidence.overall,
+                    trigger_at: 'medium',
+                  },
+                });
+                while (true) {
+                  const step = await stream.next();
+                  if (step.done) {
+                    providerUsed = step.value.provider;
+                    modelUsed = step.value.model;
+                    fallbackUsed = step.value.fallback_used;
+                    criticUsed = step.value.critic_used === true;
+                    criticProvider = step.value.critic_provider;
+                    criticModel = step.value.critic_model;
+                    break;
+                  }
+                  const delta = step.value;
+                  fullText += delta;
+                  send({ text: delta });
+                }
+              }
+              const turnLatencyMs = Math.max(0, Date.now() - generationStartedAt);
+
+              const [memoryUpsert, sessionUpdate] = await Promise.all([
+                client.from('memory_entries').upsert(
+                  [
+                    {
+                      scope: 'session',
+                      key: `chat:last_turn:${sessionId}`,
+                      value: {
+                        message: body.message,
+                        response: fullText,
+                        citations,
+                        timestamp: new Date().toISOString(),
+                      },
+                      retention_class: 'short_term',
+                      owner_id: auth.claims.userId,
+                      confidence_band: 'high',
+                    },
+                  ],
+                  { onConflict: 'scope,owner_id,key' },
+                ),
+                client
+                  .from('eigen_chat_sessions')
+                  .update({
+                    last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', sessionId)
+                  .eq('owner_id', auth.claims.userId),
+              ]);
+
+              if (memoryUpsert.error) {
+                send({ error: memoryUpsert.error.message });
+                return;
+              }
+              if (sessionUpdate.error) {
+                send({ error: sessionUpdate.error.message });
+                return;
+              }
+
+              const usedLlmForTurn = retrievedChunks.length !== 0;
+              const resolvedLlmProvider = usedLlmForTurn
+                ? (providerUsed ?? body.llm_provider ?? 'openai')
+                : null;
+              const resolvedLlmModel = usedLlmForTurn
+                ? (modelUsed ?? body.llm_model ?? null)
+                : null;
+              const resolvedLlmFallbackUsed = usedLlmForTurn ? fallbackUsed : false;
+              const resolvedLlmCriticUsed = usedLlmForTurn ? criticUsed : false;
+
+              const persistResult = await persistTurnPair(client, {
+                sessionId,
+                ownerId: auth.claims.userId,
+                userMessage: body.message,
+                assistantMessage: fullText,
+                retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+                citations,
+                confidence,
+                llmProvider: resolvedLlmProvider,
+                llmModel: resolvedLlmModel,
+                llmFallbackUsed: resolvedLlmFallbackUsed,
+                llmCriticUsed: resolvedLlmCriticUsed,
+                latencyMs: turnLatencyMs,
+              });
+              if (!persistResult.ok) {
+                logError('persistTurnPair failed', {
+                  functionName: 'eigen-chat',
+                  error: persistResult.error,
+                });
+              }
+
+              send({
+                done: true,
+                response: fullText,
+                citations,
+                confidence,
+                retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+                memory_updated: true,
+                session_id: sessionId,
+                llm_provider: resolvedLlmProvider,
+                llm_model: resolvedLlmModel,
+                llm_fallback_used: resolvedLlmFallbackUsed,
+                llm_critic_used: resolvedLlmCriticUsed,
+                llm_critic_provider: criticProvider ?? null,
+                llm_critic_model: criticModel ?? null,
+                effective_policy_scope: resolvedScope.effectivePolicyScope,
+              });
+            } catch (streamErr) {
+              const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
+              send({ error: msg });
+            } finally {
+              controller.close();
+            }
           },
-        ],
-        { onConflict: 'scope,owner_id,key' },
-      ),
-      client
-        .from('eigen_chat_sessions')
-        .update({
-          last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', sessionId)
-        .eq('owner_id', auth.claims.userId),
-    ]);
+        });
 
-    if (memoryUpsert.error) return errorResponse(memoryUpsert.error.message, 400);
-    if (sessionUpdate.error) return errorResponse(sessionUpdate.error.message, 400);
+        return new Response(stream, { headers: sseHeaders });
+      }
 
-    const persistNonStream = await persistTurnPair(client, {
-      sessionId,
-      ownerId: auth.claims.userId,
-      userMessage: body.message,
-      assistantMessage: responseText,
-      retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
-      citations,
-      confidence,
-      llmProvider: retrievedChunks.length === 0 ? null : llmProvider,
-      llmModel: retrievedChunks.length === 0 ? null : llmModel,
-      llmFallbackUsed: retrievedChunks.length === 0 ? false : llmFallbackUsed,
-      llmCriticUsed: retrievedChunks.length === 0 ? false : llmCriticUsed,
-      latencyMs: nonStreamTurnLatencyMs,
-    });
-    if (!persistNonStream.ok) {
-      console.error('[eigen-chat] persistTurnPair failed:', persistNonStream.error);
+      let responseText = '';
+      let llmProvider: LlmProvider = body.llm_provider ?? 'openai';
+      let llmModel: string | null = body.llm_model ?? null;
+      let llmFallbackUsed = false;
+      let llmCriticUsed = false;
+      let llmCriticProvider: LlmProvider | null = null;
+      let llmCriticModel: string | null = null;
+
+      const nonStreamGenerationStartedAt = Date.now();
+      if (retrievedChunks.length === 0) {
+        responseText = readNoContextResponse();
+      } else {
+        const llmResult = await completeLlmChat({
+          provider: body.llm_provider,
+          model: body.llm_model,
+          systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
+          userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
+          conversationHistory,
+          maxTokens: readMaxCompletionTokens(),
+          temperature: 0.1,
+          critic: {
+            enabled: true,
+            confidence_label: confidence.overall,
+            trigger_at: 'medium',
+          },
+        });
+        responseText = llmResult.text;
+        llmProvider = llmResult.provider;
+        llmModel = llmResult.model;
+        llmFallbackUsed = llmResult.fallback_used;
+        llmCriticUsed = llmResult.critic_used === true;
+        llmCriticProvider = llmResult.critic_provider ?? null;
+        llmCriticModel = llmResult.critic_model ?? null;
+      }
+      const nonStreamTurnLatencyMs = Math.max(0, Date.now() - nonStreamGenerationStartedAt);
+
+      const [memoryUpsert, sessionUpdate] = await Promise.all([
+        client.from('memory_entries').upsert(
+          [
+            {
+              scope: 'session',
+              key: `chat:last_turn:${sessionId}`,
+              value: {
+                message: body.message,
+                response: responseText,
+                citations,
+                timestamp: new Date().toISOString(),
+              },
+              retention_class: 'short_term',
+              owner_id: auth.claims.userId,
+              confidence_band: 'high',
+            },
+          ],
+          { onConflict: 'scope,owner_id,key' },
+        ),
+        client
+          .from('eigen_chat_sessions')
+          .update({
+            last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', sessionId)
+          .eq('owner_id', auth.claims.userId),
+      ]);
+
+      if (memoryUpsert.error) return errorResponse(memoryUpsert.error.message, 400);
+      if (sessionUpdate.error) return errorResponse(sessionUpdate.error.message, 400);
+
+      const persistNonStream = await persistTurnPair(client, {
+        sessionId,
+        ownerId: auth.claims.userId,
+        userMessage: body.message,
+        assistantMessage: responseText,
+        retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+        citations,
+        confidence,
+        llmProvider: retrievedChunks.length === 0 ? null : llmProvider,
+        llmModel: retrievedChunks.length === 0 ? null : llmModel,
+        llmFallbackUsed: retrievedChunks.length === 0 ? false : llmFallbackUsed,
+        llmCriticUsed: retrievedChunks.length === 0 ? false : llmCriticUsed,
+        latencyMs: nonStreamTurnLatencyMs,
+      });
+      if (!persistNonStream.ok) {
+        logError('persistTurnPair failed', {
+          functionName: 'eigen-chat',
+          error: persistNonStream.error,
+        });
+      }
+
+      return jsonResponse({
+        response: responseText,
+        citations,
+        confidence,
+        retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+        memory_updated: true,
+        session_id: sessionId,
+        llm_provider: llmProvider,
+        llm_model: llmModel,
+        llm_fallback_used: llmFallbackUsed,
+        llm_critic_used: llmCriticUsed,
+        llm_critic_provider: llmCriticProvider,
+        llm_critic_model: llmCriticModel,
+        effective_policy_scope: resolvedScope.effectivePolicyScope,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    return jsonResponse({
-      response: responseText,
-      citations,
-      confidence,
-      evidence_notice: buildEvidenceNotice(confidence),
-      retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
-      memory_updated: true,
-      session_id: sessionId,
-      llm_provider: llmProvider,
-      llm_model: llmModel,
-      llm_fallback_used: llmFallbackUsed,
-      llm_critic_used: llmCriticUsed,
-      llm_critic_provider: llmCriticProvider,
-      llm_critic_model: llmCriticModel,
-      effective_policy_scope: resolvedScope.effectivePolicyScope,
-      policy_scope_mode: resolvePolicyScopeMode(resolvedScope.effectivePolicyScope),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

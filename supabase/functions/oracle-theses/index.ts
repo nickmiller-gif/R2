@@ -3,11 +3,9 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import {
-  buildSafeThesisPatch,
-  formatAllowedThesisPatchFields,
-} from '../../../src/services/oracle/oracle-patch-builders.ts';
-import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
+import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
+import { logError } from '../_shared/log.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -17,178 +15,247 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   return null;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return corsResponse();
-  }
-
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
-
-  try {
-    const url = new URL(req.url);
-    const action = url.searchParams.get('action');
-    const thesisId = url.searchParams.get('id');
-    const scope = url.searchParams.get('scope') ?? 'published';
-
-    const isOperatorScope = scope === 'operator';
-    if (req.method === 'GET' && isOperatorScope) {
-      const operatorError = await requireOperatorForScope(auth.claims.userId);
-      if (operatorError) return operatorError;
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') {
+      return corsResponse();
     }
 
-    const client =
-      req.method === 'GET' && !isOperatorScope
-        ? supabaseClients.user(req)
-        : supabaseClients.service();
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
 
-    if (req.method === 'GET') {
-      if (thesisId) {
-        // GET single thesis
-        let query = client
-          .from('oracle_theses')
-          .select('*')
-          .eq('id', thesisId);
+    try {
+      const url = new URL(req.url);
+      const action = url.searchParams.get('action');
+      const thesisId = url.searchParams.get('id');
+      const scope = url.searchParams.get('scope') ?? 'published';
 
-        if (scope === 'published') {
-          query = query.eq('publication_state', 'published');
-        } else if (scope === 'mine') {
-          query = query.eq('profile_id', auth.claims.userId);
-        }
-        const { data, error } = await query.single();
-
-        if (error) {
-          return errorResponse(error.message, 404);
-        }
-
-        return jsonResponse(data);
-      } else {
-        // GET list with optional filters
-        const profileId = url.searchParams.get('profile_id');
-        const status = url.searchParams.get('status');
-        const publicationState = url.searchParams.get('publication_state');
-        const noveltyStatus = url.searchParams.get('novelty_status');
-
-        let query = client.from('oracle_theses').select('*');
-
-        if (scope === 'published') {
-          query = query.eq('publication_state', 'published');
-        } else if (scope === 'mine') {
-          query = query.eq('profile_id', auth.claims.userId);
-        }
-        if (profileId) query = query.eq('profile_id', profileId);
-        if (status) query = query.eq('status', status);
-        if (publicationState) query = query.eq('publication_state', publicationState);
-        if (noveltyStatus) query = query.eq('novelty_status', noveltyStatus);
-
-        const { data, error } = await query;
-
-        if (error) {
-          return errorResponse(error.message, 400);
-        }
-
-        return jsonResponse(data);
+      const isOperatorScope = scope === 'operator';
+      if (req.method === 'GET' && isOperatorScope) {
+        const operatorError = await requireOperatorForScope(auth.claims.userId);
+        if (operatorError) return operatorError;
       }
-    } else if (req.method === 'POST') {
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
 
-      const body = await req.json();
+      const client =
+        req.method === 'GET' && !isOperatorScope
+          ? supabaseClients.user(req)
+          : supabaseClients.service();
 
-      if (action === 'publish' || action === 'approve' || action === 'reject' || action === 'defer') {
-        const thesisId = body.id;
-        if (!thesisId) {
-          return errorResponse('id required in body', 400);
+      if (req.method === 'GET') {
+        if (thesisId) {
+          // GET single thesis
+          let query = client
+            .from('oracle_theses')
+            .select(
+              'access_policy,confidence,contradiction_evidence_item_ids,created_at,decision_metadata,duplicate_of_thesis_id,evidence_strength,id,inspiration_evidence_item_ids,inspiration_signal_ids,last_decision_at,last_decision_by,meg_entity_id,metadata,novelty_status,platform_id,profile_id,publication_state,published_at,published_by,site_domain,status,superseded_by_thesis_id,thesis_statement,title,uncertainty_summary,updated_at,validation_evidence_item_ids,visibility_class',
+            )
+            .eq('id', thesisId);
+
+          if (scope === 'published') {
+            query = query.eq('publication_state', 'published');
+          } else if (scope === 'mine') {
+            query = query.eq('profile_id', auth.claims.userId);
+          }
+          const { data, error } = await query.single();
+
+          if (error) {
+            return errorResponse(error.message, 404);
+          }
+
+          return jsonResponse(data);
+        } else {
+          // GET list with optional filters
+          const profileId = url.searchParams.get('profile_id');
+          const status = url.searchParams.get('status');
+          const publicationState = url.searchParams.get('publication_state');
+          const noveltyStatus = url.searchParams.get('novelty_status');
+
+          let query = client
+            .from('oracle_theses')
+            .select(
+              'access_policy,confidence,contradiction_evidence_item_ids,created_at,decision_metadata,duplicate_of_thesis_id,evidence_strength,id,inspiration_evidence_item_ids,inspiration_signal_ids,last_decision_at,last_decision_by,meg_entity_id,metadata,novelty_status,platform_id,profile_id,publication_state,published_at,published_by,site_domain,status,superseded_by_thesis_id,thesis_statement,title,uncertainty_summary,updated_at,validation_evidence_item_ids,visibility_class',
+            );
+
+          if (scope === 'published') {
+            query = query.eq('publication_state', 'published');
+          } else if (scope === 'mine') {
+            query = query.eq('profile_id', auth.claims.userId);
+          }
+          if (profileId) query = query.eq('profile_id', profileId);
+          if (status) query = query.eq('status', status);
+          if (publicationState) query = query.eq('publication_state', publicationState);
+          if (noveltyStatus) query = query.eq('novelty_status', noveltyStatus);
+
+          const { data, error } = await query;
+
+          if (error) {
+            return errorResponse(error.message, 400);
+          }
+
+          return jsonResponse(data);
         }
-        const { data: beforeUpdate, error: beforeUpdateError } = await client
-          .from('oracle_theses')
-          .select('publication_state')
-          .eq('id', thesisId)
-          .single();
-        if (beforeUpdateError) {
-          return errorResponse(beforeUpdateError.message, 404);
-        }
+      } else if (req.method === 'POST') {
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
 
-        const nextState =
-          action === 'publish'
-            ? 'published'
-            : action === 'approve'
-              ? 'approved'
-              : action === 'reject'
-                ? 'rejected'
-                : 'deferred';
-        const now = new Date().toISOString();
-        const publicationPatch =
-          nextState === 'published'
-            ? { published_by: auth.claims.userId, published_at: now }
-            : { published_by: null, published_at: null };
+        const body = await req.json();
 
-        const { data, error } = await client
-          .from('oracle_theses')
-          .update({
-            publication_state: nextState,
-            ...publicationPatch,
-            last_decision_by: auth.claims.userId,
-            last_decision_at: now,
-            decision_metadata: {
-              ...(body.decision_metadata ?? {}),
+        if (
+          action === 'publish' ||
+          action === 'approve' ||
+          action === 'reject' ||
+          action === 'defer'
+        ) {
+          const thesisId = body.id;
+          if (!thesisId) {
+            return errorResponse('id required in body', 400);
+          }
+          const { data: beforeUpdate, error: beforeUpdateError } = await client
+            .from('oracle_theses')
+            .select('publication_state')
+            .eq('id', thesisId)
+            .single();
+          if (beforeUpdateError) {
+            return errorResponse(beforeUpdateError.message, 404);
+          }
+
+          const nextState =
+            action === 'publish'
+              ? 'published'
+              : action === 'approve'
+                ? 'approved'
+                : action === 'reject'
+                  ? 'rejected'
+                  : 'deferred';
+          const now = new Date().toISOString();
+          const publicationPatch =
+            nextState === 'published'
+              ? { published_by: auth.claims.userId, published_at: now }
+              : { published_by: null, published_at: null };
+
+          const { data, error } = await client
+            .from('oracle_theses')
+            .update({
+              publication_state: nextState,
+              ...publicationPatch,
+              last_decision_by: auth.claims.userId,
+              last_decision_at: now,
+              decision_metadata: {
+                ...(body.decision_metadata ?? {}),
+                action,
+                notes: body.notes ?? null,
+              },
+            })
+            .eq('id', thesisId)
+            .select()
+            .single();
+
+          if (error) {
+            return errorResponse(error.message, 400);
+          }
+
+          const { error: auditError } = await client.from('oracle_publication_events').insert({
+            target_type: 'thesis',
+            target_id: thesisId,
+            from_state: beforeUpdate.publication_state,
+            to_state: nextState,
+            decided_by: auth.claims.userId,
+            decided_at: now,
+            notes: body.notes ?? null,
+            metadata: {
               action,
-              notes: body.notes ?? null,
             },
-          })
-          .eq('id', thesisId)
-          .select()
-          .single();
+          });
 
-        if (error) {
-          return errorResponse(error.message, 400);
+          if (auditError) {
+            return errorResponse(
+              `Publication state updated but audit event failed: ${auditError.message}`,
+              500,
+            );
+          }
+
+          return jsonResponse(data);
+        } else if (action === 'challenge') {
+          // CHALLENGE thesis
+          const thesisId = body.id;
+          if (!thesisId) {
+            return errorResponse('id required in body', 400);
+          }
+
+          const { data, error } = await client
+            .from('oracle_theses')
+            .update({ status: 'challenged' })
+            .eq('id', thesisId)
+            .select()
+            .single();
+
+          if (error) {
+            return errorResponse(error.message, 400);
+          }
+
+          return jsonResponse(data);
+        } else if (action === 'supersede') {
+          // SUPERSEDE thesis
+          if (!body.superseded_by_thesis_id) {
+            return errorResponse('superseded_by_thesis_id required', 400);
+          }
+
+          const thesisId = body.id;
+          if (!thesisId) {
+            return errorResponse('id required in body', 400);
+          }
+
+          const { data, error } = await client
+            .from('oracle_theses')
+            .update({
+              status: 'superseded',
+              superseded_by_thesis_id: body.superseded_by_thesis_id,
+            })
+            .eq('id', thesisId)
+            .select()
+            .single();
+
+          if (error) {
+            return errorResponse(error.message, 400);
+          }
+
+          return jsonResponse(data);
+        } else {
+          // CREATE thesis
+          const { data, error } = await client
+            .from('oracle_theses')
+            .insert([body])
+            .select()
+            .single();
+
+          if (error) {
+            return errorResponse(error.message, 400);
+          }
+
+          return jsonResponse(data, 201);
         }
+      } else if (req.method === 'PATCH') {
+        // UPDATE thesis
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
 
-        const auditErr = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'thesis',
-          targetId: thesisId,
-          fromState: beforeUpdate.publication_state,
-          toState: nextState,
-          decidedBy: auth.claims.userId,
-          decidedAt: now,
-          notes: body.notes ?? null,
-          action,
-        });
-        if (auditErr) {
-          return errorResponse(`Publication state updated but audit event failed: ${auditErr}`, 500);
-        }
-
-        return jsonResponse(data);
-      } else if (action === 'challenge') {
-        // CHALLENGE thesis
+        const body = await req.json();
         const thesisId = body.id;
+
         if (!thesisId) {
           return errorResponse('id required in body', 400);
         }
 
-        const { data, error } = await client
-          .from('oracle_theses')
-          .update({ status: 'challenged' })
-          .eq('id', thesisId)
-          .select()
-          .single();
-
-        if (error) {
-          return errorResponse(error.message, 400);
-        }
-
-        return jsonResponse(data);
-      } else if (action === 'supersede') {
-        // SUPERSEDE thesis — align with versioned supersede: successor must exist and differ from self.
-        if (!body.superseded_by_thesis_id) {
-          return errorResponse('superseded_by_thesis_id required', 400);
-        }
-
-        const thesisId = body.id;
-        if (!thesisId) {
-          return errorResponse('id required in body', 400);
+        const patch = buildSafeThesisPatch(body as Record<string, unknown>);
+        if (Object.keys(patch).length === 1) {
+          return errorResponse(
+            'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+            400,
+          );
         }
         const successorId = String(body.superseded_by_thesis_id);
         if (successorId === thesisId) {
@@ -219,11 +286,7 @@ Deno.serve(async (req) => {
         const now = new Date().toISOString();
         const { data, error } = await client
           .from('oracle_theses')
-          .update({
-            status: 'superseded',
-            superseded_by_thesis_id: successorId,
-            updated_at: now,
-          })
+          .update(patch)
           .eq('id', thesisId)
           .select()
           .single();
@@ -250,7 +313,8 @@ Deno.serve(async (req) => {
           },
         });
         if (auditPredecessor) {
-          console.error('[oracle-theses] supersede_predecessor audit failed', {
+          logError('supersede_predecessor audit failed', {
+            functionName: 'oracle-theses',
             thesisId,
             successorId,
             error: auditPredecessor,
@@ -269,7 +333,8 @@ Deno.serve(async (req) => {
           metadata: { predecessor_thesis_id: thesisId },
         });
         if (auditSuccessor) {
-          console.error('[oracle-theses] supersede_successor audit failed', {
+          logError('supersede_successor audit failed', {
+            functionName: 'oracle-theses',
             thesisId,
             successorId,
             error: auditSuccessor,
@@ -283,72 +348,11 @@ Deno.serve(async (req) => {
             : data;
         return jsonResponse(responseBody);
       } else {
-        // CREATE thesis
-        const { data, error } = await client
-          .from('oracle_theses')
-          .insert([body])
-          .select()
-          .single();
-
-        if (error) {
-          return errorResponse(error.message, 400);
-        }
-
-        return jsonResponse(data, 201);
+        return errorResponse('Method not allowed', 405);
       }
-    } else if (req.method === 'PATCH') {
-      // UPDATE thesis
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
-
-      const body = await req.json();
-      const thesisId = body.id;
-
-      if (!thesisId) {
-        return errorResponse('id required in body', 400);
-      }
-
-      const rawBody = body as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(rawBody, 'publication_state')) {
-        return errorResponse(
-          'publication_state cannot be changed via PATCH; use POST with action=publish|approve|reject|defer',
-          400,
-        );
-      }
-      if (Object.prototype.hasOwnProperty.call(rawBody, 'superseded_by_thesis_id')) {
-        return errorResponse('superseded_by_thesis_id cannot be set via PATCH; use POST with action=supersede', 400);
-      }
-
-      const patch = buildSafeThesisPatch(rawBody);
-      if (patch.status === 'superseded') {
-        return errorResponse('status superseded is only allowed via POST action=supersede', 400);
-      }
-      if (Object.keys(patch).length === 1) {
-        return errorResponse(
-          `No patchable fields provided. Allowed fields: ${formatAllowedThesisPatchFields()}`,
-          400,
-        );
-      }
-
-      const { data, error } = await client
-        .from('oracle_theses')
-        .update(patch)
-        .eq('id', thesisId)
-        .select()
-        .single();
-
-      if (error) {
-        return errorResponse(error.message, 400);
-      }
-
-      return jsonResponse(data);
-    } else {
-      return errorResponse('Method not allowed', 405);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

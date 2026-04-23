@@ -3,6 +3,7 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody } from '../_shared/validate.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 import {
   createOracleWhitespaceCoreService,
@@ -45,6 +46,14 @@ const ORACLE_WHITESPACE_CORE_TABLE = 'oracle_whitespace_core_runs';
 const ORACLE_SERVICE_LAYER_TABLE = 'oracle_service_layer_runs';
 const ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE = 'oracle_service_layer_run_decisions';
 const ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE = 'oracle_service_layer_run_outcomes';
+const ORACLE_WHITESPACE_CORE_COLUMNS =
+  'analysis_json,created_at,entity_asset_id,id,run_label,updated_at';
+const ORACLE_SERVICE_LAYER_COLUMNS =
+  'analysis_json,created_at,entity_asset_id,error_message,id,metadata,profile_run_id,run_label,status,triggered_by,updated_at,whitespace_run_id';
+const ORACLE_SERVICE_LAYER_RUN_DECISION_COLUMNS =
+  'created_at,decided_at,decided_by,decision_status,id,notes,oracle_service_layer_run_id,updated_at';
+const ORACLE_SERVICE_LAYER_RUN_OUTCOME_COLUMNS =
+  'created_at,id,oracle_service_layer_run_id,outcome_closed_at,outcome_notes,outcome_revenue,outcome_status,recorded_by,updated_at';
 
 interface ExecuteWhitespaceRunRequest {
   entityAssetId: string;
@@ -65,413 +74,424 @@ interface UpsertRunOutcomeRequest {
   outcomeClosedAt?: string;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
 
-  try {
-    const url = new URL(req.url);
-    const runId = url.searchParams.get('id');
+    try {
+      const url = new URL(req.url);
+      const runId = url.searchParams.get('id');
 
-    const callerScopedClient = getSupabaseClient(req);
-    const serviceClient = getServiceClient();
+      const callerScopedClient = getSupabaseClient(req);
+      const serviceClient = getServiceClient();
 
-    const whitespaceCore = createOracleWhitespaceCoreService({
-      async insertRun(row: DbOracleWhitespaceCoreRow) {
-        const { data, error } = await serviceClient
-          .from(ORACLE_WHITESPACE_CORE_TABLE)
-          .insert([row])
-          .select()
-          .single();
-
-        if (error) throw new Error(error.message);
-        return data as DbOracleWhitespaceCoreRow;
-      },
-      async findRunById(id: string) {
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_WHITESPACE_CORE_TABLE)
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-
-        if (error) throw new Error(error.message);
-        return (data as DbOracleWhitespaceCoreRow | null) ?? null;
-      },
-    });
-
-    const profileRun = createOracleProfileRunService({
-      async insertRun(row: DbOracleProfileRunRow) {
-        const { data, error } = await serviceClient
-          .from('oracle_profile_runs')
-          .insert([row])
-          .select()
-          .single();
-
-        if (error) throw new Error(error.message);
-        return data as DbOracleProfileRunRow;
-      },
-      async findRunById(id: string) {
-        const { data, error } = await serviceClient
-          .from('oracle_profile_runs')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-
-        if (error) throw new Error(error.message);
-        return (data as DbOracleProfileRunRow | null) ?? null;
-      },
-      async findLatestForEntity(entityAssetId: string) {
-        const { data, error } = await serviceClient
-          .from('oracle_profile_runs')
-          .select('*')
-          .eq('entity_asset_id', entityAssetId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) throw new Error(error.message);
-        return (data as DbOracleProfileRunRow | null) ?? null;
-      },
-      async queryRuns() {
-        throw new Error('queryRuns not implemented for oracle-whitespace-runs edge function');
-      },
-      async updateRun(id: string, patch: Partial<DbOracleProfileRunRow>) {
-        const { data, error } = await serviceClient
-          .from('oracle_profile_runs')
-          .update(patch)
-          .eq('id', id)
-          .select()
-          .single();
-
-        if (error) throw new Error(error.message);
-        return data as DbOracleProfileRunRow;
-      },
-    });
-
-    const serviceLayer = createOracleServiceLayerService(
-      {
-        async insertRun(row: DbOracleServiceLayerRow) {
+      const whitespaceCore = createOracleWhitespaceCoreService({
+        async insertRun(row: DbOracleWhitespaceCoreRow) {
           const { data, error } = await serviceClient
-            .from(ORACLE_SERVICE_LAYER_TABLE)
+            .from(ORACLE_WHITESPACE_CORE_TABLE)
             .insert([row])
             .select()
             .single();
 
           if (error) throw new Error(error.message);
-          return data as DbOracleServiceLayerRow;
+          return data as DbOracleWhitespaceCoreRow;
         },
         async findRunById(id: string) {
           const { data, error } = await callerScopedClient
-            .from(ORACLE_SERVICE_LAYER_TABLE)
-            .select('*')
+            .from(ORACLE_WHITESPACE_CORE_TABLE)
+            .select(ORACLE_WHITESPACE_CORE_COLUMNS)
             .eq('id', id)
             .maybeSingle();
 
           if (error) throw new Error(error.message);
-          return (data as DbOracleServiceLayerRow | null) ?? null;
+          return (data as DbOracleWhitespaceCoreRow | null) ?? null;
         },
-        async queryRuns(filter) {
-          const safeLimit = Math.min(Math.max(filter?.limit ?? 20, 1), 100);
-          let query = callerScopedClient
-            .from(ORACLE_SERVICE_LAYER_TABLE)
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(safeLimit);
+      });
 
-          if (filter?.entityAssetId) {
-            query = query.eq('entity_asset_id', filter.entityAssetId);
-          }
-
-          const { data, error } = await query;
-          if (error) throw new Error(error.message);
-          return (data as DbOracleServiceLayerRow[] | null) ?? [];
-        },
-        async updateRun(id: string, patch: Partial<DbOracleServiceLayerRow>) {
+      const profileRun = createOracleProfileRunService({
+        async insertRun(row: DbOracleProfileRunRow) {
           const { data, error } = await serviceClient
-            .from(ORACLE_SERVICE_LAYER_TABLE)
+            .from('oracle_profile_runs')
+            .insert([row])
+            .select()
+            .single();
+
+          if (error) throw new Error(error.message);
+          return data as DbOracleProfileRunRow;
+        },
+        async findRunById(id: string) {
+          const { data, error } = await serviceClient
+            .from('oracle_profile_runs')
+            .select(
+              'completed_at,created_at,entity_asset_id,id,metadata,signal_count,started_at,status,summary,top_score,triggered_by,updated_at',
+            )
+            .eq('id', id)
+            .maybeSingle();
+
+          if (error) throw new Error(error.message);
+          return (data as DbOracleProfileRunRow | null) ?? null;
+        },
+        async findLatestForEntity(entityAssetId: string) {
+          const { data, error } = await serviceClient
+            .from('oracle_profile_runs')
+            .select(
+              'completed_at,created_at,entity_asset_id,id,metadata,signal_count,started_at,status,summary,top_score,triggered_by,updated_at',
+            )
+            .eq('entity_asset_id', entityAssetId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (error) throw new Error(error.message);
+          return (data as DbOracleProfileRunRow | null) ?? null;
+        },
+        async queryRuns() {
+          throw new Error('queryRuns not implemented for oracle-whitespace-runs edge function');
+        },
+        async updateRun(id: string, patch: Partial<DbOracleProfileRunRow>) {
+          const { data, error } = await serviceClient
+            .from('oracle_profile_runs')
             .update(patch)
             .eq('id', id)
             .select()
             .single();
 
           if (error) throw new Error(error.message);
-          return data as DbOracleServiceLayerRow;
+          return data as DbOracleProfileRunRow;
         },
-      },
-      {
-        whitespaceCore,
-        profileRun,
-      },
-    );
+      });
 
-    const decisionService = createOracleServiceLayerRunDecisionService({
-      async upsertDecision(row: DbOracleServiceLayerRunDecisionRow) {
-        const { data, error } = await serviceClient
-          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
-          .upsert([row], { onConflict: 'oracle_service_layer_run_id' })
-          .select()
-          .single();
+      const serviceLayer = createOracleServiceLayerService(
+        {
+          async insertRun(row: DbOracleServiceLayerRow) {
+            const { data, error } = await serviceClient
+              .from(ORACLE_SERVICE_LAYER_TABLE)
+              .insert([row])
+              .select()
+              .single();
 
-        if (error) throw new Error(error.message);
-        return data as DbOracleServiceLayerRunDecisionRow;
-      },
-      async findDecisionByRunId(oracleServiceLayerRunId: string) {
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
-          .select('*')
-          .eq('oracle_service_layer_run_id', oracleServiceLayerRunId)
-          .maybeSingle();
+            if (error) throw new Error(error.message);
+            return data as DbOracleServiceLayerRow;
+          },
+          async findRunById(id: string) {
+            const { data, error } = await callerScopedClient
+              .from(ORACLE_SERVICE_LAYER_TABLE)
+              .select(ORACLE_SERVICE_LAYER_COLUMNS)
+              .eq('id', id)
+              .maybeSingle();
 
-        if (error) throw new Error(error.message);
-        return (data as DbOracleServiceLayerRunDecisionRow | null) ?? null;
-      },
-      async findDecisionsByRunIds(runIds: string[]) {
-        if (runIds.length === 0) return [];
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
-          .select('*')
-          .in('oracle_service_layer_run_id', runIds);
+            if (error) throw new Error(error.message);
+            return (data as DbOracleServiceLayerRow | null) ?? null;
+          },
+          async queryRuns(filter) {
+            const safeLimit = Math.min(Math.max(filter?.limit ?? 20, 1), 100);
+            let query = callerScopedClient
+              .from(ORACLE_SERVICE_LAYER_TABLE)
+              .select(ORACLE_SERVICE_LAYER_COLUMNS)
+              .order('created_at', { ascending: false })
+              .limit(safeLimit);
 
-        if (error) throw new Error(error.message);
-        return (data as DbOracleServiceLayerRunDecisionRow[] | null) ?? [];
-      },
-    });
+            if (filter?.entityAssetId) {
+              query = query.eq('entity_asset_id', filter.entityAssetId);
+            }
 
-    const runOutcomeService = createOracleServiceLayerRunOutcomeService({
-      async upsertOutcome(row: DbOracleServiceLayerRunOutcomeRow) {
-        const { data, error } = await serviceClient
-          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
-          .upsert([row], { onConflict: 'oracle_service_layer_run_id' })
-          .select()
-          .single();
+            const { data, error } = await query;
+            if (error) throw new Error(error.message);
+            return (data as DbOracleServiceLayerRow[] | null) ?? [];
+          },
+          async updateRun(id: string, patch: Partial<DbOracleServiceLayerRow>) {
+            const { data, error } = await serviceClient
+              .from(ORACLE_SERVICE_LAYER_TABLE)
+              .update(patch)
+              .eq('id', id)
+              .select()
+              .single();
 
-        if (error) throw new Error(error.message);
-        return data as DbOracleServiceLayerRunOutcomeRow;
-      },
-      async findOutcomeByRunId(oracleServiceLayerRunId: string) {
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
-          .select('*')
-          .eq('oracle_service_layer_run_id', oracleServiceLayerRunId)
-          .maybeSingle();
+            if (error) throw new Error(error.message);
+            return data as DbOracleServiceLayerRow;
+          },
+        },
+        {
+          whitespaceCore,
+          profileRun,
+        },
+      );
 
-        if (error) throw new Error(error.message);
-        return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
-      },
-      async findOutcomeById(id: string) {
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
+      const decisionService = createOracleServiceLayerRunDecisionService({
+        async upsertDecision(row: DbOracleServiceLayerRunDecisionRow) {
+          const { data, error } = await serviceClient
+            .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+            .upsert([row], { onConflict: 'oracle_service_layer_run_id' })
+            .select()
+            .single();
 
-        if (error) throw new Error(error.message);
-        return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
-      },
-      async findOutcomesByRunIds(runIds: string[]) {
-        if (runIds.length === 0) return [];
-        const { data, error } = await callerScopedClient
-          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
-          .select('*')
-          .in('oracle_service_layer_run_id', runIds);
+          if (error) throw new Error(error.message);
+          return data as DbOracleServiceLayerRunDecisionRow;
+        },
+        async findDecisionByRunId(oracleServiceLayerRunId: string) {
+          const { data, error } = await callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+            .select(ORACLE_SERVICE_LAYER_RUN_DECISION_COLUMNS)
+            .eq('oracle_service_layer_run_id', oracleServiceLayerRunId)
+            .maybeSingle();
 
-        if (error) throw new Error(error.message);
-        return (data as DbOracleServiceLayerRunOutcomeRow[] | null) ?? [];
-      },
-      async queryOutcomes() {
-        throw new Error('queryOutcomes not implemented for oracle-whitespace-runs edge function');
-      },
-      async updateOutcome(id: string, patch: Partial<DbOracleServiceLayerRunOutcomeRow>) {
-        const { data, error } = await serviceClient
-          .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
-          .update(patch)
-          .eq('id', id)
-          .select()
-          .single();
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRunDecisionRow | null) ?? null;
+        },
+        async findDecisionsByRunIds(runIds: string[]) {
+          if (runIds.length === 0) return [];
+          const { data, error } = await callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_RUN_DECISION_TABLE)
+            .select(ORACLE_SERVICE_LAYER_RUN_DECISION_COLUMNS)
+            .in('oracle_service_layer_run_id', runIds);
 
-        if (error) throw new Error(error.message);
-        return data as DbOracleServiceLayerRunOutcomeRow;
-      },
-    });
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRunDecisionRow[] | null) ?? [];
+        },
+      });
 
-    if (req.method === 'GET') {
-      if (runId) {
+      const runOutcomeService = createOracleServiceLayerRunOutcomeService({
+        async upsertOutcome(row: DbOracleServiceLayerRunOutcomeRow) {
+          const { data, error } = await serviceClient
+            .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+            .upsert([row], { onConflict: 'oracle_service_layer_run_id' })
+            .select()
+            .single();
+
+          if (error) throw new Error(error.message);
+          return data as DbOracleServiceLayerRunOutcomeRow;
+        },
+        async findOutcomeByRunId(oracleServiceLayerRunId: string) {
+          const { data, error } = await callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+            .select(ORACLE_SERVICE_LAYER_RUN_OUTCOME_COLUMNS)
+            .eq('oracle_service_layer_run_id', oracleServiceLayerRunId)
+            .maybeSingle();
+
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
+        },
+        async findOutcomeById(id: string) {
+          const { data, error } = await callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+            .select(ORACLE_SERVICE_LAYER_RUN_OUTCOME_COLUMNS)
+            .eq('id', id)
+            .maybeSingle();
+
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRunOutcomeRow | null) ?? null;
+        },
+        async findOutcomesByRunIds(runIds: string[]) {
+          if (runIds.length === 0) return [];
+          const { data, error } = await callerScopedClient
+            .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+            .select(ORACLE_SERVICE_LAYER_RUN_OUTCOME_COLUMNS)
+            .in('oracle_service_layer_run_id', runIds);
+
+          if (error) throw new Error(error.message);
+          return (data as DbOracleServiceLayerRunOutcomeRow[] | null) ?? [];
+        },
+        async queryOutcomes() {
+          throw new Error('queryOutcomes not implemented for oracle-whitespace-runs edge function');
+        },
+        async updateOutcome(id: string, patch: Partial<DbOracleServiceLayerRunOutcomeRow>) {
+          const { data, error } = await serviceClient
+            .from(ORACLE_SERVICE_LAYER_RUN_OUTCOME_TABLE)
+            .update(patch)
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw new Error(error.message);
+          return data as DbOracleServiceLayerRunOutcomeRow;
+        },
+      });
+
+      if (req.method === 'GET') {
+        if (runId) {
+          const run = await serviceLayer.getRunById(runId);
+          if (!run) return errorResponse('Oracle service-layer run not found', 404);
+          const operatorDecision = await decisionService.getDecisionByRunId(runId);
+          const runOutcome = await runOutcomeService.getOutcomeByRunId(runId);
+
+          return jsonResponse({
+            run,
+            result: toOracleServiceLayerResultEnvelope(run),
+            operatorDecision,
+            runOutcome,
+          });
+        }
+
+        const entityAssetId = url.searchParams.get('entityAssetId') ?? undefined;
+        const limitParam = url.searchParams.get('limit');
+        let limit: number | undefined;
+
+        if (limitParam !== null) {
+          const parsedLimit = Number.parseInt(limitParam, 10);
+          if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+            return errorResponse('limit must be a positive integer', 400);
+          }
+          if (parsedLimit > 100) {
+            return errorResponse('limit must be at most 100', 400);
+          }
+          limit = parsedLimit;
+        }
+
+        const runs = await serviceLayer.listRecentRuns({ entityAssetId, limit });
+
+        // Batch fetch decisions and outcomes in 2 queries instead of 2×N
+        const runIds = runs.map((r) => r.id);
+        const [decisionsMap, outcomesMap] = await Promise.all([
+          decisionService.getDecisionsByRunIds(runIds),
+          runOutcomeService.getOutcomesByRunIds(runIds),
+        ]);
+
+        const history = runs.map((run) =>
+          toOracleServiceLayerRunHistoryItem({
+            run,
+            operatorDecision: decisionsMap.get(run.id) ?? null,
+            runOutcome: outcomesMap.get(run.id) ?? null,
+          }),
+        );
+
+        return jsonResponse({ history });
+      }
+
+      if (req.method === 'PATCH') {
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+
+        if (!runId) {
+          return errorResponse('id query parameter is required', 400);
+        }
+
         const run = await serviceLayer.getRunById(runId);
         if (!run) return errorResponse('Oracle service-layer run not found', 404);
-        const operatorDecision = await decisionService.getDecisionByRunId(runId);
-        const runOutcome = await runOutcomeService.getOutcomeByRunId(runId);
 
-        return jsonResponse({
-          run,
-          result: toOracleServiceLayerResultEnvelope(run),
-          operatorDecision,
-          runOutcome,
+        const body = await validateBody<UpsertOperatorDecisionRequest>(req, [
+          { name: 'decisionStatus', type: 'string' },
+          { name: 'notes', type: 'string', required: false },
+        ]);
+        if (!body.ok) return body.response;
+
+        if (!['pursue', 'defer', 'dismiss'].includes(body.data.decisionStatus)) {
+          return errorResponse('decisionStatus must be pursue, defer, or dismiss', 400);
+        }
+
+        const decision = await decisionService.upsertDecision({
+          oracleServiceLayerRunId: runId,
+          decisionStatus: body.data.decisionStatus,
+          notes: body.data.notes ?? null,
+          decidedBy: auth.claims.userId,
         });
+
+        return jsonResponse({ decision });
       }
 
-      const entityAssetId = url.searchParams.get('entityAssetId') ?? undefined;
-      const limitParam = url.searchParams.get('limit');
-      let limit: number | undefined;
+      if (req.method === 'PUT') {
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
 
-      if (limitParam !== null) {
-        const parsedLimit = Number.parseInt(limitParam, 10);
-        if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
-          return errorResponse('limit must be a positive integer', 400);
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+
+        if (!runId) {
+          return errorResponse('id query parameter is required', 400);
         }
-        if (parsedLimit > 100) {
-          return errorResponse('limit must be at most 100', 400);
+
+        const run = await serviceLayer.getRunById(runId);
+        if (!run) return errorResponse('Oracle service-layer run not found', 404);
+
+        const body = await validateBody<UpsertRunOutcomeRequest>(req, [
+          { name: 'outcomeStatus', type: 'string' },
+          { name: 'outcomeNotes', type: 'string', required: false },
+          { name: 'outcomeRevenue', type: 'number', required: false },
+          { name: 'outcomeClosedAt', type: 'string', required: false },
+        ]);
+        if (!body.ok) return body.response;
+
+        if (
+          !['pursued', 'deferred', 'dismissed', 'won', 'lost'].includes(body.data.outcomeStatus)
+        ) {
+          return errorResponse(
+            'outcomeStatus must be pursued, deferred, dismissed, won, or lost',
+            400,
+          );
         }
-        limit = parsedLimit;
+
+        const outcome = await runOutcomeService.upsertOutcome({
+          oracleServiceLayerRunId: runId,
+          outcomeStatus: body.data.outcomeStatus,
+          outcomeNotes: body.data.outcomeNotes ?? null,
+          outcomeRevenue: body.data.outcomeRevenue ?? null,
+          outcomeClosedAt: body.data.outcomeClosedAt ?? null,
+          recordedBy: auth.claims.userId,
+        });
+
+        return jsonResponse({ outcome });
       }
 
-      const runs = await serviceLayer.listRecentRuns({ entityAssetId, limit });
+      if (req.method === 'POST') {
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
 
-      // Batch fetch decisions and outcomes in 2 queries instead of 2×N
-      const runIds = runs.map((r) => r.id);
-      const [decisionsMap, outcomesMap] = await Promise.all([
-        decisionService.getDecisionsByRunIds(runIds),
-        runOutcomeService.getOutcomesByRunIds(runIds),
-      ]);
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
 
-      const history = runs.map((run) =>
-        toOracleServiceLayerRunHistoryItem({
-          run,
-          operatorDecision: decisionsMap.get(run.id) ?? null,
-          runOutcome: outcomesMap.get(run.id) ?? null,
-        }),
-      );
+        const body = await validateBody<ExecuteWhitespaceRunRequest>(req, [
+          { name: 'entityAssetId', type: 'string' },
+          { name: 'runLabel', type: 'string' },
+          { name: 'analysisInput', type: 'object' },
+          { name: 'metadata', type: 'object', required: false },
+        ]);
+        if (!body.ok) return body.response;
 
-      return jsonResponse({ history });
+        if (
+          body.data.analysisInput === null ||
+          typeof body.data.analysisInput !== 'object' ||
+          Array.isArray(body.data.analysisInput)
+        ) {
+          return errorResponse('analysisInput must be a non-array object', 400);
+        }
+
+        if (
+          body.data.metadata !== undefined &&
+          (body.data.metadata === null ||
+            typeof body.data.metadata !== 'object' ||
+            Array.isArray(body.data.metadata))
+        ) {
+          return errorResponse('metadata must be a non-array object', 400);
+        }
+
+        const input: ExecuteOracleServiceLayerRunInput = {
+          entityAssetId: body.data.entityAssetId,
+          runLabel: body.data.runLabel,
+          triggeredBy: auth.claims.userId,
+          analysisInput: body.data.analysisInput,
+          metadata: body.data.metadata,
+        };
+
+        const run = await serviceLayer.executeWhitespaceRun(input);
+
+        return jsonResponse(
+          {
+            run,
+            result: toOracleServiceLayerResultEnvelope(run),
+          },
+          201,
+        );
+      }
+
+      return errorResponse('Method not allowed', 405);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    if (req.method === 'PATCH') {
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
-
-      if (!runId) {
-        return errorResponse('id query parameter is required', 400);
-      }
-
-      const run = await serviceLayer.getRunById(runId);
-      if (!run) return errorResponse('Oracle service-layer run not found', 404);
-
-      const body = await validateBody<UpsertOperatorDecisionRequest>(req, [
-        { name: 'decisionStatus', type: 'string' },
-        { name: 'notes', type: 'string', required: false },
-      ]);
-      if (!body.ok) return body.response;
-
-      if (!['pursue', 'defer', 'dismiss'].includes(body.data.decisionStatus)) {
-        return errorResponse('decisionStatus must be pursue, defer, or dismiss', 400);
-      }
-
-      const decision = await decisionService.upsertDecision({
-        oracleServiceLayerRunId: runId,
-        decisionStatus: body.data.decisionStatus,
-        notes: body.data.notes ?? null,
-        decidedBy: auth.claims.userId,
-      });
-
-      return jsonResponse({ decision });
-    }
-
-    if (req.method === 'PUT') {
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
-
-      if (!runId) {
-        return errorResponse('id query parameter is required', 400);
-      }
-
-      const run = await serviceLayer.getRunById(runId);
-      if (!run) return errorResponse('Oracle service-layer run not found', 404);
-
-      const body = await validateBody<UpsertRunOutcomeRequest>(req, [
-        { name: 'outcomeStatus', type: 'string' },
-        { name: 'outcomeNotes', type: 'string', required: false },
-        { name: 'outcomeRevenue', type: 'number', required: false },
-        { name: 'outcomeClosedAt', type: 'string', required: false },
-      ]);
-      if (!body.ok) return body.response;
-
-      if (!['pursued', 'deferred', 'dismissed', 'won', 'lost'].includes(body.data.outcomeStatus)) {
-        return errorResponse('outcomeStatus must be pursued, deferred, dismissed, won, or lost', 400);
-      }
-
-      const outcome = await runOutcomeService.upsertOutcome({
-        oracleServiceLayerRunId: runId,
-        outcomeStatus: body.data.outcomeStatus,
-        outcomeNotes: body.data.outcomeNotes ?? null,
-        outcomeRevenue: body.data.outcomeRevenue ?? null,
-        outcomeClosedAt: body.data.outcomeClosedAt ?? null,
-        recordedBy: auth.claims.userId,
-      });
-
-      return jsonResponse({ outcome });
-    }
-
-    if (req.method === 'POST') {
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
-
-      const body = await validateBody<ExecuteWhitespaceRunRequest>(req, [
-        { name: 'entityAssetId', type: 'string' },
-        { name: 'runLabel', type: 'string' },
-        { name: 'analysisInput', type: 'object' },
-        { name: 'metadata', type: 'object', required: false },
-      ]);
-      if (!body.ok) return body.response;
-
-      if (
-        body.data.analysisInput === null ||
-        typeof body.data.analysisInput !== 'object' ||
-        Array.isArray(body.data.analysisInput)
-      ) {
-        return errorResponse('analysisInput must be a non-array object', 400);
-      }
-
-      if (
-        body.data.metadata !== undefined &&
-        (body.data.metadata === null ||
-          typeof body.data.metadata !== 'object' ||
-          Array.isArray(body.data.metadata))
-      ) {
-        return errorResponse('metadata must be a non-array object', 400);
-      }
-
-      const input: ExecuteOracleServiceLayerRunInput = {
-        entityAssetId: body.data.entityAssetId,
-        runLabel: body.data.runLabel,
-        triggeredBy: auth.claims.userId,
-        analysisInput: body.data.analysisInput,
-        metadata: body.data.metadata,
-      };
-
-      const run = await serviceLayer.executeWhitespaceRun(input);
-
-      return jsonResponse(
-        {
-          run,
-          result: toOracleServiceLayerResultEnvelope(run),
-        },
-        201,
-      );
-    }
-
-    return errorResponse('Method not allowed', 405);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

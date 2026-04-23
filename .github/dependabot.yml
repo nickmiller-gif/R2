@@ -1,25 +1,42 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: UTC
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      include: scope
     groups:
-      dev-deps:
-        dependency-type: "development"
-        patterns: ["*"]
-      prod-deps:
-        dependency-type: "production"
-        patterns: ["*"]
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      supabase-stack:
+        patterns:
+          - '@supabase/*'
+      test-tooling:
+        patterns:
+          - vitest
+          - '@vitest/*'
+      typescript-tooling:
+        patterns:
+          - typescript
+          - '@types/*'
+      lint-format-tooling:
+        patterns:
+          - eslint
+          - '@eslint/*'
+          - eslint-*
+          - prettier
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:15"
-      timezone: "America/New_York"
+      interval: weekly
+      day: monday
+      time: '06:30'
+      timezone: UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope

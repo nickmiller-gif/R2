@@ -1,34 +1,45 @@
-import { describe, it, expect } from 'vitest';
-import { parseJsonbField, parseJsonbArray } from '../../src/services/oracle/oracle-db-utils.ts';
-import {
-  parseJsonbField as parseJsonbFieldJs,
-  parseJsonbArray as parseJsonbArrayJs,
-} from '../../src/services/oracle/oracle-db-utils.js';
+import { describe, expect, it } from 'vitest';
+import { parseJsonbArray, parseJsonbField } from '../../src/services/oracle/oracle-db-utils.js';
 
-function runSharedJsonbAssertions(
-  fieldParser: (value: unknown) => Record<string, unknown>,
-  arrayParser: (value: unknown) => unknown[]
-): void {
-  expect(fieldParser('{"key":"value"}')).toEqual({ key: 'value' });
-  expect(fieldParser('{"bad"')).toEqual({});
-  expect(fieldParser({ a: 1 })).toEqual({ a: 1 });
-  expect(fieldParser(null)).toEqual({});
+describe('oracle-db-utils', () => {
+  describe('parseJsonbField', () => {
+    it('parses stringified json objects', () => {
+      expect(parseJsonbField('{"foo":"bar","n":3}')).toEqual({ foo: 'bar', n: 3 });
+    });
 
-  expect(arrayParser('[1,2,3]')).toEqual([1, 2, 3]);
-  expect(arrayParser('{"not":"array"}')).toEqual([]);
-  expect(arrayParser('[broken')).toEqual([]);
-  expect(arrayParser(['x'])).toEqual(['x']);
-  expect(arrayParser({ nope: true })).toEqual([]);
-}
+    it('returns empty object for invalid json strings', () => {
+      expect(parseJsonbField('{invalid')).toEqual({});
+    });
 
-describe('oracle-db-utils.ts', () => {
-  it('handles valid and invalid jsonb field/array payloads', () => {
-    runSharedJsonbAssertions(parseJsonbField, parseJsonbArray);
+    it('returns empty object for nullish values', () => {
+      expect(parseJsonbField(null)).toEqual({});
+      expect(parseJsonbField(undefined)).toEqual({});
+    });
+
+    it('passes through non-string object values', () => {
+      const value = { source: 'row' };
+      expect(parseJsonbField(value)).toEqual(value);
+    });
   });
-});
 
-describe('oracle-db-utils.js mirror', () => {
-  it('matches behavior for valid and invalid jsonb field/array payloads', () => {
-    runSharedJsonbAssertions(parseJsonbFieldJs, parseJsonbArrayJs);
+  describe('parseJsonbArray', () => {
+    it('parses stringified arrays', () => {
+      expect(parseJsonbArray('[1,2,3]')).toEqual([1, 2, 3]);
+    });
+
+    it('returns empty array for invalid strings', () => {
+      expect(parseJsonbArray('[not-json')).toEqual([]);
+    });
+
+    it('returns empty array for non-array payloads', () => {
+      expect(parseJsonbArray('{"a":1}')).toEqual([]);
+      expect(parseJsonbArray({ a: 1 })).toEqual([]);
+      expect(parseJsonbArray(null)).toEqual([]);
+    });
+
+    it('passes through array values', () => {
+      const rows = [{ id: 1 }, { id: 2 }];
+      expect(parseJsonbArray(rows)).toEqual(rows);
+    });
   });
 });

@@ -1,3 +1,5 @@
+import { logWarn } from './log.ts';
+
 export type WidgetMode = 'public' | 'eigenx';
 
 export interface WidgetSessionClaims {
@@ -22,7 +24,10 @@ function toBase64Url(bytes: Uint8Array): string {
 }
 
 function fromBase64Url(value: string): Uint8Array {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  const padded = value
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(value.length / 4) * 4, '=');
   const binary = atob(padded);
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
@@ -63,14 +68,11 @@ async function verify(data: string, signature: string, secret: string): Promise<
       false,
       ['verify'],
     );
-    return await crypto.subtle.verify(
-      'HMAC',
-      key,
-      fromBase64Url(signature),
-      encoder.encode(data),
-    );
+    return await crypto.subtle.verify('HMAC', key, fromBase64Url(signature), encoder.encode(data));
   } catch {
-    console.warn('Widget session signature verification failed due to malformed input');
+    logWarn('Widget session signature verification failed due to malformed input', {
+      functionName: 'widget-session',
+    });
     return false;
   }
 }
@@ -113,7 +115,10 @@ export async function verifyWidgetSessionToken(token: string): Promise<WidgetSes
     claims = JSON.parse(payloadJson) as WidgetSessionClaims;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown decode error';
-    console.warn(`Widget session payload decode failed: ${message}`);
+    logWarn('Widget session payload decode failed', {
+      functionName: 'widget-session',
+      error: message,
+    });
     throw new Error('Invalid widget session token payload');
   }
   const now = Math.floor(Date.now() / 1000);

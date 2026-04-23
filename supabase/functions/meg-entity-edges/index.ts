@@ -3,111 +3,120 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { pickFields } from '../_shared/sanitize.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
-const INSERT_FIELDS = ['source_entity_id', 'target_entity_id', 'edge_type', 'confidence', 'valid_from', 'valid_to', 'source', 'metadata'] as const;
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
+    try {
+      const url = new URL(req.url);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const lastSegment = segments[segments.length - 1];
+      const id = lastSegment === 'meg-entity-edges' ? null : lastSegment;
 
-  try {
-    const url = new URL(req.url);
-    const segments = url.pathname.split('/').filter(Boolean);
-    const lastSegment = segments[segments.length - 1];
-    const id = lastSegment === 'meg-entity-edges' ? null : lastSegment;
+      const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
 
-    const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
+      if (req.method === 'GET') {
+        if (id) {
+          const { data, error } = await client
+            .from('meg_entity_edges')
+            .select(
+              'confidence,created_at,edge_type,id,metadata,source,source_entity_id,target_entity_id,updated_at,valid_from,valid_to',
+            )
+            .eq('id', id)
+            .single();
+          if (error) return errorResponse(error.message, 404);
+          return jsonResponse(data);
+        } else {
+          const sourceEntityId = url.searchParams.get('source_entity_id');
+          const targetEntityId = url.searchParams.get('target_entity_id');
+          const edgeType = url.searchParams.get('edge_type');
+          const eitherEntityId = url.searchParams.get('either_entity_id');
 
-    if (req.method === 'GET') {
-      if (id) {
+          let query = client
+            .from('meg_entity_edges')
+            .select(
+              'confidence,created_at,edge_type,id,metadata,source,source_entity_id,target_entity_id,updated_at,valid_from,valid_to',
+            );
+
+          if (eitherEntityId) {
+            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!UUID_RE.test(eitherEntityId))
+              return errorResponse('invalid either_entity_id', 400);
+            // Match edges where entity appears as source OR target
+            query = query.or(
+              `source_entity_id.eq.${eitherEntityId},target_entity_id.eq.${eitherEntityId}`,
+            );
+          } else {
+            if (sourceEntityId) query = query.eq('source_entity_id', sourceEntityId);
+            if (targetEntityId) query = query.eq('target_entity_id', targetEntityId);
+          }
+          if (edgeType) query = query.eq('edge_type', edgeType);
+
+          const { data, error } = await query;
+          if (error) return errorResponse(error.message, 400);
+          return jsonResponse(data);
+        }
+      } else if (req.method === 'POST') {
+        // CREATE edge
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+        const body = await req.json();
         const { data, error } = await client
           .from('meg_entity_edges')
-          .select('*')
-          .eq('id', id)
+          .insert([body])
+          .select()
           .single();
-        if (error) return errorResponse(error.message, 404);
-        return jsonResponse(data);
-      } else {
-        const sourceEntityId = url.searchParams.get('source_entity_id');
-        const targetEntityId = url.searchParams.get('target_entity_id');
-        const edgeType = url.searchParams.get('edge_type');
-        const eitherEntityId = url.searchParams.get('either_entity_id');
+        if (error) return errorResponse(error.message, 400);
+        return jsonResponse(data, 201);
+      } else if (req.method === 'PATCH') {
+        // UPDATE edge — only allowlisted fields may be changed
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+        const body = await req.json();
+        const edgeId = body.id;
+        if (!edgeId) return errorResponse('id required in body', 400);
 
-        let query = client.from('meg_entity_edges').select('*');
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (body.confidence !== undefined) patch.confidence = body.confidence;
+        if (body.valid_from !== undefined) patch.valid_from = body.valid_from;
+        if (body.valid_to !== undefined) patch.valid_to = body.valid_to;
+        if (body.metadata !== undefined) patch.metadata = body.metadata;
 
-        if (eitherEntityId) {
-          const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!UUID_RE.test(eitherEntityId)) return errorResponse('invalid either_entity_id', 400);
-          // Match edges where entity appears as source OR target
-          query = query.or(
-            `source_entity_id.eq.${eitherEntityId},target_entity_id.eq.${eitherEntityId}`
-          );
-        } else {
-          if (sourceEntityId) query = query.eq('source_entity_id', sourceEntityId);
-          if (targetEntityId) query = query.eq('target_entity_id', targetEntityId);
-        }
-        if (edgeType) query = query.eq('edge_type', edgeType);
-
-        const { data, error } = await query;
+        const { data, error } = await client
+          .from('meg_entity_edges')
+          .update(patch)
+          .eq('id', edgeId)
+          .select()
+          .single();
         if (error) return errorResponse(error.message, 400);
         return jsonResponse(data);
+      } else if (req.method === 'DELETE') {
+        // DELETE edge by id
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+        const deleteId = id ?? url.searchParams.get('id');
+        if (!deleteId) return errorResponse('id required', 400);
+
+        const { error } = await client.from('meg_entity_edges').delete().eq('id', deleteId);
+        if (error) return errorResponse(error.message, 400);
+        return jsonResponse({ deleted: true });
+      } else {
+        return errorResponse('Method not allowed', 405);
       }
-    } else if (req.method === 'POST') {
-      // CREATE edge
-      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
-      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
-      const body = await req.json();
-      const row = pickFields(body, INSERT_FIELDS);
-      const { data, error } = await client
-        .from('meg_entity_edges')
-        .insert([row])
-        .select()
-        .single();
-      if (error) return errorResponse(error.message, 400);
-      return jsonResponse(data, 201);
-    } else if (req.method === 'PATCH') {
-      // UPDATE edge — only allowlisted fields may be changed
-      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
-      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
-      const body = await req.json();
-      const edgeId = body.id;
-      if (!edgeId) return errorResponse('id required in body', 400);
-
-      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (body.confidence !== undefined) patch.confidence = body.confidence;
-      if (body.valid_from !== undefined) patch.valid_from = body.valid_from;
-      if (body.valid_to !== undefined) patch.valid_to = body.valid_to;
-      if (body.metadata !== undefined) patch.metadata = body.metadata;
-
-      const { data, error } = await client
-        .from('meg_entity_edges')
-        .update(patch)
-        .eq('id', edgeId)
-        .select()
-        .single();
-      if (error) return errorResponse(error.message, 400);
-      return jsonResponse(data);
-    } else if (req.method === 'DELETE') {
-      // DELETE edge by id
-      const roleCheck = await requireRole(auth.claims.userId, 'operator'); if (!roleCheck.ok) return roleCheck.response;
-      const idemError = requireIdempotencyKey(req); if (idemError) return idemError;
-      const deleteId = id ?? url.searchParams.get('id');
-      if (!deleteId) return errorResponse('id required', 400);
-
-      const { error } = await client
-        .from('meg_entity_edges')
-        .delete()
-        .eq('id', deleteId);
-      if (error) return errorResponse(error.message, 400);
-      return jsonResponse({ deleted: true });
-    } else {
-      return errorResponse('Method not allowed', 405);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

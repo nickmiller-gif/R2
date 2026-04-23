@@ -67,7 +67,12 @@ describe('OraclePublicationService', () => {
     db.signalStateById.set('signal-1', 'pending_review');
     const service = createOraclePublicationService(db);
 
-    const event = await service.decideSignal('signal-1', 'rejected', 'user-2', 'insufficient evidence');
+    const event = await service.decideSignal(
+      'signal-1',
+      'rejected',
+      'user-2',
+      'insufficient evidence',
+    );
 
     expect(event.targetType).toBe('signal');
     expect(event.fromState).toBe('pending_review');
@@ -83,5 +88,46 @@ describe('OraclePublicationService', () => {
       'Invalid publication transition',
     );
   });
-});
 
+  it('supersedes a published thesis and records event', async () => {
+    db.thesisStateById.set('thesis-3', 'published');
+    const service = createOraclePublicationService(db);
+
+    const event = await service.decideThesis('thesis-3', 'superseded', 'user-4', 'replaced by v2');
+
+    expect(event.toState).toBe('superseded');
+    expect(event.fromState).toBe('published');
+    expect(db.thesisStateById.get('thesis-3')).toBe('superseded');
+  });
+
+  it('marks signal as successor_of and records event', async () => {
+    db.signalStateById.set('signal-2', 'pending_review');
+    const service = createOraclePublicationService(db);
+
+    const event = await service.decideSignal('signal-2', 'successor_of', 'user-5');
+
+    expect(event.toState).toBe('successor_of');
+    expect(event.fromState).toBe('pending_review');
+    expect(db.signalStateById.get('signal-2')).toBe('successor_of');
+  });
+
+  it('lists events filtered by target type', async () => {
+    db.thesisStateById.set('thesis-4', 'pending_review');
+    db.signalStateById.set('signal-3', 'pending_review');
+    const service = createOraclePublicationService(db);
+
+    await service.decideThesis('thesis-4', 'approved', 'user-6');
+    await service.decideSignal('signal-3', 'approved', 'user-6');
+
+    const thesisEvents = await service.listEvents('thesis');
+    expect(thesisEvents).toHaveLength(1);
+    expect(thesisEvents[0]!.targetType).toBe('thesis');
+
+    const signalEvents = await service.listEvents('signal');
+    expect(signalEvents).toHaveLength(1);
+    expect(signalEvents[0]!.targetType).toBe('signal');
+
+    const allEvents = await service.listEvents();
+    expect(allEvents).toHaveLength(2);
+  });
+});

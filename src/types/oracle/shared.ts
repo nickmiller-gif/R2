@@ -22,13 +22,30 @@ export type OracleVisibilityClass = 'private' | 'team' | 'org' | 'restricted';
 
 export type OracleThesisStatus = 'draft' | 'active' | 'challenged' | 'superseded' | 'retired';
 
-export type OracleNoveltyStatus = 'new' | 'known' | 'duplicate' | 'near_duplicate' | 'updated_existing';
+export type OracleNoveltyStatus =
+  | 'new'
+  | 'known'
+  | 'duplicate'
+  | 'near_duplicate'
+  | 'updated_existing';
 
-export type OraclePublicationState = 'pending_review' | 'approved' | 'rejected' | 'deferred' | 'published';
+export type OraclePublicationState =
+  | 'pending_review'
+  | 'approved'
+  | 'rejected'
+  | 'deferred'
+  | 'published'
+  | 'superseded'
+  | 'successor_of';
 
 export type OracleProfileRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
-export type OracleOutcomeType = 'thesis_created' | 'thesis_updated' | 'thesis_linked' | 'theme_update' | 'no_change';
+export type OracleOutcomeType =
+  | 'thesis_created'
+  | 'thesis_updated'
+  | 'thesis_linked'
+  | 'theme_update'
+  | 'no_change';
 
 export type OracleThesisEvidenceRole = 'inspiration' | 'validation' | 'contradiction';
 

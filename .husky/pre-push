@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Supabase type-drift check: ensures database.types.ts is in sync with the
+# live project schema before pushing. Run `supabase gen types typescript
+# --project-id <ref>` to regenerate when this fails.
+npm run lint:supabase:types

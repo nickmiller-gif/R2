@@ -14,6 +14,12 @@ import {
 } from '../_shared/eigen-policy.ts';
 import { logError } from '../_shared/log.ts';
 
+// Explicit `ingestion_runs` projection so schema additions don't leak through
+// `select('*')` (advisor lint 0022). All three eigen-ingest call sites share
+// this projection since they read / return full rows for replay semantics.
+const INGESTION_RUNS_SELECT_COLUMNS =
+  'chunk_count,chunking_mode,completed_at,created_at,document_id,embedding_model,id,metadata,source_ref,source_system,started_at,status';
+
 interface IngestDocumentPayload {
   title?: string;
   body?: string;
@@ -398,7 +404,7 @@ Deno.serve(
       const [existingRunResult, existingDocResult] = await Promise.all([
         client
           .from('ingestion_runs')
-          .select('*')
+          .select(INGESTION_RUNS_SELECT_COLUMNS)
           .eq('source_system', requestBody.source_system)
           .eq('source_ref', requestBody.source_ref)
           .limit(1)
@@ -450,7 +456,7 @@ Deno.serve(
                   metadata: { content_unchanged_fast_path: true },
                 },
               ])
-              .select('*')
+              .select(INGESTION_RUNS_SELECT_COLUMNS)
               .single();
 
             if (runInsert.error) return errorResponse(runInsert.error.message, 400);
@@ -511,7 +517,7 @@ Deno.serve(
               status: 'running',
             },
           ])
-          .select('*')
+          .select(INGESTION_RUNS_SELECT_COLUMNS)
           .single();
 
         if (runInsert.error) return errorResponse(runInsert.error.message, 400);

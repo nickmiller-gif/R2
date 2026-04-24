@@ -5,6 +5,11 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
+// Explicit `retrieval_runs` projection — additions must be added here
+// intentionally so downstream callers see a stable response shape.
+const RETRIEVAL_RUNS_SELECT_COLUMNS =
+  'budget_profile,candidate_count,created_at,decomposition,dropped_context_reasons,filtered_count,final_count,id,latency_ms,metadata,oracle_context,query_hash,status';
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -25,7 +30,7 @@ Deno.serve(
         if (runId) {
           const { data, error } = await client
             .from('retrieval_runs')
-            .select('*')
+            .select(RETRIEVAL_RUNS_SELECT_COLUMNS)
             .eq('id', runId)
             .single();
 
@@ -37,7 +42,7 @@ Deno.serve(
         } else {
           const status = url.searchParams.get('status');
 
-          let query = client.from('retrieval_runs').select('*');
+          let query = client.from('retrieval_runs').select(RETRIEVAL_RUNS_SELECT_COLUMNS);
 
           if (status) query = query.eq('status', status);
 

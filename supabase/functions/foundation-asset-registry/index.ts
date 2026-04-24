@@ -5,6 +5,15 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
+// Explicit `asset_registry` projection. The `asset_evidence_links` path below
+// still uses `select('*')` because it references a table name that does not
+// exist in the live schema (should be `r2_core_asset_evidence_links` or
+// `asset_evidence_link` singular) — narrowing the select there would mask
+// that latent bug; it is called out as a follow-up rather than silently fixed
+// here.
+const ASSET_REGISTRY_SELECT_COLUMNS =
+  'asset_kind,asset_subtype,canonical_ecosystem_id,charter_entity_id,created_at,domain,governance_status,id,kind,label,lifecycle_status,local_record_id,local_table,manager_entity_id,metadata,owner_entity_id,provenance_captured_at,provenance_source_system,provenance_source_type,provenance_source_url,r2chart_governed_asset_id,ref_id,review_notes,review_status,reviewed_at,reviewed_by,updated_at,user_id';
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -85,7 +94,7 @@ Deno.serve(
           if (assetId) {
             const { data, error } = await client
               .from('asset_registry')
-              .select('*')
+              .select(ASSET_REGISTRY_SELECT_COLUMNS)
               .eq('id', assetId)
               .single();
 
@@ -99,7 +108,7 @@ Deno.serve(
             const domain = url.searchParams.get('domain');
             const refId = url.searchParams.get('ref_id');
 
-            let query = client.from('asset_registry').select('*');
+            let query = client.from('asset_registry').select(ASSET_REGISTRY_SELECT_COLUMNS);
 
             if (kind) query = query.eq('kind', kind);
             if (domain) query = query.eq('domain', domain);

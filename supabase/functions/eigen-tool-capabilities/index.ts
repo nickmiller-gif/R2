@@ -14,6 +14,12 @@ import {
 
 const supabaseClients = createSupabaseClientFactory();
 
+// Explicit `tool_capabilities` projection — the KOS capability-filter paths
+// below read `capability_tags` and `io_schema_ref` off every row, so a future
+// internal column addition must not leak automatically via `select('*')`.
+const TOOL_CAPABILITIES_SELECT_COLUMNS =
+  'approval_policy,blast_radius,capability_tags,connector_dependencies,created_at,fallback_mode,id,io_schema_ref,mode,name,role_requirements,tool_id,updated_at';
+
 function parseScopeParam(raw: string | null): string[] {
   if (!raw) return [];
   const trimmed = raw.trim();
@@ -76,7 +82,7 @@ Deno.serve(
         if (capId) {
           const { data, error } = await serviceClient
             .from('tool_capabilities')
-            .select('*')
+            .select(TOOL_CAPABILITIES_SELECT_COLUMNS)
             .eq('id', capId)
             .single();
 
@@ -103,7 +109,9 @@ Deno.serve(
           const mode = url.searchParams.get('mode');
           const approvalPolicy = url.searchParams.get('approval_policy');
 
-          let query = serviceClient.from('tool_capabilities').select('*');
+          let query = serviceClient
+            .from('tool_capabilities')
+            .select(TOOL_CAPABILITIES_SELECT_COLUMNS);
 
           if (toolId) query = query.eq('tool_id', toolId);
           if (mode) query = query.eq('mode', mode);

@@ -3,6 +3,7 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { logError } from '../_shared/log.ts';
 import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
@@ -11,6 +12,24 @@ import {
   buildSafeSignalRescoreOverrides,
   formatAllowedSignalPatchFields,
 } from '../../../src/services/oracle/oracle-patch-builders.ts';
+
+// Columns the client may populate on CREATE. All publication-workflow columns
+// (`publication_state`, `published_at`, `published_by`, `publication_notes`),
+// the rescore-only `version` / `status`, and DB-defaulted audit columns are
+// server-controlled and dropped by sanitizeInsert. Publication / version /
+// status ride the DB defaults (`pending_review` / `1` / `scored`) and can
+// only be mutated via the publish / approve / reject / defer / rescore
+// actions on this handler.
+const SIGNAL_INSERT_FIELDS = [
+  'entity_asset_id',
+  'score',
+  'confidence',
+  'reasons',
+  'tags',
+  'analysis_document_id',
+  'source_asset_id',
+  'producer_ref',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -300,10 +319,14 @@ Deno.serve(
               : inserted;
           return jsonResponse(responseBody, 201);
         } else {
-          // CREATE signal
+          // CREATE signal. Raw body is filtered through SIGNAL_INSERT_FIELDS;
+          // publication_state / published_by / published_at / publication_notes
+          // / version / status ride the DB defaults and must only transition
+          // via the publish / approve / reject / defer / rescore actions above.
+          const row = sanitizeInsert(body as Record<string, unknown>, SIGNAL_INSERT_FIELDS, {});
           const { data, error } = await client
             .from('oracle_signals')
-            .insert([body])
+            .insert([row])
             .select()
             .single();
 

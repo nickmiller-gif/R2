@@ -96,16 +96,26 @@ function toDbEventRow(input: CreateOraclePublicationEventInput): DbOraclePublica
   };
 }
 
-function validateTransition(fromState: OraclePublicationState | null, toState: OraclePublicationState): void {
+function validateTransition(
+  fromState: OraclePublicationState | null,
+  toState: OraclePublicationState,
+): void {
   if (fromState === toState) {
     throw new Error(`Publication state already ${toState}`);
   }
+  // `superseded` / `successor_of` are terminal audit labels attached by
+  // operator supersede/rescore flows (see oracle-theses/oracle-signals). They
+  // are reachable from any active decision state but do not transition onward
+  // through the publication service — the successor is a new row, not an
+  // in-place state change on the terminal record.
   const allowedFrom: Record<OraclePublicationState, OraclePublicationState[]> = {
-    pending_review: ['approved', 'rejected', 'deferred', 'published'],
-    approved: ['published', 'deferred', 'rejected'],
+    pending_review: ['approved', 'rejected', 'deferred', 'published', 'superseded'],
+    approved: ['published', 'deferred', 'rejected', 'superseded'],
     rejected: ['pending_review', 'deferred'],
-    deferred: ['pending_review', 'approved', 'rejected'],
-    published: ['deferred', 'rejected'],
+    deferred: ['pending_review', 'approved', 'rejected', 'superseded'],
+    published: ['deferred', 'rejected', 'superseded'],
+    superseded: [],
+    successor_of: [],
   };
   if (fromState && !allowedFrom[fromState].includes(toState)) {
     throw new Error(`Invalid publication transition: ${fromState} -> ${toState}`);
@@ -113,7 +123,9 @@ function validateTransition(fromState: OraclePublicationState | null, toState: O
 }
 
 export function createOraclePublicationService(db: OraclePublicationDb): OraclePublicationService {
-  async function insertEvent(input: CreateOraclePublicationEventInput): Promise<OraclePublicationRecord> {
+  async function insertEvent(
+    input: CreateOraclePublicationEventInput,
+  ): Promise<OraclePublicationRecord> {
     const row = await db.insertPublicationEvent(toDbEventRow(input));
     return rowToEvent(row);
   }
@@ -135,7 +147,10 @@ export function createOraclePublicationService(db: OraclePublicationDb): OracleP
         ...publishPatch,
         last_decision_at: now,
         last_decision_by: decidedBy,
-        decision_metadata: JSON.stringify({ notes: notes ?? null, transition: `${fromState}->${toState}` }),
+        decision_metadata: JSON.stringify({
+          notes: notes ?? null,
+          transition: `${fromState}->${toState}`,
+        }),
         updated_at: now,
       });
 
@@ -183,4 +198,3 @@ export function createOraclePublicationService(db: OraclePublicationDb): OracleP
     },
   };
 }
-

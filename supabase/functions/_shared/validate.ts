@@ -43,13 +43,10 @@ export interface FieldSpec {
 // ---------------------------------------------------------------------------
 
 function validationError(message: string, status = 400): Response {
-  return new Response(
-    JSON.stringify({ error: message }),
-    {
-      status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    },
-  );
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +96,15 @@ export async function validateBody<T>(
 
     if (typeof value !== field.type) {
       errors.push(`Field '${field.name}' must be of type ${field.type}, got ${typeof value}`);
+      continue;
+    }
+
+    // `typeof [] === 'object'` in JavaScript, so arrays sneak past the typeof
+    // check when callers spec a field as `type: 'object'`. Reject explicitly —
+    // downstream code expects a plain JSON object shape and arrays break the
+    // invariants (e.g. spreading keys, assuming property access semantics).
+    if (field.type === 'object' && Array.isArray(value)) {
+      errors.push(`Field '${field.name}' must be a JSON object, not an array`);
     }
   }
 
@@ -129,10 +135,7 @@ export async function validateBody<T>(
 export function requireIdempotencyKey(req: Request): Response | null {
   const key = req.headers.get(IDEMPOTENCY_KEY_HEADER);
   if (!key || key.trim().length === 0) {
-    return validationError(
-      `Missing required header: ${IDEMPOTENCY_KEY_HEADER}`,
-      400,
-    );
+    return validationError(`Missing required header: ${IDEMPOTENCY_KEY_HEADER}`, 400);
   }
   return null;
 }

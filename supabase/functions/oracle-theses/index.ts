@@ -6,6 +6,7 @@ import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { logError } from '../_shared/log.ts';
+import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 

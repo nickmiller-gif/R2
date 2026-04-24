@@ -2,7 +2,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
-import { requireRole, type CharterRole } from '../_shared/rbac.ts';
+import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta, withRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
@@ -43,21 +43,6 @@ interface IngestIdentity {
   userId: string;
 }
 
-class IngestHttpError extends Error {
-  readonly status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    Object.setPrototypeOf(this, IngestHttpError.prototype);
-    this.name = 'IngestHttpError';
-    this.status = status;
-  }
-}
-
-function throwIngestHttpError(message: string, status: number): never {
-  throw new IngestHttpError(message, status);
-}
-
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
@@ -67,11 +52,6 @@ function resolveIngestIdentity(req: Request): IngestIdentity | null {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }
   return null;
-}
-
-function shouldEvaluateJwtIngestKosCapabilityTag(tag: string): boolean {
-  if (JWT_INGEST_KOS_EXCLUDED_CAPABILITY_TAGS.has(tag)) return false;
-  return !tag.startsWith('write:');
 }
 
 function readMaxBodyChars(): number {

@@ -26,7 +26,8 @@
     "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}": [
       "eslint --fix",
       "prettier --write"
-    ]
+    ],
+    "database.types.ts": []
   },
   "repository": {
     "type": "git",

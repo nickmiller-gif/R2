@@ -7,9 +7,10 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-session.ts';
-import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from '../_shared/eigen-policy.ts';
+import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface WidgetSessionRequest {
   site_id: string;
@@ -100,25 +101,27 @@ async function loadRegistryConfig(siteId: string): Promise<RegistryConfig | null
 
 Deno.serve(
   withRequestMeta(async (req) => {
-    if (req.method === 'OPTIONS') return corsResponse();
-    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+    const rawOrigin = req.headers.get('origin');
+    if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
+    if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
 
     try {
       const body = parseRequest(await req.json());
-      const originHeader = req.headers.get('origin');
-      if (!originHeader) return errorResponse('Missing Origin header', 400);
-      const origin = normalizeOrigin(originHeader);
+      if (!rawOrigin) return reflectedErrorResponse(rawOrigin, 'Missing Origin header', 400);
+      const origin = normalizeOrigin(rawOrigin);
 
       const config = await loadRegistryConfig(body.site_id);
-      if (!config) return errorResponse(`Unknown site_id: ${body.site_id}`, 404);
-      if (config.status !== 'active') return errorResponse('Site is not active', 403);
+      if (!config)
+        return reflectedErrorResponse(rawOrigin, `Unknown site_id: ${body.site_id}`, 404);
+      if (config.status !== 'active')
+        return reflectedErrorResponse(rawOrigin, 'Site is not active', 403);
       if (!config.origins.includes(origin))
-        return errorResponse('Origin not allowed for site', 403);
+        return reflectedErrorResponse(rawOrigin, 'Origin not allowed for site', 403);
 
       const requestedMode: WidgetMode = body.mode ?? 'public';
       if (requestedMode === 'eigenx') {
         if (config.mode === 'public') {
-          return errorResponse('Site is configured for public mode only', 403);
+          return reflectedErrorResponse(rawOrigin, 'Site is configured for public mode only', 403);
         }
         const auth = await guardAuth(req);
         if (!auth.ok) return auth.response;
@@ -131,7 +134,11 @@ Deno.serve(
           roles: roleCheck.roles,
         });
         if (scopeResolution.emptyAfterGrantIntersection) {
-          return errorResponse('No private policy scope access for this user', 403);
+          return reflectedErrorResponse(
+            rawOrigin,
+            'No private policy scope access for this user',
+            403,
+          );
         }
         const scope = scopeResolution.effectivePolicyScope;
 
@@ -143,7 +150,7 @@ Deno.serve(
           default_policy_scope: scope,
           user_id: auth.claims.userId,
         });
-        return jsonResponse({
+        return reflectedJsonResponse(rawOrigin, {
           widget_token: issued.token,
           expires_at: issued.expires_at,
           site_id: body.site_id,
@@ -176,7 +183,7 @@ Deno.serve(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      return errorResponse(message, 500);
+      return reflectedErrorResponse(rawOrigin, message, 500);
     }
   }),
 );

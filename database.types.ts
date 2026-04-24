@@ -1100,25 +1100,31 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           description: string | null
+          governance_scope: string
           id: string
           industry: string | null
           name: string
+          workspace_id: string | null
         }
         Insert: {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          governance_scope?: string
           id?: string
           industry?: string | null
           name: string
+          workspace_id?: string | null
         }
         Update: {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          governance_scope?: string
           id?: string
           industry?: string | null
           name?: string
+          workspace_id?: string | null
         }
         Relationships: []
       }
@@ -1206,6 +1212,8 @@ export type Database = {
           idempotency_key: string | null
           latency_ms: number | null
           mode: string
+          module: string | null
+          operator_id: string | null
           question: string
           retrieval_plan: Json | null
           retrieval_run_id: string | null
@@ -1224,6 +1232,8 @@ export type Database = {
           idempotency_key?: string | null
           latency_ms?: number | null
           mode: string
+          module?: string | null
+          operator_id?: string | null
           question: string
           retrieval_plan?: Json | null
           retrieval_run_id?: string | null
@@ -1242,6 +1252,8 @@ export type Database = {
           idempotency_key?: string | null
           latency_ms?: number | null
           mode?: string
+          module?: string | null
+          operator_id?: string | null
           question?: string
           retrieval_plan?: Json | null
           retrieval_run_id?: string | null
@@ -1778,6 +1790,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "oracle_whitespace_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_governance_audit_log_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
           },
           {
             foreignKeyName: "eigen_governance_audit_log_thesis_id_fkey"
@@ -3088,6 +3107,13 @@ export type Database = {
             foreignKeyName: "oracle_calibration_log_thesis_id_fkey"
             columns: ["thesis_id"]
             isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
+          },
+          {
+            foreignKeyName: "oracle_calibration_log_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
             referencedRelation: "oracle_theses"
             referencedColumns: ["id"]
           },
@@ -3253,49 +3279,17 @@ export type Database = {
             foreignKeyName: "oracle_outcomes_thesis_id_fkey"
             columns: ["thesis_id"]
             isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
+          },
+          {
+            foreignKeyName: "oracle_outcomes_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
             referencedRelation: "oracle_theses"
             referencedColumns: ["id"]
           },
         ]
-      }
-      oracle_publication_events: {
-        Row: {
-          created_at: string
-          decided_at: string
-          decided_by: string
-          from_state: string | null
-          id: string
-          metadata: Json
-          notes: string | null
-          target_id: string
-          target_type: string
-          to_state: string
-        }
-        Insert: {
-          created_at?: string
-          decided_at?: string
-          decided_by: string
-          from_state?: string | null
-          id?: string
-          metadata?: Json
-          notes?: string | null
-          target_id: string
-          target_type: string
-          to_state: string
-        }
-        Update: {
-          created_at?: string
-          decided_at?: string
-          decided_by?: string
-          from_state?: string | null
-          id?: string
-          metadata?: Json
-          notes?: string | null
-          target_id?: string
-          target_type?: string
-          to_state?: string
-        }
-        Relationships: []
       }
       oracle_profile_runs: {
         Row: {
@@ -3339,6 +3333,51 @@ export type Database = {
           top_score?: number | null
           triggered_by?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      oracle_publication_events: {
+        Row: {
+          created_at: string
+          decided_at: string
+          decided_by: string
+          from_state:
+            | Database["public"]["Enums"]["oracle_publication_state"]
+            | null
+          id: string
+          metadata: Json
+          notes: string | null
+          target_id: string
+          target_type: string
+          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string
+          decided_by: string
+          from_state?:
+            | Database["public"]["Enums"]["oracle_publication_state"]
+            | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          target_id: string
+          target_type: string
+          to_state: Database["public"]["Enums"]["oracle_publication_state"]
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string
+          decided_by?: string
+          from_state?:
+            | Database["public"]["Enums"]["oracle_publication_state"]
+            | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          target_id?: string
+          target_type?: string
+          to_state?: Database["public"]["Enums"]["oracle_publication_state"]
         }
         Relationships: []
       }
@@ -3466,6 +3505,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "oracle_whitespace_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_run_hypotheses_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
           },
           {
             foreignKeyName: "oracle_run_hypotheses_thesis_id_fkey"
@@ -3880,6 +3926,13 @@ export type Database = {
             foreignKeyName: "oracle_theses_duplicate_of_thesis_id_fkey"
             columns: ["duplicate_of_thesis_id"]
             isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
+          },
+          {
+            foreignKeyName: "oracle_theses_duplicate_of_thesis_id_fkey"
+            columns: ["duplicate_of_thesis_id"]
+            isOneToOne: false
             referencedRelation: "oracle_theses"
             referencedColumns: ["id"]
           },
@@ -3889,6 +3942,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "meg_entities"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_theses_superseded_by_thesis_id_fkey"
+            columns: ["superseded_by_thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
           },
           {
             foreignKeyName: "oracle_theses_superseded_by_thesis_id_fkey"
@@ -3931,6 +3991,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "oracle_evidence_items"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_thesis_evidence_links_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
           },
           {
             foreignKeyName: "oracle_thesis_evidence_links_thesis_id_fkey"
@@ -3985,6 +4052,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "knowledge_chunks"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oracle_thesis_knowledge_links_thesis_id_fkey"
+            columns: ["thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
           },
           {
             foreignKeyName: "oracle_thesis_knowledge_links_thesis_id_fkey"
@@ -5578,6 +5652,43 @@ export type Database = {
           title: string | null
           topic_tags: string[] | null
         }
+        Insert: {
+          confidence?: number | null
+          evidence_strength?: number | null
+          published_at?: string | null
+          published_by?: string | null
+          thesis_id?: string | null
+          thesis_statement?: string | null
+          title?: string | null
+          topic_tags?: never
+        }
+        Update: {
+          confidence?: number | null
+          evidence_strength?: number | null
+          published_at?: string | null
+          published_by?: string | null
+          thesis_id?: string | null
+          thesis_statement?: string | null
+          title?: string | null
+          topic_tags?: never
+        }
+        Relationships: []
+      }
+      oracle_calibration_summary: {
+        Row: {
+          avg_accuracy: number | null
+          avg_calibration_error: number | null
+          avg_confidence_delta: number | null
+          domain: string | null
+          earliest_sample: string | null
+          latest_sample: string | null
+          model_version: string | null
+          overconfident_count: number | null
+          prompt_version: string | null
+          sample_count: number | null
+          stddev_calibration_error: number | null
+          underconfident_count: number | null
+        }
         Relationships: []
       }
       oracle_feed_history_read_model: {
@@ -5597,23 +5708,6 @@ export type Database = {
           latest_published_at: string | null
           theme: string | null
           thesis_count: number | null
-        }
-        Relationships: []
-      }
-      oracle_calibration_summary: {
-        Row: {
-          avg_accuracy: number | null
-          avg_calibration_error: number | null
-          avg_confidence_delta: number | null
-          domain: string | null
-          earliest_sample: string | null
-          latest_sample: string | null
-          model_version: string | null
-          overconfident_count: number | null
-          prompt_version: string | null
-          sample_count: number | null
-          stddev_calibration_error: number | null
-          underconfident_count: number | null
         }
         Relationships: []
       }
@@ -5693,10 +5787,12 @@ export type Database = {
           score: number
         }[]
       }
+      is_active_operator: { Args: { _uid: string }; Returns: boolean }
       is_assigned_to_client: {
         Args: { _client_id: string; _user_id: string }
         Returns: boolean
       }
+      is_works_admin: { Args: { _uid: string }; Returns: boolean }
       match_knowledge_chunks: {
         Args: {
           ann_limit: number
@@ -5951,6 +6047,8 @@ export type Database = {
         | "rejected"
         | "deferred"
         | "published"
+        | "superseded"
+        | "successor_of"
       oracle_risk_level: "low" | "medium" | "high"
       oracle_run_status:
         | "queued"
@@ -6383,6 +6481,8 @@ export const Constants = {
         "rejected",
         "deferred",
         "published",
+        "superseded",
+        "successor_of",
       ],
       oracle_risk_level: ["low", "medium", "high"],
       oracle_run_status: [

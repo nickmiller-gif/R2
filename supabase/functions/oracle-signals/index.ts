@@ -4,7 +4,10 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
-import { logError } from '../_shared/log.ts';
+import {
+  buildSafeSignalPatch,
+  formatAllowedSignalPatchFields,
+} from '../../../src/services/oracle/oracle-patch-builders.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -12,14 +15,6 @@ async function requireOperatorForScope(userId: string): Promise<Response | null>
   const roleCheck = await requireRole(userId, 'operator');
   if (!roleCheck.ok) return roleCheck.response;
   return null;
-}
-
-function preserveExplicitNullableField(
-  body: Record<string, unknown>,
-  key: string,
-  fallback: unknown,
-): unknown {
-  return Object.prototype.hasOwnProperty.call(body, key) ? body[key] : fallback;
 }
 
 Deno.serve(
@@ -221,7 +216,6 @@ Deno.serve(
           return jsonResponse(data, 201);
         }
       } else if (req.method === 'PATCH') {
-        // UPDATE signal
         const roleCheck = await requireRole(auth.claims.userId, 'operator');
         if (!roleCheck.ok) return roleCheck.response;
         const idemError = requireIdempotencyKey(req);
@@ -237,14 +231,15 @@ Deno.serve(
         const patch = buildSafeSignalPatch(body as Record<string, unknown>);
         if (Object.keys(patch).length === 1) {
           return errorResponse(
-            'No patchable fields provided. Allowed fields: score, confidence, reasons, tags, status, analysis_document_id, source_asset_id, producer_ref, publication_notes',
+            `No patchable fields provided. Allowed fields: ${formatAllowedSignalPatchFields()}`,
             400,
           );
         }
 
         const { data, error } = await client
           .from('oracle_signals')
-          .insert([newRow])
+          .update(patch)
+          .eq('id', signalId)
           .select()
           .single();
 
@@ -252,54 +247,7 @@ Deno.serve(
           return errorResponse(error.message, 400);
         }
 
-        const newId = data.id as string;
-        const auditWarnings: string[] = [];
-        const auditPrev = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'signal',
-          targetId: previousId,
-          fromState: previousPublicationState,
-          toState: 'superseded',
-          decidedBy: auth.claims.userId,
-          decidedAt: now,
-          notes: body.notes ?? null,
-          action: 'rescore_supersede_previous',
-          metadata: { successor_signal_id: newId, new_score: score },
-        });
-        if (auditPrev) {
-          logError('rescore_supersede_previous audit failed', {
-            functionName: 'oracle-signals',
-            previousId,
-            newId,
-            error: auditPrev,
-          });
-          auditWarnings.push(`rescore_supersede_previous:${auditPrev}`);
-        }
-        const auditNew = await insertOraclePublicationAuditEvent(client, {
-          targetType: 'signal',
-          targetId: newId,
-          fromState: null,
-          toState: 'pending_review',
-          decidedBy: auth.claims.userId,
-          decidedAt: now,
-          notes: body.notes ?? null,
-          action: 'rescore_new_version',
-          metadata: { predecessor_signal_id: previousId, new_score: score },
-        });
-        if (auditNew) {
-          logError('rescore_new_version audit failed', {
-            functionName: 'oracle-signals',
-            previousId,
-            newId,
-            error: auditNew,
-          });
-          auditWarnings.push(`rescore_new_version:${auditNew}`);
-        }
-
-        const responseBody =
-          auditWarnings.length > 0 && data && typeof data === 'object'
-            ? { ...(data as Record<string, unknown>), auditWarnings }
-            : data;
-        return jsonResponse(responseBody, 201);
+        return jsonResponse(data);
       } else {
         return errorResponse('Method not allowed', 405);
       }

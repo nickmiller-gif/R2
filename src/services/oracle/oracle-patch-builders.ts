@@ -43,7 +43,10 @@ const EVIDENCE_PATCH_FIELDS = [
 
 const EVIDENCE_PATCH_ALLOWLIST = new Set<string>(EVIDENCE_PATCH_FIELDS);
 
-function buildPatch(body: Record<string, unknown>, allowlist: Set<string>): Record<string, unknown> {
+function buildPatch(
+  body: Record<string, unknown>,
+  allowlist: Set<string>,
+): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -75,4 +78,39 @@ export function buildSafeEvidenceItemPatch(body: Record<string, unknown>): Recor
 
 export function formatAllowedEvidenceItemPatchFields(): string {
   return EVIDENCE_PATCH_FIELDS.join(', ');
+}
+
+// ---------------------------------------------------------------------------
+// Rescore overrides (POST oracle-signals?action=rescore)
+//
+// A rescore is a versioned supersede: we insert a new oracle_signals row
+// carrying over most of the predecessor's metadata but with the operator's
+// score update(s). Only the fields below may be overridden per request;
+// everything else is copied from the predecessor so rescore can't be used
+// to smuggle arbitrary patches onto a new version.
+// ---------------------------------------------------------------------------
+const SIGNAL_RESCORE_OVERRIDE_FIELDS = [
+  'score',
+  'confidence',
+  'reasons',
+  'tags',
+  'analysis_document_id',
+  'source_asset_id',
+  'producer_ref',
+] as const;
+
+const SIGNAL_RESCORE_OVERRIDE_ALLOWLIST = new Set<string>(SIGNAL_RESCORE_OVERRIDE_FIELDS);
+
+export function buildSafeSignalRescoreOverrides(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const overrides: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (SIGNAL_RESCORE_OVERRIDE_ALLOWLIST.has(key)) overrides[key] = value;
+  }
+  return overrides;
+}
+
+export function formatAllowedSignalRescoreOverrideFields(): string {
+  return SIGNAL_RESCORE_OVERRIDE_FIELDS.join(', ');
 }

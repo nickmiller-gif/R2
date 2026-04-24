@@ -4,8 +4,11 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logError } from '../_shared/log.ts';
+import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
 import {
   buildSafeSignalPatch,
+  buildSafeSignalRescoreOverrides,
   formatAllowedSignalPatchFields,
 } from '../../../src/services/oracle/oracle-patch-builders.ts';
 
@@ -171,36 +174,131 @@ Deno.serve(
           }
           return jsonResponse(data);
         } else if (action === 'rescore') {
-          // RESCORE signal (in-place score refresh; supersede/version path lives in TS service)
-          const signalId = body.id;
-          if (!signalId) {
+          // Versioned supersede: insert a new oracle_signals row carrying the predecessor's
+          // metadata plus the operator's overrides, then mark the predecessor as superseded
+          // and emit paired oracle_publication_events rows.
+          //
+          // Unlike the old in-place update, this preserves the full audit trail required for
+          // operator review (the predecessor's score, reasons, and publication state stay
+          // readable on the original row; the new row enters `pending_review`).
+          const previousId = body.id;
+          if (!previousId || typeof previousId !== 'string') {
             return errorResponse('id required in body', 400);
           }
           if (body.score === undefined || body.score === null) {
             return errorResponse('score required for rescore', 400);
           }
 
-          const now = new Date().toISOString();
-          const patch: Record<string, unknown> = {
-            score: body.score,
-            updated_at: now,
-          };
-          if (body.confidence !== undefined) patch.confidence = body.confidence;
-          if (body.reasons !== undefined) patch.reasons = body.reasons;
-          if (body.tags !== undefined) patch.tags = body.tags;
+          const overrides = buildSafeSignalRescoreOverrides(body as Record<string, unknown>);
 
-          const { data, error } = await client
+          const { data: previousRow, error: previousErr } = await client
             .from('oracle_signals')
-            .update(patch)
-            .eq('id', signalId)
-            .select()
+            .select(
+              'id,entity_asset_id,score,confidence,reasons,tags,status,analysis_document_id,source_asset_id,producer_ref,version,publication_state',
+            )
+            .eq('id', previousId)
             .single();
-
-          if (error) {
-            return errorResponse(error.message, 400);
+          if (previousErr || !previousRow) {
+            return errorResponse(previousErr?.message ?? 'Previous signal not found', 404);
           }
 
-          return jsonResponse(data);
+          const now = new Date().toISOString();
+          const successorRow: Record<string, unknown> = {
+            entity_asset_id: previousRow.entity_asset_id,
+            score: previousRow.score,
+            confidence: previousRow.confidence,
+            reasons: previousRow.reasons,
+            tags: previousRow.tags,
+            status: 'scored',
+            analysis_document_id: previousRow.analysis_document_id,
+            source_asset_id: previousRow.source_asset_id,
+            producer_ref: previousRow.producer_ref,
+            version: (previousRow.version ?? 1) + 1,
+            publication_state: 'pending_review',
+            published_at: null,
+            published_by: null,
+            publication_notes: null,
+            scored_at: now,
+            ...overrides,
+          };
+
+          const { data: inserted, error: insertErr } = await client
+            .from('oracle_signals')
+            .insert([successorRow])
+            .select()
+            .single();
+          if (insertErr || !inserted) {
+            return errorResponse(insertErr?.message ?? 'Failed to insert rescored signal', 400);
+          }
+          const newId = inserted.id as string;
+
+          const { error: supersedeErr } = await client
+            .from('oracle_signals')
+            .update({ status: 'superseded', updated_at: now })
+            .eq('id', previousId);
+          if (supersedeErr) {
+            logError('rescore predecessor supersede failed', {
+              functionName: 'oracle-signals',
+              previousId,
+              newId,
+              error: supersedeErr.message,
+            });
+            return errorResponse(
+              `Rescored signal created (${newId}) but predecessor supersede failed: ${supersedeErr.message}`,
+              500,
+            );
+          }
+
+          const auditWarnings: string[] = [];
+          const notes = typeof body.notes === 'string' ? body.notes : null;
+          const newScore = successorRow.score;
+          const auditPrev = await insertOraclePublicationAuditEvent(client, {
+            targetType: 'signal',
+            targetId: previousId,
+            fromState: (previousRow.publication_state as string | null) ?? null,
+            toState: 'superseded',
+            decidedBy: auth.claims.userId,
+            decidedAt: now,
+            notes,
+            action: 'rescore_supersede_previous',
+            metadata: { successor_signal_id: newId, new_score: newScore },
+          });
+          if (auditPrev) {
+            logError('rescore_supersede_previous audit failed', {
+              functionName: 'oracle-signals',
+              previousId,
+              newId,
+              error: auditPrev,
+            });
+            auditWarnings.push(`rescore_supersede_previous:${auditPrev}`);
+          }
+
+          const auditNew = await insertOraclePublicationAuditEvent(client, {
+            targetType: 'signal',
+            targetId: newId,
+            fromState: null,
+            toState: 'pending_review',
+            decidedBy: auth.claims.userId,
+            decidedAt: now,
+            notes,
+            action: 'rescore_new_version',
+            metadata: { predecessor_signal_id: previousId, new_score: newScore },
+          });
+          if (auditNew) {
+            logError('rescore_new_version audit failed', {
+              functionName: 'oracle-signals',
+              previousId,
+              newId,
+              error: auditNew,
+            });
+            auditWarnings.push(`rescore_new_version:${auditNew}`);
+          }
+
+          const responseBody =
+            auditWarnings.length > 0 && inserted && typeof inserted === 'object'
+              ? { ...(inserted as Record<string, unknown>), auditWarnings }
+              : inserted;
+          return jsonResponse(responseBody, 201);
         } else {
           // CREATE signal
           const { data, error } = await client

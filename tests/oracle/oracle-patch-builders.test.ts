@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSafeEvidenceItemPatch,
   buildSafeSignalPatch,
+  buildSafeSignalRescoreOverrides,
   buildSafeThesisPatch,
   formatAllowedEvidenceItemPatchFields,
   formatAllowedSignalPatchFields,
+  formatAllowedSignalRescoreOverrideFields,
   formatAllowedThesisPatchFields,
 } from '../../src/services/oracle/oracle-patch-builders.js';
 
@@ -104,5 +106,105 @@ describe('oracle patch builders', () => {
     expect(formatAllowedEvidenceItemPatchFields()).toBe(
       'signal_id, source_lane, source_class, source_ref, content_summary, confidence, evidence_strength, source_date, publication_url, author_info, metadata',
     );
+  });
+
+  it('preserves explicit null values on allowlisted fields rather than treating them as unset', () => {
+    const patch = buildSafeSignalPatch({
+      analysis_document_id: null,
+      source_asset_id: null,
+      producer_ref: 'producer-2',
+    });
+
+    expect('analysis_document_id' in patch).toBe(true);
+    expect(patch.analysis_document_id).toBeNull();
+    expect('source_asset_id' in patch).toBe(true);
+    expect(patch.source_asset_id).toBeNull();
+    expect(patch.producer_ref).toBe('producer-2');
+  });
+
+  it('returns a timestamp-only signal patch for bodies with no allowlisted keys', () => {
+    const patch = buildSafeSignalPatch({});
+    expect(Object.keys(patch)).toEqual(['updated_at']);
+  });
+
+  it('returns a timestamp-only thesis patch for bodies with no allowlisted keys', () => {
+    const patch = buildSafeThesisPatch({ id: 'nope', profile_id: 'nope' });
+    expect(Object.keys(patch)).toEqual(['updated_at']);
+  });
+
+  it('signal-patch allowlist explicitly rejects write-scope primary/foreign keys', () => {
+    const patch = buildSafeSignalPatch({
+      id: 'malicious',
+      entity_asset_id: 'malicious',
+      version: 99,
+      publication_state: 'published',
+      published_by: 'malicious',
+      published_at: 'malicious',
+      created_at: 'malicious',
+      superseded_by_signal_id: 'malicious',
+    });
+
+    expect(patch.id).toBeUndefined();
+    expect(patch.entity_asset_id).toBeUndefined();
+    expect(patch.version).toBeUndefined();
+    expect(patch.publication_state).toBeUndefined();
+    expect(patch.published_by).toBeUndefined();
+    expect(patch.published_at).toBeUndefined();
+    expect(patch.created_at).toBeUndefined();
+    expect(patch.superseded_by_signal_id).toBeUndefined();
+    expect(Object.keys(patch)).toEqual(['updated_at']);
+  });
+
+  describe('buildSafeSignalRescoreOverrides', () => {
+    it('keeps only allowlisted rescore override fields', () => {
+      const overrides = buildSafeSignalRescoreOverrides({
+        score: 85,
+        confidence: 'high',
+        reasons: ['macro shift'],
+        tags: ['revised'],
+        analysis_document_id: 'doc-9',
+        source_asset_id: 'asset-9',
+        producer_ref: 'producer-v2',
+        id: 'should-not-pass',
+        entity_asset_id: 'should-not-pass',
+        version: 42,
+        publication_state: 'published',
+        status: 'superseded',
+        publication_notes: 'should-not-pass',
+        notes: 'should-not-pass',
+      });
+
+      expect(overrides).toEqual({
+        score: 85,
+        confidence: 'high',
+        reasons: ['macro shift'],
+        tags: ['revised'],
+        analysis_document_id: 'doc-9',
+        source_asset_id: 'asset-9',
+        producer_ref: 'producer-v2',
+      });
+    });
+
+    it('returns an empty override map for bodies with no rescore fields', () => {
+      const overrides = buildSafeSignalRescoreOverrides({ id: 'ignored', notes: 'ignored' });
+      expect(overrides).toEqual({});
+    });
+
+    it('preserves explicit null values on nullable override fields', () => {
+      const overrides = buildSafeSignalRescoreOverrides({
+        analysis_document_id: null,
+        source_asset_id: null,
+      });
+      expect('analysis_document_id' in overrides).toBe(true);
+      expect(overrides.analysis_document_id).toBeNull();
+      expect('source_asset_id' in overrides).toBe(true);
+      expect(overrides.source_asset_id).toBeNull();
+    });
+
+    it('exposes the allowlisted rescore fields via the shared formatter', () => {
+      expect(formatAllowedSignalRescoreOverrideFields()).toBe(
+        'score, confidence, reasons, tags, analysis_document_id, source_asset_id, producer_ref',
+      );
+    });
   });
 });

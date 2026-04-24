@@ -3,6 +3,7 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
 import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
 import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
@@ -11,6 +12,29 @@ import {
   defaultEigenxRetrievePolicyScope,
   readEigenxEnvDefaultPolicyScope,
 } from '../_shared/eigenx-scope.ts';
+
+// Columns the client may populate on CREATE / UPDATE. `id`, `created_at`,
+// `updated_at` are DB-controlled (uuid default + now()). Passing the raw
+// request body to `.insert([body])` / `.update(body)` on a `service_role`
+// client would let an operator override `id` (bypassing the UUID default)
+// or backdate `created_at` / `updated_at`.
+const TOOL_CAPABILITY_WRITABLE_FIELDS = [
+  'tool_id',
+  'name',
+  'capability_tags',
+  'io_schema_ref',
+  'mode',
+  'approval_policy',
+  'role_requirements',
+  'connector_dependencies',
+  'blast_radius',
+  'fallback_mode',
+] as const;
+
+// Mirrors the `tool_mode` / `approval_policy` Postgres enums — validated here
+// so malformed input surfaces as a clean 400 instead of a raw PG error string.
+const TOOL_MODE_VALUES = new Set(['read', 'write']);
+const APPROVAL_POLICY_VALUES = new Set(['none_required', 'user_approval', 'admin_approval']);
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -147,11 +171,38 @@ Deno.serve(
         if (!roleCheck.ok) return roleCheck.response;
         const idemError = requireIdempotencyKey(req);
         if (idemError) return idemError;
-        const body = await req.json();
+        const rawBody = await req.json();
+        if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+          return errorResponse('Request body must be a JSON object', 400);
+        }
+        const insertRow = sanitizeInsert(
+          rawBody as Record<string, unknown>,
+          TOOL_CAPABILITY_WRITABLE_FIELDS,
+          {},
+        );
+        if (typeof insertRow.tool_id !== 'string' || insertRow.tool_id.trim().length === 0) {
+          return errorResponse('tool_id is required', 400);
+        }
+        if (typeof insertRow.name !== 'string' || insertRow.name.trim().length === 0) {
+          return errorResponse('name is required', 400);
+        }
+        if (typeof insertRow.mode !== 'string' || !TOOL_MODE_VALUES.has(insertRow.mode)) {
+          return errorResponse("mode must be 'read' or 'write'", 400);
+        }
+        if (
+          insertRow.approval_policy !== undefined &&
+          (typeof insertRow.approval_policy !== 'string' ||
+            !APPROVAL_POLICY_VALUES.has(insertRow.approval_policy))
+        ) {
+          return errorResponse(
+            "approval_policy must be one of 'none_required', 'user_approval', 'admin_approval'",
+            400,
+          );
+        }
 
         const { data, error } = await serviceClient
           .from('tool_capabilities')
-          .insert([body])
+          .insert([insertRow])
           .select()
           .single();
 
@@ -165,16 +216,37 @@ Deno.serve(
         if (!roleCheck.ok) return roleCheck.response;
         const idemError = requireIdempotencyKey(req);
         if (idemError) return idemError;
-        const body = await req.json();
-        const id = body.id;
+        const rawBody = await req.json();
+        if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+          return errorResponse('Request body must be a JSON object', 400);
+        }
+        const body = rawBody as Record<string, unknown>;
+        const id = typeof body.id === 'string' ? body.id : null;
 
         if (!id) {
           return errorResponse('id required in body', 400);
         }
 
+        const updateRow = sanitizeUpdate(body, TOOL_CAPABILITY_WRITABLE_FIELDS);
+        if (typeof updateRow.mode === 'string' && !TOOL_MODE_VALUES.has(updateRow.mode)) {
+          return errorResponse("mode must be 'read' or 'write'", 400);
+        }
+        if (
+          typeof updateRow.approval_policy === 'string' &&
+          !APPROVAL_POLICY_VALUES.has(updateRow.approval_policy)
+        ) {
+          return errorResponse(
+            "approval_policy must be one of 'none_required', 'user_approval', 'admin_approval'",
+            400,
+          );
+        }
+        if (Object.keys(updateRow).length === 0) {
+          return errorResponse('No updatable fields in body', 400);
+        }
+
         const { data, error } = await serviceClient
           .from('tool_capabilities')
-          .update(body)
+          .update(updateRow)
           .eq('id', id)
           .select()
           .single();

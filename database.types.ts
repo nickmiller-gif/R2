@@ -1899,41 +1899,105 @@ export type Database = {
         }
         Relationships: []
       }
+      eigen_policy_rule_history: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after_state: Json | null
+          before_state: Json | null
+          correlation_id: string | null
+          id: string
+          metadata: Json
+          occurred_at: string
+          rationale: string | null
+          rule_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          correlation_id?: string | null
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          rationale?: string | null
+          rule_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          correlation_id?: string | null
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          rationale?: string | null
+          rule_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_policy_rule_history_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eigen_policy_rules: {
         Row: {
           capability_tag_pattern: string
           created_at: string
           effect: string
           id: string
+          is_active: boolean
           metadata: Json
           policy_tag: string
           rationale: string | null
           required_role: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by: string | null
           updated_at: string
+          version: number
         }
         Insert: {
           capability_tag_pattern: string
           created_at?: string
           effect: string
           id?: string
+          is_active?: boolean
           metadata?: Json
           policy_tag: string
           rationale?: string | null
           required_role?: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by?: string | null
           updated_at?: string
+          version?: number
         }
         Update: {
           capability_tag_pattern?: string
           created_at?: string
           effect?: string
           id?: string
+          is_active?: boolean
           metadata?: Json
           policy_tag?: string
           rationale?: string | null
           required_role?: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by?: string | null
           updated_at?: string
+          version?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       eigen_public_rate_buckets: {
         Row: {

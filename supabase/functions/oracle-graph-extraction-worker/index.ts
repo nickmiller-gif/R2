@@ -2,6 +2,7 @@ import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 type GraphEdgeAggregate = {
   source_entity_id: string;
@@ -77,7 +78,13 @@ async function processPendingJob(): Promise<{
           metadata: { edge_count: 0, mention_count: 0, reason: 'no_chunk_evidence' },
         })
         .eq('id', jobId);
-      return { processed: true, job_id: jobId, run_id: runId, edges_upserted: 0, mentions_scanned: 0 };
+      return {
+        processed: true,
+        job_id: jobId,
+        run_id: runId,
+        edges_upserted: 0,
+        mentions_scanned: 0,
+      };
     }
 
     const mentions = await client
@@ -154,7 +161,9 @@ async function processPendingJob(): Promise<{
       .maybeSingle();
     if (currentRun.error) throw new Error(currentRun.error.message);
     const prevProgress =
-      currentRun.data && typeof currentRun.data.stage_progress === 'object' && currentRun.data.stage_progress !== null
+      currentRun.data &&
+      typeof currentRun.data.stage_progress === 'object' &&
+      currentRun.data.stage_progress !== null
         ? (currentRun.data.stage_progress as Record<string, unknown>)
         : {};
 
@@ -207,27 +216,29 @@ async function processPendingJob(): Promise<{
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
-  const roleCheck = await requireRole(auth.claims.userId, 'operator');
-  if (!roleCheck.ok) return roleCheck.response;
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
+    const roleCheck = await requireRole(auth.claims.userId, 'operator');
+    if (!roleCheck.ok) return roleCheck.response;
 
-  try {
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const maxJobs = Math.max(1, Math.min(10, Number(body.max_jobs ?? 1)));
-    const processed: Array<Record<string, unknown>> = [];
-    for (let i = 0; i < maxJobs; i += 1) {
-      const result = await processPendingJob();
-      if (!result.processed) break;
-      processed.push(result);
+    try {
+      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      const maxJobs = Math.max(1, Math.min(10, Number(body.max_jobs ?? 1)));
+      const processed: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < maxJobs; i += 1) {
+        const result = await processPendingJob();
+        if (!result.processed) break;
+        processed.push(result);
+      }
+      return jsonResponse({ processed_jobs: processed.length, jobs: processed });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResponse(message, 500);
     }
-    return jsonResponse({ processed_jobs: processed.length, jobs: processed });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

@@ -21,6 +21,7 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody } from '../_shared/validate.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -649,499 +650,504 @@ async function enqueueGraphExtractionJob(
 
 // ─── Main handler ────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
 
-  const auth = await guardAuth(req);
-  if (!auth.ok) return auth.response;
+    const auth = await guardAuth(req);
+    if (!auth.ok) return auth.response;
 
-  try {
-    const url = new URL(req.url);
-    const serviceClient = getServiceClient();
-    const callerClient = getSupabaseClient(req);
+    try {
+      const url = new URL(req.url);
+      const serviceClient = getServiceClient();
+      const callerClient = getSupabaseClient(req);
 
-    // ── GET: retrieve run(s) ──────────────────────────────────────
-    if (req.method === 'GET') {
-      const runId = url.searchParams.get('id');
+      // ── GET: retrieve run(s) ──────────────────────────────────────
+      if (req.method === 'GET') {
+        const runId = url.searchParams.get('id');
 
-      if (runId) {
-        const { data: run, error } = await callerClient
-          .from('oracle_whitespace_runs')
-          .select('*')
-          .eq('id', runId)
-          .maybeSingle();
-
-        if (error) return errorResponse(error.message, 500);
-        if (!run) return errorResponse('Run not found', 404);
-
-        // Fetch related data in parallel
-        const [hypothesesResult, evidenceResult, evaluation] = await Promise.all([
-          callerClient
-            .from('oracle_run_hypotheses')
+        if (runId) {
+          const { data: run, error } = await callerClient
+            .from('oracle_whitespace_runs')
             .select('*')
-            .eq('run_id', runId)
-            .order('composite_score', { ascending: false }),
-          callerClient
-            .from('oracle_run_evidence')
-            .select(
-              'id, source_type, source_ref, source_system, authority_score, relevance_score, content_excerpt',
-            )
-            .eq('run_id', runId)
-            .order('authority_score', { ascending: false }),
-          computeEvaluation(serviceClient, runId),
-        ]);
+            .eq('id', runId)
+            .maybeSingle();
 
-        if (hypothesesResult.error) return errorResponse(hypothesesResult.error.message, 500);
-        if (evidenceResult.error) return errorResponse(evidenceResult.error.message, 500);
+          if (error) return errorResponse(error.message, 500);
+          if (!run) return errorResponse('Run not found', 404);
 
-        return jsonResponse({
-          run,
-          hypotheses: hypothesesResult.data ?? [],
-          evidence: evidenceResult.data ?? [],
-          evaluation,
-        });
-      }
-
-      // List recent runs
-      const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10), 1), 100);
-      const domain = url.searchParams.get('domain');
-
-      let query = callerClient
-        .from('oracle_whitespace_runs')
-        .select('id, domain, run_label, status, risk_level, evaluation, created_at, completed_at')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (domain) query = query.eq('domain', domain);
-
-      const { data: runs, error } = await query;
-      if (error) return errorResponse(error.message, 500);
-
-      return jsonResponse({ runs: runs ?? [] });
-    }
-
-    // ── POST: create, execute, publish, or record outcome ─────────
-    if (req.method === 'POST') {
-      const roleCheck = await requireRole(auth.claims.userId, 'operator');
-      if (!roleCheck.ok) return roleCheck.response;
-
-      const idemError = requireIdempotencyKey(req);
-      if (idemError) return idemError;
-
-      const action = url.searchParams.get('action') ?? 'create';
-
-      // ── Create a new run ────────────────────────────────────────
-      if (action === 'create') {
-        const body = await validateBody<CreateRunRequest>(req, [
-          { name: 'domain', type: 'string' },
-          { name: 'targetEntities', type: 'object' },
-          { name: 'constraints', type: 'object' },
-          { name: 'evidenceSourcesAllowed', type: 'object' },
-          { name: 'riskLevel', type: 'string' },
-          { name: 'timeHorizon', type: 'string', required: false },
-          { name: 'runLabel', type: 'string', required: false },
-        ]);
-        if (!body.ok) return body.response;
-
-        if (!['low', 'medium', 'high'].includes(body.data.riskLevel)) {
-          return errorResponse('riskLevel must be low, medium, or high', 400);
-        }
-        if (
-          !Array.isArray(body.data.targetEntities) ||
-          !body.data.targetEntities.every((value) => typeof value === 'string')
-        ) {
-          return errorResponse('targetEntities must be an array of strings', 400);
-        }
-        if (
-          !Array.isArray(body.data.evidenceSourcesAllowed) ||
-          !body.data.evidenceSourcesAllowed.every((value) => typeof value === 'string')
-        ) {
-          return errorResponse('evidenceSourcesAllowed must be an array of strings', 400);
-        }
-
-        const run = await createRun(serviceClient, auth.claims.userId, body.data);
-        return jsonResponse({ run, status: 'queued' }, 201);
-      }
-
-      // ── Execute a queued run through the pipeline ───────────────
-      if (action === 'execute') {
-        const body = await validateBody<ExecuteRunRequest>(req, [
-          { name: 'runId', type: 'string' },
-        ]);
-        if (!body.ok) return body.response;
-
-        const { data: run, error } = await serviceClient
-          .from('oracle_whitespace_runs')
-          .select('*')
-          .eq('id', body.data.runId)
-          .single();
-
-        if (error || !run) return errorResponse('Run not found', 404);
-
-        if (!['queued', 'failed'].includes(run.status)) {
-          return errorResponse(
-            `Run is in ${run.status} state; only queued or failed runs can be executed`,
-            409,
-          );
-        }
-        if (run.status === 'failed') {
-          const [verificationCleanup, hypothesesCleanup, evidenceCleanup] = await Promise.all([
-            serviceClient.from('verification_results').delete().eq('run_id', run.id),
-            serviceClient.from('oracle_run_hypotheses').delete().eq('run_id', run.id),
-            serviceClient.from('oracle_run_evidence').delete().eq('run_id', run.id),
+          // Fetch related data in parallel
+          const [hypothesesResult, evidenceResult, evaluation] = await Promise.all([
+            callerClient
+              .from('oracle_run_hypotheses')
+              .select('*')
+              .eq('run_id', runId)
+              .order('composite_score', { ascending: false }),
+            callerClient
+              .from('oracle_run_evidence')
+              .select(
+                'id, source_type, source_ref, source_system, authority_score, relevance_score, content_excerpt',
+              )
+              .eq('run_id', runId)
+              .order('authority_score', { ascending: false }),
+            computeEvaluation(serviceClient, runId),
           ]);
 
-          const cleanupError =
-            verificationCleanup.error ?? hypothesesCleanup.error ?? evidenceCleanup.error;
-          if (cleanupError) {
+          if (hypothesesResult.error) return errorResponse(hypothesesResult.error.message, 500);
+          if (evidenceResult.error) return errorResponse(evidenceResult.error.message, 500);
+
+          return jsonResponse({
+            run,
+            hypotheses: hypothesesResult.data ?? [],
+            evidence: evidenceResult.data ?? [],
+            evaluation,
+          });
+        }
+
+        // List recent runs
+        const limit = Math.min(
+          Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10), 1),
+          100,
+        );
+        const domain = url.searchParams.get('domain');
+
+        let query = callerClient
+          .from('oracle_whitespace_runs')
+          .select('id, domain, run_label, status, risk_level, evaluation, created_at, completed_at')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (domain) query = query.eq('domain', domain);
+
+        const { data: runs, error } = await query;
+        if (error) return errorResponse(error.message, 500);
+
+        return jsonResponse({ runs: runs ?? [] });
+      }
+
+      // ── POST: create, execute, publish, or record outcome ─────────
+      if (req.method === 'POST') {
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+
+        const idemError = requireIdempotencyKey(req);
+        if (idemError) return idemError;
+
+        const action = url.searchParams.get('action') ?? 'create';
+
+        // ── Create a new run ────────────────────────────────────────
+        if (action === 'create') {
+          const body = await validateBody<CreateRunRequest>(req, [
+            { name: 'domain', type: 'string' },
+            { name: 'targetEntities', type: 'object' },
+            { name: 'constraints', type: 'object' },
+            { name: 'evidenceSourcesAllowed', type: 'object' },
+            { name: 'riskLevel', type: 'string' },
+            { name: 'timeHorizon', type: 'string', required: false },
+            { name: 'runLabel', type: 'string', required: false },
+          ]);
+          if (!body.ok) return body.response;
+
+          if (!['low', 'medium', 'high'].includes(body.data.riskLevel)) {
+            return errorResponse('riskLevel must be low, medium, or high', 400);
+          }
+          if (
+            !Array.isArray(body.data.targetEntities) ||
+            !body.data.targetEntities.every((value) => typeof value === 'string')
+          ) {
+            return errorResponse('targetEntities must be an array of strings', 400);
+          }
+          if (
+            !Array.isArray(body.data.evidenceSourcesAllowed) ||
+            !body.data.evidenceSourcesAllowed.every((value) => typeof value === 'string')
+          ) {
+            return errorResponse('evidenceSourcesAllowed must be an array of strings', 400);
+          }
+
+          const run = await createRun(serviceClient, auth.claims.userId, body.data);
+          return jsonResponse({ run, status: 'queued' }, 201);
+        }
+
+        // ── Execute a queued run through the pipeline ───────────────
+        if (action === 'execute') {
+          const body = await validateBody<ExecuteRunRequest>(req, [
+            { name: 'runId', type: 'string' },
+          ]);
+          if (!body.ok) return body.response;
+
+          const { data: run, error } = await serviceClient
+            .from('oracle_whitespace_runs')
+            .select('*')
+            .eq('id', body.data.runId)
+            .single();
+
+          if (error || !run) return errorResponse('Run not found', 404);
+
+          if (!['queued', 'failed'].includes(run.status)) {
             return errorResponse(
-              `Failed to reset prior pipeline artifacts: ${cleanupError.message}`,
-              500,
+              `Run is in ${run.status} state; only queued or failed runs can be executed`,
+              409,
             );
+          }
+          if (run.status === 'failed') {
+            const [verificationCleanup, hypothesesCleanup, evidenceCleanup] = await Promise.all([
+              serviceClient.from('verification_results').delete().eq('run_id', run.id),
+              serviceClient.from('oracle_run_hypotheses').delete().eq('run_id', run.id),
+              serviceClient.from('oracle_run_evidence').delete().eq('run_id', run.id),
+            ]);
+
+            const cleanupError =
+              verificationCleanup.error ?? hypothesesCleanup.error ?? evidenceCleanup.error;
+            if (cleanupError) {
+              return errorResponse(
+                `Failed to reset prior pipeline artifacts: ${cleanupError.message}`,
+                500,
+              );
+            }
+          }
+
+          const startedAt = new Date().toISOString();
+          await updateRunStatus(serviceClient, run.id, 'gathering_evidence', {
+            started_at: startedAt,
+          });
+
+          try {
+            // Stage 2: Gather Evidence
+            const evidenceCount = await gatherEvidence(serviceClient, run);
+
+            // Stage 3: Resolve Entities
+            const entityResolution = await resolveEntities(serviceClient, run.id);
+
+            // Stage 4: Generate Hypotheses
+            const hypotheses = await generateHypotheses(
+              serviceClient,
+              run.id,
+              run.domain,
+              run.risk_level,
+            );
+
+            // Stage 5: Score & Verify
+            const verification = await scoreAndVerify(serviceClient, run.id, run.risk_level);
+
+            // Compute evaluation summary
+            const evaluation = await computeEvaluation(serviceClient, run.id);
+            await persistRunScorecard(serviceClient, run.id, evaluation);
+            await enqueueGraphExtractionJob(serviceClient, run);
+
+            // Mark run as ready for review
+            await updateRunStatus(serviceClient, run.id, 'review', {
+              completed_at: new Date().toISOString(),
+              evaluation,
+              stage_progress: {
+                evidence_gathered: evidenceCount,
+                entities_resolved: entityResolution.uniqueEntities,
+                entity_mention_links: entityResolution.mentionLinks,
+                unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
+                hypotheses_generated: hypotheses.length,
+                verified: verification.verified,
+                total_hypotheses: verification.total,
+                graph_extraction_job: 'pending',
+              },
+            });
+            await serviceClient.from('eigen_governance_audit_log').insert([
+              {
+                event_type: 'run_review_ready',
+                run_id: run.id,
+                actor_id: auth.claims.userId,
+                details: {
+                  evidence_gathered: evidenceCount,
+                  entities_resolved: entityResolution.uniqueEntities,
+                  hypotheses_generated: hypotheses.length,
+                  hypotheses_verified: verification.verified,
+                  evaluation,
+                },
+              },
+            ]);
+
+            return jsonResponse({
+              run_id: run.id,
+              status: 'review',
+              pipeline_summary: {
+                evidence_gathered: evidenceCount,
+                entities_resolved: entityResolution.uniqueEntities,
+                entity_mention_links: entityResolution.mentionLinks,
+                unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
+                hypotheses_generated: hypotheses.length,
+                hypotheses_verified: verification.verified,
+                hypotheses_total: verification.total,
+                evaluation,
+              },
+            });
+          } catch (pipelineErr) {
+            const msg = pipelineErr instanceof Error ? pipelineErr.message : 'Pipeline error';
+            await updateRunStatus(serviceClient, run.id, 'failed', {
+              error_message: msg,
+            });
+            return errorResponse(`Pipeline failed: ${msg}`, 500);
           }
         }
 
-        const startedAt = new Date().toISOString();
-        await updateRunStatus(serviceClient, run.id, 'gathering_evidence', {
-          started_at: startedAt,
-        });
+        // ── Publish hypotheses from a completed run ─────────────────
+        if (action === 'publish') {
+          const body = await validateBody<PublishRequest>(req, [
+            { name: 'runId', type: 'string' },
+            { name: 'hypothesisIds', type: 'object' },
+            { name: 'publicationNotes', type: 'string' },
+          ]);
+          if (!body.ok) return body.response;
+          if (
+            !Array.isArray(body.data.hypothesisIds) ||
+            !body.data.hypothesisIds.every((value) => typeof value === 'string')
+          ) {
+            return errorResponse('hypothesisIds must be an array of strings', 400);
+          }
 
-        try {
-          // Stage 2: Gather Evidence
-          const evidenceCount = await gatherEvidence(serviceClient, run);
+          const { data: run } = await serviceClient
+            .from('oracle_whitespace_runs')
+            .select('id, status')
+            .eq('id', body.data.runId)
+            .single();
 
-          // Stage 3: Resolve Entities
-          const entityResolution = await resolveEntities(serviceClient, run.id);
+          if (!run) return errorResponse('Run not found', 404);
+          if (run.status !== 'review') {
+            return errorResponse('Run must be in review status to publish', 409);
+          }
 
-          // Stage 4: Generate Hypotheses
-          const hypotheses = await generateHypotheses(
-            serviceClient,
-            run.id,
-            run.domain,
-            run.risk_level,
+          // Create oracle_theses from selected hypotheses
+          const requestedHypothesisIds = [...new Set(body.data.hypothesisIds)];
+          const { data: selectedHypotheses, error: selectedHypothesesError } = await serviceClient
+            .from('oracle_run_hypotheses')
+            .select('*')
+            .in('id', requestedHypothesisIds)
+            .eq('run_id', body.data.runId);
+          if (selectedHypothesesError) {
+            return errorResponse(selectedHypothesesError.message, 500);
+          }
+
+          if (!selectedHypotheses || selectedHypotheses.length === 0) {
+            return errorResponse('No matching hypotheses found for this run', 404);
+          }
+          if (selectedHypotheses.length !== requestedHypothesisIds.length) {
+            return errorResponse('One or more hypotheses do not belong to this run', 400);
+          }
+
+          const unpublishedHypotheses = selectedHypotheses.filter(
+            (hypothesis) =>
+              hypothesis.publishable !== true || hypothesis.verification_passed !== true,
           );
+          if (unpublishedHypotheses.length > 0) {
+            return errorResponse(
+              'All selected hypotheses must be verified and publishable before publishing',
+              409,
+            );
+          }
 
-          // Stage 5: Score & Verify
-          const verification = await scoreAndVerify(serviceClient, run.id, run.risk_level);
+          const publishedThesisIds: string[] = [];
 
-          // Compute evaluation summary
-          const evaluation = await computeEvaluation(serviceClient, run.id);
-          await persistRunScorecard(serviceClient, run.id, evaluation);
-          await enqueueGraphExtractionJob(serviceClient, run);
+          for (const h of selectedHypotheses) {
+            // Create thesis from hypothesis
+            const { data: thesis, error: thErr } = await serviceClient
+              .from('oracle_theses')
+              .insert([
+                {
+                  profile_id: auth.claims.userId,
+                  title: (h.hypothesis_text as string).substring(0, 200),
+                  thesis_statement: h.hypothesis_text,
+                  status: 'active',
+                  confidence: Math.round(((h.confidence as number) ?? 0.5) * 100),
+                  evidence_strength: Math.round(((h.evidence_strength as number) ?? 0) * 100),
+                  publication_state: 'published',
+                  published_at: new Date().toISOString(),
+                  published_by: auth.claims.userId,
+                  metadata: {
+                    source_run_id: body.data.runId,
+                    source_hypothesis_id: h.id,
+                    composite_score: h.composite_score,
+                    novelty_score: h.novelty_score,
+                    actionability: h.actionability,
+                  },
+                },
+              ])
+              .select('id')
+              .single();
 
-          // Mark run as ready for review
-          await updateRunStatus(serviceClient, run.id, 'review', {
-            completed_at: new Date().toISOString(),
-            evaluation,
-            stage_progress: {
-              evidence_gathered: evidenceCount,
-              entities_resolved: entityResolution.uniqueEntities,
-              entity_mention_links: entityResolution.mentionLinks,
-              unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
-              hypotheses_generated: hypotheses.length,
-              verified: verification.verified,
-              total_hypotheses: verification.total,
-              graph_extraction_job: 'pending',
-            },
-          });
+            if (thErr) throw new Error(`Failed to create thesis: ${thErr.message}`);
+
+            // Link hypothesis to thesis
+            const { error: linkErr } = await serviceClient
+              .from('oracle_run_hypotheses')
+              .update({ thesis_id: thesis!.id })
+              .eq('id', h.id);
+            if (linkErr) throw new Error(`Failed to link hypothesis to thesis: ${linkErr.message}`);
+
+            // Write publication event
+            const { error: pubEventErr } = await serviceClient
+              .from('oracle_publication_events')
+              .insert([
+                {
+                  target_type: 'thesis',
+                  target_id: thesis!.id,
+                  from_state: 'pending_review',
+                  to_state: 'published',
+                  decided_by: auth.claims.userId,
+                  notes: body.data.publicationNotes,
+                  metadata: { source_run_id: body.data.runId },
+                },
+              ]);
+            if (pubEventErr)
+              throw new Error(`Failed to write publication event: ${pubEventErr.message}`);
+            await serviceClient.from('eigen_governance_audit_log').insert([
+              {
+                event_type: 'hypothesis_published',
+                run_id: body.data.runId,
+                thesis_id: thesis!.id,
+                actor_id: auth.claims.userId,
+                details: {
+                  hypothesis_id: h.id,
+                  publication_notes: body.data.publicationNotes,
+                  confidence: h.confidence,
+                  evidence_strength: h.evidence_strength,
+                  composite_score: h.composite_score,
+                },
+              },
+            ]);
+
+            publishedThesisIds.push(thesis!.id);
+          }
+
+          // Update run to published
+          const evaluation = await computeEvaluation(serviceClient, body.data.runId);
+          await updateRunStatus(serviceClient, body.data.runId, 'published', { evaluation });
           await serviceClient.from('eigen_governance_audit_log').insert([
             {
-              event_type: 'run_review_ready',
-              run_id: run.id,
+              event_type: 'run_published',
+              run_id: body.data.runId,
               actor_id: auth.claims.userId,
               details: {
-                evidence_gathered: evidenceCount,
-                entities_resolved: entityResolution.uniqueEntities,
-                hypotheses_generated: hypotheses.length,
-                hypotheses_verified: verification.verified,
+                thesis_ids: publishedThesisIds,
+                published_count: publishedThesisIds.length,
                 evaluation,
               },
             },
           ]);
 
           return jsonResponse({
-            run_id: run.id,
-            status: 'review',
-            pipeline_summary: {
-              evidence_gathered: evidenceCount,
-              entities_resolved: entityResolution.uniqueEntities,
-              entity_mention_links: entityResolution.mentionLinks,
-              unresolved_entity_chunks: entityResolution.unresolvedChunkCount,
-              hypotheses_generated: hypotheses.length,
-              hypotheses_verified: verification.verified,
-              hypotheses_total: verification.total,
-              evaluation,
+            published_count: publishedThesisIds.length,
+            thesis_ids: publishedThesisIds,
+            run_status: 'published',
+          });
+        }
+
+        // ── Record an outcome ───────────────────────────────────────
+        if (action === 'outcome') {
+          const body = await validateBody<OutcomeRequest>(req, [
+            { name: 'thesisId', type: 'string' },
+            { name: 'verdict', type: 'string' },
+            { name: 'summary', type: 'string' },
+            { name: 'evidenceRefs', type: 'object' },
+            { name: 'observedAt', type: 'string' },
+          ]);
+          if (!body.ok) return body.response;
+          if (
+            !Array.isArray(body.data.evidenceRefs) ||
+            !body.data.evidenceRefs.every(
+              (value) => typeof value === 'object' && value !== null && !Array.isArray(value),
+            )
+          ) {
+            return errorResponse('evidenceRefs must be an array of objects', 400);
+          }
+
+          // Fetch thesis for calibration
+          const { data: thesis } = await serviceClient
+            .from('oracle_theses')
+            .select('id, confidence, evidence_strength')
+            .eq('id', body.data.thesisId)
+            .single();
+
+          if (!thesis) return errorResponse('Thesis not found', 404);
+
+          // Insert outcome
+          const { data: outcome, error: outErr } = await serviceClient
+            .from('oracle_outcomes')
+            .insert([
+              {
+                thesis_id: body.data.thesisId,
+                verdict: body.data.verdict,
+                summary: body.data.summary,
+                evidence_refs: body.data.evidenceRefs,
+                observed_at: body.data.observedAt,
+                outcome_source: 'manual',
+              },
+            ])
+            .select()
+            .single();
+
+          if (outErr) throw new Error(`Failed to insert outcome: ${outErr.message}`);
+
+          // Compute calibration
+          const predictedConfidence = (thesis.confidence as number) / 100;
+          const accuracyMap: Record<string, number> = {
+            confirmed: 1.0,
+            partially_confirmed: 0.6,
+            refuted: 0.0,
+            inconclusive: 0.5,
+          };
+          const accuracyScore = accuracyMap[body.data.verdict] ?? 0.5;
+          const calibrationError = Math.abs(predictedConfidence - accuracyScore);
+          const confidenceDelta = accuracyScore - predictedConfidence;
+
+          // Write calibration log
+          const { error: calibrationErr } = await serviceClient
+            .from('oracle_calibration_log')
+            .insert([
+              {
+                thesis_id: body.data.thesisId,
+                outcome_id: outcome!.id,
+                predicted_confidence: predictedConfidence,
+                predicted_evidence_strength: (thesis.evidence_strength as number) / 100,
+                actual_verdict: body.data.verdict,
+                accuracy_score: accuracyScore,
+                calibration_error: calibrationError,
+                confidence_delta: confidenceDelta,
+                model_version: 'oracle-ws-pipeline-v1',
+              },
+            ]);
+          if (calibrationErr)
+            throw new Error(`Failed to write calibration log: ${calibrationErr.message}`);
+          await serviceClient.from('eigen_governance_audit_log').insert([
+            {
+              event_type: 'outcome_recorded',
+              run_id: null,
+              thesis_id: body.data.thesisId,
+              actor_id: auth.claims.userId,
+              details: {
+                verdict: body.data.verdict,
+                outcome_id: outcome!.id,
+                accuracy_score: accuracyScore,
+                calibration_error: calibrationError,
+                confidence_delta: confidenceDelta,
+              },
             },
-          });
-        } catch (pipelineErr) {
-          const msg = pipelineErr instanceof Error ? pipelineErr.message : 'Pipeline error';
-          await updateRunStatus(serviceClient, run.id, 'failed', {
-            error_message: msg,
-          });
-          return errorResponse(`Pipeline failed: ${msg}`, 500);
-        }
-      }
+          ]);
 
-      // ── Publish hypotheses from a completed run ─────────────────
-      if (action === 'publish') {
-        const body = await validateBody<PublishRequest>(req, [
-          { name: 'runId', type: 'string' },
-          { name: 'hypothesisIds', type: 'object' },
-          { name: 'publicationNotes', type: 'string' },
-        ]);
-        if (!body.ok) return body.response;
-        if (
-          !Array.isArray(body.data.hypothesisIds) ||
-          !body.data.hypothesisIds.every((value) => typeof value === 'string')
-        ) {
-          return errorResponse('hypothesisIds must be an array of strings', 400);
-        }
-
-        const { data: run } = await serviceClient
-          .from('oracle_whitespace_runs')
-          .select('id, status')
-          .eq('id', body.data.runId)
-          .single();
-
-        if (!run) return errorResponse('Run not found', 404);
-        if (run.status !== 'review') {
-          return errorResponse('Run must be in review status to publish', 409);
-        }
-
-        // Create oracle_theses from selected hypotheses
-        const requestedHypothesisIds = [...new Set(body.data.hypothesisIds)];
-        const { data: selectedHypotheses, error: selectedHypothesesError } = await serviceClient
-          .from('oracle_run_hypotheses')
-          .select('*')
-          .in('id', requestedHypothesisIds)
-          .eq('run_id', body.data.runId);
-        if (selectedHypothesesError) {
-          return errorResponse(selectedHypothesesError.message, 500);
-        }
-
-        if (!selectedHypotheses || selectedHypotheses.length === 0) {
-          return errorResponse('No matching hypotheses found for this run', 404);
-        }
-        if (selectedHypotheses.length !== requestedHypothesisIds.length) {
-          return errorResponse('One or more hypotheses do not belong to this run', 400);
-        }
-
-        const unpublishedHypotheses = selectedHypotheses.filter(
-          (hypothesis) =>
-            hypothesis.publishable !== true || hypothesis.verification_passed !== true,
-        );
-        if (unpublishedHypotheses.length > 0) {
-          return errorResponse(
-            'All selected hypotheses must be verified and publishable before publishing',
-            409,
+          return jsonResponse(
+            {
+              outcome_id: outcome!.id,
+              accuracy_score: accuracyScore,
+              calibration_error: calibrationError,
+              confidence_delta: confidenceDelta,
+            },
+            201,
           );
         }
 
-        const publishedThesisIds: string[] = [];
-
-        for (const h of selectedHypotheses) {
-          // Create thesis from hypothesis
-          const { data: thesis, error: thErr } = await serviceClient
-            .from('oracle_theses')
-            .insert([
-              {
-                profile_id: auth.claims.userId,
-                title: (h.hypothesis_text as string).substring(0, 200),
-                thesis_statement: h.hypothesis_text,
-                status: 'active',
-                confidence: Math.round(((h.confidence as number) ?? 0.5) * 100),
-                evidence_strength: Math.round(((h.evidence_strength as number) ?? 0) * 100),
-                publication_state: 'published',
-                published_at: new Date().toISOString(),
-                published_by: auth.claims.userId,
-                metadata: {
-                  source_run_id: body.data.runId,
-                  source_hypothesis_id: h.id,
-                  composite_score: h.composite_score,
-                  novelty_score: h.novelty_score,
-                  actionability: h.actionability,
-                },
-              },
-            ])
-            .select('id')
-            .single();
-
-          if (thErr) throw new Error(`Failed to create thesis: ${thErr.message}`);
-
-          // Link hypothesis to thesis
-          const { error: linkErr } = await serviceClient
-            .from('oracle_run_hypotheses')
-            .update({ thesis_id: thesis!.id })
-            .eq('id', h.id);
-          if (linkErr) throw new Error(`Failed to link hypothesis to thesis: ${linkErr.message}`);
-
-          // Write publication event
-          const { error: pubEventErr } = await serviceClient
-            .from('oracle_publication_events')
-            .insert([
-              {
-                target_type: 'thesis',
-                target_id: thesis!.id,
-                from_state: 'pending_review',
-                to_state: 'published',
-                decided_by: auth.claims.userId,
-                notes: body.data.publicationNotes,
-                metadata: { source_run_id: body.data.runId },
-              },
-            ]);
-          if (pubEventErr)
-            throw new Error(`Failed to write publication event: ${pubEventErr.message}`);
-          await serviceClient.from('eigen_governance_audit_log').insert([
-            {
-              event_type: 'hypothesis_published',
-              run_id: body.data.runId,
-              thesis_id: thesis!.id,
-              actor_id: auth.claims.userId,
-              details: {
-                hypothesis_id: h.id,
-                publication_notes: body.data.publicationNotes,
-                confidence: h.confidence,
-                evidence_strength: h.evidence_strength,
-                composite_score: h.composite_score,
-              },
-            },
-          ]);
-
-          publishedThesisIds.push(thesis!.id);
-        }
-
-        // Update run to published
-        const evaluation = await computeEvaluation(serviceClient, body.data.runId);
-        await updateRunStatus(serviceClient, body.data.runId, 'published', { evaluation });
-        await serviceClient.from('eigen_governance_audit_log').insert([
-          {
-            event_type: 'run_published',
-            run_id: body.data.runId,
-            actor_id: auth.claims.userId,
-            details: {
-              thesis_ids: publishedThesisIds,
-              published_count: publishedThesisIds.length,
-              evaluation,
-            },
-          },
-        ]);
-
-        return jsonResponse({
-          published_count: publishedThesisIds.length,
-          thesis_ids: publishedThesisIds,
-          run_status: 'published',
-        });
+        return errorResponse(`Unknown action: ${action}`, 400);
       }
 
-      // ── Record an outcome ───────────────────────────────────────
-      if (action === 'outcome') {
-        const body = await validateBody<OutcomeRequest>(req, [
-          { name: 'thesisId', type: 'string' },
-          { name: 'verdict', type: 'string' },
-          { name: 'summary', type: 'string' },
-          { name: 'evidenceRefs', type: 'object' },
-          { name: 'observedAt', type: 'string' },
-        ]);
-        if (!body.ok) return body.response;
-        if (
-          !Array.isArray(body.data.evidenceRefs) ||
-          !body.data.evidenceRefs.every(
-            (value) => typeof value === 'object' && value !== null && !Array.isArray(value),
-          )
-        ) {
-          return errorResponse('evidenceRefs must be an array of objects', 400);
-        }
-
-        // Fetch thesis for calibration
-        const { data: thesis } = await serviceClient
-          .from('oracle_theses')
-          .select('id, confidence, evidence_strength')
-          .eq('id', body.data.thesisId)
-          .single();
-
-        if (!thesis) return errorResponse('Thesis not found', 404);
-
-        // Insert outcome
-        const { data: outcome, error: outErr } = await serviceClient
-          .from('oracle_outcomes')
-          .insert([
-            {
-              thesis_id: body.data.thesisId,
-              verdict: body.data.verdict,
-              summary: body.data.summary,
-              evidence_refs: body.data.evidenceRefs,
-              observed_at: body.data.observedAt,
-              outcome_source: 'manual',
-            },
-          ])
-          .select()
-          .single();
-
-        if (outErr) throw new Error(`Failed to insert outcome: ${outErr.message}`);
-
-        // Compute calibration
-        const predictedConfidence = (thesis.confidence as number) / 100;
-        const accuracyMap: Record<string, number> = {
-          confirmed: 1.0,
-          partially_confirmed: 0.6,
-          refuted: 0.0,
-          inconclusive: 0.5,
-        };
-        const accuracyScore = accuracyMap[body.data.verdict] ?? 0.5;
-        const calibrationError = Math.abs(predictedConfidence - accuracyScore);
-        const confidenceDelta = accuracyScore - predictedConfidence;
-
-        // Write calibration log
-        const { error: calibrationErr } = await serviceClient
-          .from('oracle_calibration_log')
-          .insert([
-            {
-              thesis_id: body.data.thesisId,
-              outcome_id: outcome!.id,
-              predicted_confidence: predictedConfidence,
-              predicted_evidence_strength: (thesis.evidence_strength as number) / 100,
-              actual_verdict: body.data.verdict,
-              accuracy_score: accuracyScore,
-              calibration_error: calibrationError,
-              confidence_delta: confidenceDelta,
-              model_version: 'oracle-ws-pipeline-v1',
-            },
-          ]);
-        if (calibrationErr)
-          throw new Error(`Failed to write calibration log: ${calibrationErr.message}`);
-        await serviceClient.from('eigen_governance_audit_log').insert([
-          {
-            event_type: 'outcome_recorded',
-            run_id: null,
-            thesis_id: body.data.thesisId,
-            actor_id: auth.claims.userId,
-            details: {
-              verdict: body.data.verdict,
-              outcome_id: outcome!.id,
-              accuracy_score: accuracyScore,
-              calibration_error: calibrationError,
-              confidence_delta: confidenceDelta,
-            },
-          },
-        ]);
-
-        return jsonResponse(
-          {
-            outcome_id: outcome!.id,
-            accuracy_score: accuracyScore,
-            calibration_error: calibrationError,
-            confidence_delta: confidenceDelta,
-          },
-          201,
-        );
-      }
-
-      return errorResponse(`Unknown action: ${action}`, 400);
+      return errorResponse('Method not allowed', 405);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return errorResponse(message, 500);
     }
-
-    return errorResponse('Method not allowed', 405);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return errorResponse(message, 500);
-  }
-});
+  }),
+);

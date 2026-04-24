@@ -7,6 +7,13 @@ import { withRequestMeta } from '../_shared/correlation.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
+// Explicit `knowledge_chunks` projection so schema additions don't leak through
+// `select('*')`. `embedding` is kept to preserve current response shape even
+// though it balloons payloads — trimming it would be a separate API-level
+// change (see operator read-model follow-ups).
+const KNOWLEDGE_CHUNKS_SELECT_COLUMNS =
+  'authority_score,chunk_level,content,content_hash,created_at,document_id,embedding,embedding_version,entity_ids,freshness_score,fts,heading_path,id,ingestion_run_id,meg_entity_id,oracle_relevance_score,oracle_signal_id,parent_chunk_id,policy_tags,provenance_completeness,updated_at,valid_from,valid_to';
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -26,7 +33,7 @@ Deno.serve(
         if (chunkId) {
           const { data, error } = await client
             .from('knowledge_chunks')
-            .select('*')
+            .select(KNOWLEDGE_CHUNKS_SELECT_COLUMNS)
             .eq('id', chunkId)
             .single();
 
@@ -40,7 +47,7 @@ Deno.serve(
           const chunkLevel = url.searchParams.get('chunk_level');
           const parentChunkId = url.searchParams.get('parent_chunk_id');
 
-          let query = client.from('knowledge_chunks').select('*');
+          let query = client.from('knowledge_chunks').select(KNOWLEDGE_CHUNKS_SELECT_COLUMNS);
 
           if (documentId) query = query.eq('document_id', documentId);
           if (chunkLevel) query = query.eq('chunk_level', chunkLevel);

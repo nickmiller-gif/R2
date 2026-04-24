@@ -23,6 +23,13 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
+// Explicit projections for the whitespace pipeline read paths so schema
+// additions don't leak through `select('*')` (advisor lint 0022).
+const WHITESPACE_RUN_SELECT_COLUMNS =
+  'completed_at,constraints,core_run_id,created_at,created_by,domain,error_message,evaluation,evidence_sources_allowed,id,risk_level,run_label,stage_progress,started_at,status,target_entities,time_horizon,updated_at';
+const RUN_HYPOTHESIS_SELECT_COLUMNS =
+  'actionability,citation_ids,composite_score,confidence,created_at,evidence_strength,hypothesis_text,id,novelty_score,publishable,reasoning_trace,run_id,thesis_id,verification_passed';
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 interface CreateRunRequest {
@@ -669,7 +676,7 @@ Deno.serve(
         if (runId) {
           const { data: run, error } = await callerClient
             .from('oracle_whitespace_runs')
-            .select('*')
+            .select(WHITESPACE_RUN_SELECT_COLUMNS)
             .eq('id', runId)
             .maybeSingle();
 
@@ -680,7 +687,7 @@ Deno.serve(
           const [hypothesesResult, evidenceResult, evaluation] = await Promise.all([
             callerClient
               .from('oracle_run_hypotheses')
-              .select('*')
+              .select(RUN_HYPOTHESIS_SELECT_COLUMNS)
               .eq('run_id', runId)
               .order('composite_score', { ascending: false }),
             callerClient
@@ -777,7 +784,7 @@ Deno.serve(
 
           const { data: run, error } = await serviceClient
             .from('oracle_whitespace_runs')
-            .select('*')
+            .select(WHITESPACE_RUN_SELECT_COLUMNS)
             .eq('id', body.data.runId)
             .single();
 
@@ -917,7 +924,7 @@ Deno.serve(
           const requestedHypothesisIds = [...new Set(body.data.hypothesisIds)];
           const { data: selectedHypotheses, error: selectedHypothesesError } = await serviceClient
             .from('oracle_run_hypotheses')
-            .select('*')
+            .select(RUN_HYPOTHESIS_SELECT_COLUMNS)
             .in('id', requestedHypothesisIds)
             .eq('run_id', body.data.runId);
           if (selectedHypothesesError) {

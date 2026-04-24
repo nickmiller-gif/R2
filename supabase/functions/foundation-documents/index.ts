@@ -5,6 +5,12 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
+// Explicit `documents` projection so GET responses are stable across schema
+// additions. New columns must be added here deliberately rather than leaking
+// through a `select('*')` wildcard (advisor lint 0022).
+const DOCUMENTS_SELECT_COLUMNS =
+  'body,captured_at,confidence,content_hash,content_type,created_at,embedding_status,entities_mentioned,extracted_text_status,file_path,file_size_bytes,file_url,id,index_status,indexed_at,meg_canonical_id,meg_entity_id,mime_type,owner_id,related_entity_id,related_entity_type,rights_constraints,source_authority_tier,source_license,source_ref,source_system,source_title,source_type,source_url,status,storage_bucket,storage_path,summary,tags,title,updated_at,user_id,vector_store_ref,visibility';
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -25,7 +31,7 @@ Deno.serve(
         if (docId) {
           const { data, error } = await client
             .from('documents')
-            .select('*')
+            .select(DOCUMENTS_SELECT_COLUMNS)
             .eq('id', docId)
             .single();
 
@@ -40,7 +46,7 @@ Deno.serve(
           const status = url.searchParams.get('status');
           const indexStatus = url.searchParams.get('index_status');
 
-          let query = client.from('documents').select('*');
+          let query = client.from('documents').select(DOCUMENTS_SELECT_COLUMNS);
 
           if (sourceSystem) query = query.eq('source_system', sourceSystem);
           if (ownerId) query = query.eq('owner_id', ownerId);

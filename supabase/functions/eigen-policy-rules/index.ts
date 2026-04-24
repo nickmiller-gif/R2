@@ -8,6 +8,11 @@ import { withRequestMeta } from '../_shared/correlation.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
+// Explicit projection for the public-read rule list — avoid leaking new
+// internal columns via `select('*')` (advisor lint 0022).
+const POLICY_RULES_SELECT_COLUMNS =
+  'capability_tag_pattern,created_at,effect,id,metadata,policy_tag,rationale,required_role,updated_at';
+
 const CREATE_FIELDS: FieldSpec[] = [
   { name: 'policy_tag', type: 'string' },
   { name: 'capability_tag_pattern', type: 'string' },
@@ -44,7 +49,7 @@ Deno.serve(
         if (idParam) {
           const { data, error } = await userClient
             .from('eigen_policy_rules')
-            .select('*')
+            .select(POLICY_RULES_SELECT_COLUMNS)
             .eq('id', idParam)
             .single();
           if (error) return errorResponse(error.message, 404);
@@ -56,7 +61,7 @@ Deno.serve(
 
         let query = userClient
           .from('eigen_policy_rules')
-          .select('*')
+          .select(POLICY_RULES_SELECT_COLUMNS)
           .order('created_at', { ascending: false });
         if (policyTag) query = query.eq('policy_tag', policyTag);
         if (effect) query = query.eq('effect', effect);

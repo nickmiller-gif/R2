@@ -22,7 +22,31 @@ This runs `npm run check`, verifies Supabase linkability, and prints linked migr
 ## CI/CD behavior
 
 - `ci.yml` runs typecheck, tests, migration guards, and remote drift/typegen checks when Supabase secrets are present.
-- `deploy.yml` waits for CI success on the same SHA, then links Supabase, applies migrations, and deploys edge functions.
+- `deploy.yml` waits for CI success on the same SHA, then links Supabase, reports R2 migration sync state, and deploys edge functions.
+
+### R2 migrations on a shared Supabase project
+
+The Supabase project `zudslxucibosjwefojtm` hosts multiple apps — R2 (`public`/`public.charter_*`/`public.oracle_*`/etc.) and the `works.*` schema apps deploy through independent channels but share `supabase_migrations.schema_migrations`.
+
+Because the tracking table interleaves migrations from every deploy channel, `supabase db push` from R2's CI would error with `Remote migration versions not found in local migrations directory` every cycle (the `works.*` apps apply via the Supabase Dashboard / their own CI — those rows never appear as `.sql` files in this repo). Using `supabase migration repair --status reverted` to clean them up would just invite the `works.*` CI to re-apply them on its next push — an endless fight between the two channels.
+
+**R2's chosen operating model:**
+
+1. **Migrations apply via the Supabase MCP** (`apply_migration`) out of band — from the operator's local Cursor / review session, or from the Supabase Dashboard after peer review of the SQL. The MCP writes to the same `supabase_migrations.schema_migrations` table so drift checks keep seeing R2's history.
+2. **Deploy workflow only handles edge functions** — it reports the migration sync state (warns if any R2 `.sql` file is not yet in the tracking table) but does not attempt `supabase db push`. Edge function deploys are idempotent and safe to run every push.
+3. **CI's `lint:supabase:types` remains the safety net.** If a migration you applied via MCP surfaces new columns / enum values in `database.types.ts`, CI will fail the drift check on the next push until the repo's types catch up. Regenerate with `npx supabase@$(bash scripts/supabase-cli-version.sh) gen types typescript --project-id "$SUPABASE_PROJECT_REF" --schema public > database.types.ts`, commit.
+
+When promoting a new R2 migration to production:
+
+```bash
+# 1. Add the file under supabase/migrations/ and open a PR.
+# 2. Once the PR is approved, apply it via Supabase MCP to the live project
+#    (do not wait for merge — the drift check will fail the PR until types
+#    reflect the schema change).
+# 3. Regenerate database.types.ts and include in the same PR.
+# 4. Merge. Deploy runs, reports "All R2 migration files are already applied",
+#    and deploys edge functions.
+```
 
 ### Supabase CLI version is a single source of truth
 
@@ -32,12 +56,8 @@ This runs `npm run check`, verifies Supabase linkability, and prints linked migr
 ### Diagnosing a red Deploy run
 
 1. Open the failing Deploy run — if the `Wait for CI workflow` step is red, the root cause is the CI run on the same SHA. Fix CI first (typecheck, tests, migration guards, types drift, correlation wrap) and re-merge / retry. Deploy will not proceed until CI is green on the same commit.
-2. If the CI gate passed and the `Deploy migrations` step failed, the `supabase db push` error message pinpoints which migration failed — read the `::group::Deploying` headers; fix locally, and re-deploy.
-3. If `Deploy edge functions` failed on one function, other functions in the same run were still deployed (the loop is not `set -e` fail-fast). Fix the offending function and re-run the workflow via `workflow_dispatch`; `supabase db push` is idempotent and `functions deploy` re-uploads the latest code.
-
-### Catching up after a stall
-
-If multiple merges landed while deploys were red, the next successful deploy's `supabase db push` will apply every missing migration in order (ascending migration-name sort). No manual catch-up required.
+2. If the `Report R2 migration sync state` step warns about unapplied migration files, apply them via Supabase MCP (`apply_migration`) and re-regenerate types. The next push reporting "All R2 migration files are already applied" confirms sync.
+3. If `Deploy edge functions` failed on one function, other functions in the same run were still deployed (the loop is not `set -e` fail-fast). Fix the offending function and re-run the workflow via `workflow_dispatch`; `functions deploy` re-uploads the latest code idempotently.
 
 ## Oracle governance + graph worker rollout
 

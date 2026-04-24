@@ -24,6 +24,12 @@ import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import {
+  buildEigenKosCapabilityDenialBody,
+  enforceEigenKosCapabilityBundle,
+} from '../_shared/eigen-kos-enforcement.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
+import { requireRole } from '../_shared/rbac.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -235,6 +241,28 @@ Deno.serve(
           );
         }
         effectivePolicyScope = scopeResolution.effectivePolicyScope;
+
+        // Widget session issuance already verified `member` role for the user, but we
+        // re-fetch here to obtain the fresh role set for capability enforcement. A
+        // revocation between session issuance and chat invocation correctly denies.
+        const roleCheck = await requireRole(claims.user_id, 'member');
+        if (!roleCheck.ok) return roleCheck.response;
+
+        // Enforce the chat KOS capability bundle (search + read:knowledge + ai:synthesis)
+        // for the eigenx widget branch. Public widget mode is anonymous (rate-limited,
+        // no caller roles) and is not enforced here — see slice 2b for that decision.
+        const kos = await enforceEigenKosCapabilityBundle(client, {
+          policyTags: effectivePolicyScope,
+          requiredCapabilityTags: EIGEN_KOS_CAPABILITY.chat,
+          callerRoles: roleCheck.roles,
+          surface: 'eigen-widget-chat.eigenx',
+        });
+        if (!kos.ok) {
+          return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {
+            status: 403,
+            headers: { ...reflectedCorsHeaders(rawOrigin), 'Content-Type': 'application/json' },
+          });
+        }
       }
 
       const retreatScopedPublic = claims.mode === 'public' && claims.site_id === 'raysretreat';

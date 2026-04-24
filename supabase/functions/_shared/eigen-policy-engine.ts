@@ -1,5 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import type { CharterRole } from './rbac.ts';
+// Use the pure roles module so the engine remains typecheckable by Node tsc
+// when pulled into tests — rbac.ts transitively imports Deno globals.
+import type { CharterRole } from './roles.ts';
 import { evaluateEigenPolicyRulesPerCapability } from '../../../src/lib/eigen/eigen-policy-eval.ts';
 import type { EigenPolicyRule } from '../../../src/types/eigen/policy-engine.ts';
 

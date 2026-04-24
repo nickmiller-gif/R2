@@ -23,6 +23,11 @@ import {
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { logError } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import {
+  buildEigenKosCapabilityDenialBody,
+  enforceEigenKosCapabilityBundle,
+} from '../_shared/eigen-kos-enforcement.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 interface ChatRequest {
   message: string;
@@ -200,6 +205,22 @@ Deno.serve(
         return errorResponse('No private policy scope access for this user', 403);
       }
       body.policy_scope = resolvedScope.effectivePolicyScope;
+
+      // Enforce the chat KOS capability bundle (search + read:knowledge + ai:synthesis)
+      // for the caller's effective policy scope. Runs before the first retrieve so we
+      // don't spend LLM tokens on a request that would fail at capability gating.
+      const kos = await enforceEigenKosCapabilityBundle(client, {
+        policyTags: resolvedScope.effectivePolicyScope,
+        requiredCapabilityTags: EIGEN_KOS_CAPABILITY.chat,
+        callerRoles: roleCheck.roles,
+        surface: 'eigen-chat',
+      });
+      if (!kos.ok) {
+        return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       let sessionId = body.session_id;
       if (!sessionId) {

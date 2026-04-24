@@ -1,26 +1,42 @@
 /**
- * Correlation-ID and idempotency-key helpers for Supabase edge functions.
+ * Correlation-ID, distributed-tracing, and idempotency-key helpers for
+ * Supabase edge functions.
  */
 
 export const CORRELATION_ID_HEADER = 'x-correlation-id';
+export const REQUEST_ID_HEADER = 'x-request-id';
+export const TRACEPARENT_HEADER = 'traceparent';
 export const IDEMPOTENCY_KEY_HEADER = 'x-idempotency-key';
 
 /** Tracing metadata extracted (or generated) from inbound request headers. */
 export interface RequestMeta {
-  /** Caller-supplied or freshly-generated UUID for this request trace. */
+  /**
+   * Caller-supplied or freshly-generated UUID for this request trace.
+   * Prefers `x-correlation-id`, falls back to `x-request-id` (what many
+   * platform / gateway layers emit), then mints a UUID. Always non-empty.
+   */
   correlationId: string;
+  /** Upstream request ID header verbatim, or `null` when not supplied. */
+  requestId: string | null;
+  /** W3C trace context header from upstream hops, when present. */
+  traceparent: string | null;
   /** Caller-supplied idempotency key, or `null` when not provided. */
   idempotencyKey: string | null;
 }
 
 /**
- * Reads `x-correlation-id` and `x-idempotency-key` from the request.
- * Generates a fresh UUID when `x-correlation-id` is absent.
+ * Reads `x-correlation-id`, `x-request-id`, `traceparent`, and
+ * `x-idempotency-key` from the request. Generates a fresh UUID for
+ * `correlationId` when both `x-correlation-id` and `x-request-id` are
+ * absent.
  */
 export function extractRequestMeta(req: Request): RequestMeta {
-  const correlationId = req.headers.get(CORRELATION_ID_HEADER) ?? crypto.randomUUID();
+  const inboundCorrelationId = req.headers.get(CORRELATION_ID_HEADER);
+  const requestId = req.headers.get(REQUEST_ID_HEADER);
+  const correlationId = inboundCorrelationId ?? requestId ?? crypto.randomUUID();
+  const traceparent = req.headers.get(TRACEPARENT_HEADER);
   const idempotencyKey = req.headers.get(IDEMPOTENCY_KEY_HEADER);
-  return { correlationId, idempotencyKey };
+  return { correlationId, requestId, traceparent, idempotencyKey };
 }
 
 /**

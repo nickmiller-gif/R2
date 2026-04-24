@@ -14,10 +14,11 @@ import {
   type ConfidenceLabel,
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
-import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
+import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -35,14 +36,6 @@ interface PublicChatRequest {
     strata_weights?: Record<string, number>;
   };
   stream?: boolean;
-}
-
-function buildEvidenceNotice(confidence: ReturnType<typeof buildCompositeConfidence>): string | null {
-  if (confidence.overall === 'high') return null;
-  if (confidence.overall === 'medium') {
-    return 'Some parts are weakly supported; use citations for confirmation.';
-  }
-  return 'Limited public evidence was retrieved for this answer.';
 }
 
 function readMaxMessageChars(): number {

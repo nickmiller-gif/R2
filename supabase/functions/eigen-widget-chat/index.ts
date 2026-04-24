@@ -8,6 +8,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
+import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -19,7 +20,7 @@ import {
   type ConfidenceLabel,
   type LlmProvider,
 } from '../_shared/eigen-chat-contract.ts';
-import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
+import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
@@ -205,16 +206,17 @@ async function synthesize(
 
 Deno.serve(
   withRequestMeta(async (req) => {
-    if (req.method === 'OPTIONS') return corsResponse();
-    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+    const rawOrigin = req.headers.get('origin');
+    if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
+    if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
 
     try {
       const body = parseRequest(await req.json());
       const claims = await verifyWidgetSessionToken(body.widget_token);
 
-      const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
+      const origin = (rawOrigin ?? '').replace(/\/+$/, '').toLowerCase();
       if (!origin || origin !== claims.origin) {
-        return errorResponse('Widget origin mismatch', 403);
+        return reflectedErrorResponse(rawOrigin, 'Widget origin mismatch', 403);
       }
 
       const client = getServiceClient();
@@ -226,7 +228,11 @@ Deno.serve(
           explicitScope: claims.default_policy_scope,
         });
         if (scopeResolution.emptyAfterGrantIntersection) {
-          return errorResponse('No private policy scope access for this user', 403);
+          return reflectedErrorResponse(
+            rawOrigin,
+            'No private policy scope access for this user',
+            403,
+          );
         }
         effectivePolicyScope = scopeResolution.effectivePolicyScope;
       }
@@ -263,7 +269,11 @@ Deno.serve(
         include_provenance: true,
       });
       if (!retrieveResult.ok)
-        return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
+        return reflectedErrorResponse(
+          rawOrigin,
+          `Retrieve failed: ${retrieveResult.message}`,
+          retrieveResult.status,
+        );
 
       const citations = buildCitations(retrieveResult.body.chunks);
       const confidence = buildCompositeConfidence(citations);
@@ -278,7 +288,7 @@ Deno.serve(
         body.llm_model,
         confidence.overall,
       );
-      return jsonResponse({
+      return reflectedJsonResponse(rawOrigin, {
         response: synthesis.text,
         citations,
         confidence,
@@ -296,7 +306,7 @@ Deno.serve(
       const message = err instanceof Error ? err.message : 'Unknown error';
       return new Response(JSON.stringify({ error: message }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...reflectedCorsHeaders(rawOrigin), 'Content-Type': 'application/json' },
       });
     }
   }),

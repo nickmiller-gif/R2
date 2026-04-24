@@ -4,8 +4,6 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
-import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
-import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -52,23 +50,6 @@ interface ChatRequest {
 }
 
 const supabaseClients = createSupabaseClientFactory();
-
-function resolvePolicyScopeMode(scope: string[]): 'none' | 'public_only' | 'eigenx_only' | 'mixed' {
-  const normalized = new Set(scope.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
-  const hasPublic = normalized.has('eigen_public');
-  const hasEigenx = normalized.has('eigenx');
-  if (!hasPublic && !hasEigenx) return 'none';
-  if (hasPublic && hasEigenx) return 'mixed';
-  return hasPublic ? 'public_only' : 'eigenx_only';
-}
-
-function buildEvidenceNotice(confidence: ReturnType<typeof buildCompositeConfidence>): string | null {
-  if (confidence.overall === 'high') return null;
-  if (confidence.overall === 'medium') {
-    return 'Partial evidence coverage: verify critical claims against source citations.';
-  }
-  return 'Low evidence coverage: response is grounded but should be treated as provisional until verified.';
-}
 
 function readMaxMessageChars(): number {
   const raw = Deno.env.get('EIGEN_CHAT_MAX_MESSAGE_CHARS') ?? '32000';

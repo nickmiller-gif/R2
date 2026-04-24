@@ -3,10 +3,40 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import { buildSafeThesisPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { logError } from '../_shared/log.ts';
 import { insertOraclePublicationAuditEvent } from '../_shared/oracle-publication-audit.ts';
+
+// Columns the client may populate on CREATE. `profile_id` is always pulled
+// from the JWT so operators cannot attribute a thesis to another user — the
+// edge function runs with `service_role` and bypasses the RLS check that
+// would otherwise require `profile_id = auth.uid()`. Publication workflow
+// columns (`publication_state`, `published_at`, `published_by`), decision
+// audit columns (`last_decision_*`, `decision_metadata`), and
+// `superseded_by_thesis_id` are server-controlled and only mutable via the
+// publish / challenge / supersede actions on this handler.
+const THESIS_INSERT_FIELDS = [
+  'title',
+  'thesis_statement',
+  'meg_entity_id',
+  'status',
+  'novelty_status',
+  'duplicate_of_thesis_id',
+  'inspiration_signal_ids',
+  'inspiration_evidence_item_ids',
+  'validation_evidence_item_ids',
+  'contradiction_evidence_item_ids',
+  'confidence',
+  'evidence_strength',
+  'uncertainty_summary',
+  'metadata',
+  'platform_id',
+  'site_domain',
+  'visibility_class',
+  'access_policy',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -224,10 +254,16 @@ Deno.serve(
 
           return jsonResponse(data);
         } else {
-          // CREATE thesis
+          // CREATE thesis. `profile_id` is server-injected from the JWT;
+          // the publication + decision audit columns ride DB defaults and
+          // can only transition via the publish / approve / reject / defer /
+          // challenge / supersede actions above.
+          const row = sanitizeInsert(body as Record<string, unknown>, THESIS_INSERT_FIELDS, {
+            profile_id: auth.claims.userId,
+          });
           const { data, error } = await client
             .from('oracle_theses')
-            .insert([body])
+            .insert([row])
             .select()
             .single();
 
@@ -254,7 +290,7 @@ Deno.serve(
         const patch = buildSafeThesisPatch(body as Record<string, unknown>);
         if (Object.keys(patch).length === 1) {
           return errorResponse(
-            'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, publication_state, metadata',
+            'No patchable fields provided. Allowed fields: title, thesis_statement, meg_entity_id, status, novelty_status, confidence, evidence_strength, uncertainty_summary, metadata. To change publication_state use action=publish|approve|reject|defer.',
             400,
           );
         }

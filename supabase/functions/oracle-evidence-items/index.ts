@@ -3,8 +3,28 @@ import { createSupabaseClientFactory } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert } from '../_shared/sanitize.ts';
 import { buildSafeEvidenceItemPatch } from '../../../src/services/oracle/oracle-patch-builders.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+
+// Columns the client may populate on CREATE. `profile_id` is server-injected
+// from the JWT so operators cannot attribute evidence to another user — the
+// edge function runs with `service_role` and bypasses the RLS check that
+// would otherwise require `profile_id = auth.uid()`. DB defaults cover the
+// created_at/updated_at timestamps.
+const EVIDENCE_INSERT_FIELDS = [
+  'signal_id',
+  'source_lane',
+  'source_class',
+  'source_ref',
+  'content_summary',
+  'confidence',
+  'evidence_strength',
+  'source_date',
+  'publication_url',
+  'author_info',
+  'metadata',
+] as const;
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -69,9 +89,15 @@ Deno.serve(
         if (idemError) return idemError;
 
         const body = await req.json();
+        // `profile_id` is injected from the JWT so operators cannot attribute
+        // evidence to another user. Client body is filtered to the evidence
+        // item column allowlist (no audit-critical columns to mass-assign).
+        const row = sanitizeInsert(body as Record<string, unknown>, EVIDENCE_INSERT_FIELDS, {
+          profile_id: auth.claims.userId,
+        });
         const { data, error } = await client
           .from('oracle_evidence_items')
-          .insert([body])
+          .insert([row])
           .select()
           .single();
 

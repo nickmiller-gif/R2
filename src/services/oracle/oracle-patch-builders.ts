@@ -13,6 +13,13 @@ const SIGNAL_PATCH_FIELDS = [
 
 const SIGNAL_PATCH_ALLOWLIST = new Set(SIGNAL_PATCH_FIELDS);
 
+// Note: `publication_state`, `published_at`, `published_by`, and the
+// decision-audit columns (`last_decision_*`, `decision_metadata`) are
+// intentionally excluded. They are audit-critical and must only be mutated
+// via the publish / approve / reject / defer / challenge / supersede actions
+// on the oracle-theses edge function, which write a matching
+// `oracle_publication_events` row. Allowing a bare PATCH would bypass that
+// audit trail and let an operator flip publication state silently.
 const THESIS_PATCH_FIELDS = [
   'title',
   'thesis_statement',

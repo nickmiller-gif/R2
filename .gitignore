@@ -85,6 +85,13 @@ out
 .nuxt
 dist
 
+# TypeScript compiled outputs — src/ should only contain .ts sources. Historical
+# `.js` / `.d.ts` alongside sources in src/ were stale build artifacts; block
+# them here so they cannot be re-committed.
+src/**/*.js
+src/**/*.d.ts
+src/**/*.js.map
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Quick schema-drift guard before code leaves the dev machine.
+#
+# `lint:supabase:types` short-circuits cleanly when Supabase credentials are
+# not configured (see scripts/check-supabase-generated-types.sh), so this is
+# a no-op for contributors without live DB access and a fast fail for those
+# who do. Keeps `database.types.ts` drift from reaching CI where the feedback
+# loop is 4-5 minutes instead of 4-5 seconds.
+npm run lint:supabase:types

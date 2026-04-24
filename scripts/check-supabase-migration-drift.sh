@@ -25,7 +25,8 @@ fi
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT
 
-SUPABASE_CLI_VERSION="2.89.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SUPABASE_CLI_VERSION="$(bash "$SCRIPT_DIR/supabase-cli-version.sh")"
 
 if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" link --project-ref "$PROJECT_REF" 2>&1; then
   echo "FAIL: Unable to link Supabase project $PROJECT_REF"

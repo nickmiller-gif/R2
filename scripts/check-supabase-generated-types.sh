@@ -28,7 +28,8 @@ if [ "$REQUIRE_REMOTE_CHECKS" != "true" ]; then
   exit 0
 fi
 
-SUPABASE_CLI_VERSION="2.89.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SUPABASE_CLI_VERSION="$(bash "$SCRIPT_DIR/supabase-cli-version.sh")"
 
 GENERATED_FILE="$(mktemp)"
 trap 'rm -f "$GENERATED_FILE"' EXIT

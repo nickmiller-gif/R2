@@ -1944,6 +1944,13 @@ export type Database = {
             referencedRelation: "eigen_policy_rules"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "eigen_policy_rule_history_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules_active_read_model"
+            referencedColumns: ["id"]
+          },
         ]
       }
       eigen_policy_rules: {
@@ -1995,6 +2002,13 @@ export type Database = {
             columns: ["superseded_by"]
             isOneToOne: false
             referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules_active_read_model"
             referencedColumns: ["id"]
           },
         ]
@@ -5704,6 +5718,116 @@ export type Database = {
           ref_code: string | null
         }
         Relationships: []
+      }
+      eigen_policy_rule_history_read_model: {
+        Row: {
+          action: string | null
+          actor_id: string | null
+          after_state: Json | null
+          before_state: Json | null
+          correlation_id: string | null
+          current_capability_tag_pattern: string | null
+          current_effect: string | null
+          current_is_active: boolean | null
+          current_policy_tag: string | null
+          current_required_role:
+            | Database["public"]["Enums"]["charter_role"]
+            | null
+          current_superseded_by: string | null
+          current_version: number | null
+          event_id: string | null
+          event_metadata: Json | null
+          event_rationale: string | null
+          occurred_at: string | null
+          rule_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_policy_rule_history_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_policy_rule_history_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules_active_read_model"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["current_superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["current_superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules_active_read_model"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eigen_policy_rules_active_read_model: {
+        Row: {
+          capability_tag_pattern: string | null
+          created_at: string | null
+          effect: string | null
+          id: string | null
+          metadata: Json | null
+          policy_tag: string | null
+          rationale: string | null
+          required_role: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by: string | null
+          updated_at: string | null
+          version: number | null
+        }
+        Insert: {
+          capability_tag_pattern?: string | null
+          created_at?: string | null
+          effect?: string | null
+          id?: string | null
+          metadata?: Json | null
+          policy_tag?: string | null
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by?: string | null
+          updated_at?: string | null
+          version?: number | null
+        }
+        Update: {
+          capability_tag_pattern?: string | null
+          created_at?: string | null
+          effect?: string | null
+          id?: string | null
+          metadata?: Json | null
+          policy_tag?: string | null
+          rationale?: string | null
+          required_role?: Database["public"]["Enums"]["charter_role"] | null
+          superseded_by?: string | null
+          updated_at?: string | null
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eigen_policy_rules_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "eigen_policy_rules_active_read_model"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       oracle_briefings_read_model: {
         Row: {

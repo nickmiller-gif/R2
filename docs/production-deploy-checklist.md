@@ -24,6 +24,21 @@ This runs `npm run check`, verifies Supabase linkability, and prints linked migr
 - `ci.yml` runs typecheck, tests, migration guards, and remote drift/typegen checks when Supabase secrets are present.
 - `deploy.yml` waits for CI success on the same SHA, then links Supabase, applies migrations, and deploys edge functions.
 
+### Supabase CLI version is a single source of truth
+
+- All three scripts (`scripts/check-supabase-generated-types.sh`, `scripts/check-supabase-migration-drift.sh`) and the Deploy workflow read the pinned CLI version from `scripts/supabase-cli-version.sh`.
+- When bumping the CLI, edit that one file, regenerate `database.types.ts` with the new CLI, commit both together. CI will enforce alignment (a mismatch between the CLI that serialized `database.types.ts` and the CLI the drift check uses will fail `lint:supabase:types`).
+
+### Diagnosing a red Deploy run
+
+1. Open the failing Deploy run — if the `Wait for CI workflow` step is red, the root cause is the CI run on the same SHA. Fix CI first (typecheck, tests, migration guards, types drift, correlation wrap) and re-merge / retry. Deploy will not proceed until CI is green on the same commit.
+2. If the CI gate passed and the `Deploy migrations` step failed, the `supabase db push` error message pinpoints which migration failed — read the `::group::Deploying` headers; fix locally, and re-deploy.
+3. If `Deploy edge functions` failed on one function, other functions in the same run were still deployed (the loop is not `set -e` fail-fast). Fix the offending function and re-run the workflow via `workflow_dispatch`; `supabase db push` is idempotent and `functions deploy` re-uploads the latest code.
+
+### Catching up after a stall
+
+If multiple merges landed while deploys were red, the next successful deploy's `supabase db push` will apply every missing migration in order (ascending migration-name sort). No manual catch-up required.
+
 ## Oracle governance + graph worker rollout
 
 When shipping `oracle-ws-pipeline` or graph extraction changes, include:

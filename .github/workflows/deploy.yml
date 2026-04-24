@@ -77,10 +77,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Resolve Supabase CLI version
+        id: cli_version
+        # Reads the single source of truth so CI (typegen / drift checks) and
+        # Deploy run the exact same CLI. April 2026 postmortem: when deploy was
+        # pinned to 2.84.2 and CI typegen to 2.89.0, a wildcard-column schema
+        # addition that 2.84 serialized differently made CI fail on drift while
+        # deploy silently kept pushing, and the repo's database.types.ts drifted
+        # from the live schema for eight merges in a row.
+        run: |
+          VERSION="$(bash scripts/supabase-cli-version.sh)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v2
         with:
-          version: 2.84.2
+          version: ${{ steps.cli_version.outputs.version }}
 
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"

@@ -97,8 +97,45 @@ jobs:
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
-      - name: Deploy migrations
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+      - name: Report R2 migration sync state
+        # The Supabase project zudslxucibosjwefojtm is shared with the `works.*`
+        # schema apps. Those apps apply migrations via their own channels (their
+        # CI / Dashboard), which writes to the same `supabase_migrations.schema_migrations`
+        # table — so vanilla `supabase db push` from R2 hits the sync-guard:
+        #   "Remote migration versions not found in local migrations directory"
+        # Marking remote-only versions as `reverted` would fight the `works.*`
+        # apps every cycle (see their next push would re-apply the same DDL).
+        #
+        # R2 instead applies its own migrations directly via the Supabase MCP
+        # (`apply_migration`) out of band from CI. This step only reports the
+        # sync state so reviewers can see which R2 migrations are still
+        # unapplied (should be none in steady state) and spot drift early.
+        #
+        # See docs/production-deploy-checklist.md § "R2 migrations on a shared project"
+        # for the operator runbook.
+        run: |
+          set -euo pipefail
+
+          LOCAL_VERSIONS=$(ls supabase/migrations/*.sql 2>/dev/null \
+            | xargs -n1 basename \
+            | awk -F_ '{print $1}' \
+            | sort -u)
+
+          REMOTE_VERSIONS=$(supabase migration list --linked \
+            | awk -F'|' 'NR > 3 && NF >= 2 { gsub(/^[ \t]+|[ \t]+$/, "", $2); if ($2 ~ /^[0-9]{12,14}$/) print $2 }' \
+            | sort -u)
+
+          LOCAL_UNAPPLIED=$(comm -23 <(echo "$LOCAL_VERSIONS") <(echo "$REMOTE_VERSIONS"))
+          echo "### R2 migration sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$LOCAL_UNAPPLIED" ]; then
+            echo "All R2 migration files are already applied on the live project." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Unapplied R2 migration versions (apply via Supabase MCP \`apply_migration\` before this deploy is considered complete):" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "$LOCAL_UNAPPLIED" | sed 's/^/  - /' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo ""
+            echo "::warning title=Unapplied R2 migrations::Found $(echo "$LOCAL_UNAPPLIED" | wc -l | tr -d ' ') migration file(s) not yet in supabase_migrations.schema_migrations. Edge-function deploy will proceed but run-time behavior may depend on schema not yet in place."
+          fi
 
       - name: Deploy edge functions
         run: |

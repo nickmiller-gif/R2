@@ -5,14 +5,19 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
-// Explicit `asset_registry` projection. The `asset_evidence_links` path below
-// still uses `select('*')` because it references a table name that does not
-// exist in the live schema (should be `r2_core_asset_evidence_links` or
-// `asset_evidence_link` singular) — narrowing the select there would mask
-// that latent bug; it is called out as a follow-up rather than silently fixed
-// here.
+// Explicit `asset_registry` projection (the charter-owned governance table
+// with review / provenance columns).
 const ASSET_REGISTRY_SELECT_COLUMNS =
   'asset_kind,asset_subtype,canonical_ecosystem_id,charter_entity_id,created_at,domain,governance_status,id,kind,label,lifecycle_status,local_record_id,local_table,manager_entity_id,metadata,owner_entity_id,provenance_captured_at,provenance_source_system,provenance_source_type,provenance_source_url,r2chart_governed_asset_id,ref_id,review_notes,review_status,reviewed_at,reviewed_by,updated_at,user_id';
+
+// The `links` branch writes to `r2_core_asset_evidence_links` (columns
+// `from_asset_id, to_asset_id, link_kind, confidence, metadata, id,
+// created_at`). Earlier versions of this file referenced a non-existent
+// `asset_evidence_links` (plural, no prefix) table — every call 404'd at
+// runtime. See PR #171-ish follow-up.
+const EVIDENCE_LINKS_TABLE = 'r2_core_asset_evidence_links';
+const EVIDENCE_LINKS_SELECT_COLUMNS =
+  'confidence,created_at,from_asset_id,id,link_kind,metadata,to_asset_id';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -37,7 +42,7 @@ Deno.serve(
           const toAssetId = url.searchParams.get('to_asset_id');
           const linkKind = url.searchParams.get('link_kind');
 
-          let query = client.from('asset_evidence_links').select('*');
+          let query = client.from(EVIDENCE_LINKS_TABLE).select(EVIDENCE_LINKS_SELECT_COLUMNS);
 
           if (fromAssetId) query = query.eq('from_asset_id', fromAssetId);
           if (toAssetId) query = query.eq('to_asset_id', toAssetId);
@@ -58,7 +63,7 @@ Deno.serve(
           const body = await req.json();
 
           const { data, error } = await client
-            .from('asset_evidence_links')
+            .from(EVIDENCE_LINKS_TABLE)
             .insert([body])
             .select()
             .single();
@@ -78,7 +83,7 @@ Deno.serve(
             return errorResponse('id required as query param', 400);
           }
 
-          const { error } = await client.from('asset_evidence_links').delete().eq('id', linkId);
+          const { error } = await client.from(EVIDENCE_LINKS_TABLE).delete().eq('id', linkId);
 
           if (error) {
             return errorResponse(error.message, 400);

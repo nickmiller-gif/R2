@@ -41,7 +41,16 @@ describe('Eigen KOS capability constants', () => {
     expect(EIGEN_KOS_CAPABILITY.retrieve).toContain('read:knowledge');
     expect(EIGEN_KOS_CAPABILITY.chat).toContain('ai:synthesis');
     expect(EIGEN_KOS_CAPABILITY.ingest).toContain('write:document');
-    expect(EIGEN_KOS_CAPABILITY.ingest).toContain('ingest');
+    expect(EIGEN_KOS_CAPABILITY.ingest).toContain('write:knowledge');
+    expect(EIGEN_KOS_CAPABILITY.ingest).toContain('write:embedding');
+  });
+
+  it('does not list unseeded capability tags in the bundles (would force 403 at enforcement)', () => {
+    // Every tag in a bundle must have at least one `allow` rule in
+    // `eigen_policy_rules` for the scopes these paths serve. The bare
+    // `ingest` tag was dropped from the bundle precisely because no seeded
+    // rule covers it — leaving it in would 403 every authenticated ingest.
+    expect(EIGEN_KOS_CAPABILITY.ingest).not.toContain('ingest');
   });
 });
 

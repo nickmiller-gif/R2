@@ -1,8 +1,9 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
+import type { CharterRole } from '../_shared/roles.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta, withRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
@@ -13,6 +14,11 @@ import {
   POLICY_TAG_RAY_VOICE,
 } from '../_shared/eigen-policy.ts';
 import { logError } from '../_shared/log.ts';
+import {
+  buildEigenKosCapabilityDenialBody,
+  enforceEigenKosCapabilityBundle,
+} from '../_shared/eigen-kos-enforcement.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 // Explicit `ingestion_runs` projection so schema additions don't leak through
 // `select('*')` (advisor lint 0022). All three eigen-ingest call sites share
@@ -343,6 +349,10 @@ Deno.serve(
 
     const serviceIdentity = resolveIngestIdentity(req);
     let ownerUserId: string;
+    // Captured for later KOS bundle enforcement — empty when the service
+    // ingest token was used (that path is trusted and bypasses RLS / roles
+    // by design).
+    let kosCallerRoles: CharterRole[] = [];
     if (serviceIdentity) {
       ownerUserId = serviceIdentity.userId;
     } else {
@@ -351,6 +361,7 @@ Deno.serve(
       const roleCheck = await requireRole(auth.claims.userId, 'member');
       if (!roleCheck.ok) return roleCheck.response;
       ownerUserId = auth.claims.userId;
+      kosCallerRoles = roleCheck.roles;
     }
 
     const idemError = requireIdempotencyKey(req);
@@ -386,6 +397,28 @@ Deno.serve(
         // is still constrained by retrieval relevance controls.
         if (!policyTags.includes('voice_style')) {
           policyTags.push('voice_style');
+        }
+      }
+
+      // Enforce the ingest KOS capability bundle (write:document / write:knowledge
+      // / write:embedding) for the policy tags this request wants to write to.
+      // The service ingest token path (`x-eigen-ingest-token`) bypasses this —
+      // that channel is trusted and authenticated at the token layer. The seed
+      // rules currently require `operator` for every `write:*` pattern on both
+      // `eigenx` and `eigen_public` scopes, which matches the existing
+      // `requireRole('member')` gate's intent once it's lifted to operator.
+      if (!serviceIdentity) {
+        const kos = await enforceEigenKosCapabilityBundle(client, {
+          policyTags,
+          requiredCapabilityTags: EIGEN_KOS_CAPABILITY.ingest,
+          callerRoles: kosCallerRoles,
+          surface: 'eigen-ingest',
+        });
+        if (!kos.ok) {
+          return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
       }
 

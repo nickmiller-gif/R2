@@ -1,9 +1,15 @@
-import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { sha256Hex } from '../_shared/eigen.ts';
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { getServiceClient } from '../_shared/supabase.ts';
+import {
+  buildEigenKosCapabilityDenialBody,
+  enforceEigenKosCapabilityBundle,
+} from '../_shared/eigen-kos-enforcement.ts';
+import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 interface FetchIngestRequest {
   url: string;
@@ -107,6 +113,24 @@ Deno.serve(
     if (!auth.ok) return auth.response;
     const roleCheck = await requireRole(auth.claims.userId, 'member');
     if (!roleCheck.ok) return roleCheck.response;
+
+    // Enforce the ingest KOS capability bundle against the `eigen_public`
+    // scope this endpoint always writes to. Fast-fails locally before the
+    // web fetch runs so denied callers aren't charged the outbound request.
+    // The downstream eigen-ingest call re-checks the same bundle, so this is
+    // defense in depth, not the only gate.
+    const kos = await enforceEigenKosCapabilityBundle(getServiceClient(), {
+      policyTags: [POLICY_TAG_EIGEN_PUBLIC],
+      requiredCapabilityTags: EIGEN_KOS_CAPABILITY.ingest,
+      callerRoles: roleCheck.roles,
+      surface: 'eigen-fetch-ingest',
+    });
+    if (!kos.ok) {
+      return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     try {
       const body = parseRequest(await req.json());

@@ -10,8 +10,6 @@ import type {
 import { ROLE_HIERARCHY } from '../../types/shared/roles.ts';
 
 type HierarchicalRole = (typeof ROLE_HIERARCHY)[number];
-const WILDCARD_REGEX_CACHE_MAX_SIZE = 1024;
-const wildcardRegexCache = new Map<string, RegExp>();
 
 function isHierarchicalRole(value: string): value is HierarchicalRole {
   return (ROLE_HIERARCHY as readonly string[]).includes(value);
@@ -27,23 +25,42 @@ export function hasRequiredRole(callerRoles: string[], requiredRole: string | nu
   );
 }
 
+/**
+ * Linear-time glob matcher using two-pointer with single-level backtracking.
+ *
+ * Rules are loaded on the hot path of every Eigen request (eigen-chat,
+ * eigen-retrieve, eigen-ingest, eigen-tool-capabilities), and
+ * `capability_tag_pattern` / `policy_tag` are operator-writable. The prior
+ * regex-based form (`*` → `.*` + `new RegExp`) was susceptible to
+ * catastrophic backtracking on patterns like `a*a*a*a*a*!` — a single
+ * malicious rule could degrade the whole Eigen surface. This implementation
+ * runs in O(m·n) with linear constant and cannot ReDoS regardless of the
+ * operator's pattern. Regex metacharacters in the pattern are treated
+ * literally (the old matcher escaped them, so behaviour is preserved).
+ */
 export function matchWildcard(pattern: string, value: string): boolean {
-  if (pattern === '*') return true;
-  if (!pattern.includes('*')) return pattern === value;
-  const regex = wildcardRegexCache.get(pattern);
-  if (regex) {
-    wildcardRegexCache.delete(pattern);
-    wildcardRegexCache.set(pattern, regex);
-    return regex.test(value);
+  let pi = 0;
+  let vi = 0;
+  let starPi = -1;
+  let starVi = -1;
+  while (vi < value.length) {
+    if (pi < pattern.length && pattern[pi] === value[vi]) {
+      pi++;
+      vi++;
+    } else if (pi < pattern.length && pattern[pi] === '*') {
+      starPi = pi;
+      starVi = vi;
+      pi++;
+    } else if (starPi !== -1) {
+      pi = starPi + 1;
+      starVi++;
+      vi = starVi;
+    } else {
+      return false;
+    }
   }
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  const compiled = new RegExp(`^${escaped}$`);
-  if (wildcardRegexCache.size >= WILDCARD_REGEX_CACHE_MAX_SIZE) {
-    const oldest = wildcardRegexCache.keys().next().value;
-    if (oldest) wildcardRegexCache.delete(oldest);
-  }
-  wildcardRegexCache.set(pattern, compiled);
-  return compiled.test(value);
+  while (pi < pattern.length && pattern[pi] === '*') pi++;
+  return pi === pattern.length;
 }
 
 export function matchesRule(rule: EigenPolicyRule, input: EvaluateEigenPolicyInput): boolean {

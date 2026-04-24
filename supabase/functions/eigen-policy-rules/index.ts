@@ -30,8 +30,72 @@ const CREATE_FIELDS: FieldSpec[] = [
 
 const EFFECTS = new Set(['allow', 'deny']);
 
+// Input bounds — keep in sync with the matching DB CHECK constraints in
+// supabase/migrations/202604250001_eigen_policy_rules_input_bounds.sql.
+// Rules are loaded on the hot path of every Eigen request, so unbounded
+// strings or pathological wildcard patterns are a cross-surface concern.
+// The linear glob matcher in src/lib/eigen/eigen-policy-eval.ts is already
+// ReDoS-safe; these caps bound the linear factor and memory footprint.
+const MAX_POLICY_TAG_LEN = 128;
+const MAX_CAPABILITY_PATTERN_LEN = 128;
+const MAX_RATIONALE_LEN = 2000;
+const MAX_POLICY_TAG_WILDCARDS = 4;
+const MAX_CAPABILITY_PATTERN_WILDCARDS = 8;
+const MAX_METADATA_BYTES = 8192;
+
 function isCharterRole(value: string): value is CharterRole {
   return (ROLE_HIERARCHY as readonly string[]).includes(value);
+}
+
+function countWildcards(value: string): number {
+  let n = 0;
+  for (let i = 0; i < value.length; i++) if (value[i] === '*') n++;
+  return n;
+}
+
+function validatePolicyTag(value: unknown): string | null {
+  if (typeof value !== 'string') return 'policy_tag must be a string';
+  if (value.trim().length === 0) return 'policy_tag must not be empty';
+  if (value.length > MAX_POLICY_TAG_LEN) {
+    return `policy_tag exceeds ${MAX_POLICY_TAG_LEN} characters`;
+  }
+  if (countWildcards(value) > MAX_POLICY_TAG_WILDCARDS) {
+    return `policy_tag has more than ${MAX_POLICY_TAG_WILDCARDS} wildcards`;
+  }
+  return null;
+}
+
+function validateCapabilityTagPattern(value: unknown): string | null {
+  if (typeof value !== 'string') return 'capability_tag_pattern must be a string';
+  if (value.trim().length === 0) return 'capability_tag_pattern must not be empty';
+  if (value.length > MAX_CAPABILITY_PATTERN_LEN) {
+    return `capability_tag_pattern exceeds ${MAX_CAPABILITY_PATTERN_LEN} characters`;
+  }
+  if (countWildcards(value) > MAX_CAPABILITY_PATTERN_WILDCARDS) {
+    return `capability_tag_pattern has more than ${MAX_CAPABILITY_PATTERN_WILDCARDS} wildcards`;
+  }
+  return null;
+}
+
+function validateRationale(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return 'rationale must be a string or null';
+  if (value.length > MAX_RATIONALE_LEN) {
+    return `rationale exceeds ${MAX_RATIONALE_LEN} characters`;
+  }
+  return null;
+}
+
+function validateMetadata(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return 'metadata must be a JSON object';
+  }
+  const size = new TextEncoder().encode(JSON.stringify(value)).length;
+  if (size > MAX_METADATA_BYTES) {
+    return `metadata exceeds ${MAX_METADATA_BYTES} bytes when serialized`;
+  }
+  return null;
 }
 
 function snapshotRule(row: Record<string, unknown>): Record<string, unknown> {
@@ -159,6 +223,10 @@ Deno.serve(
         }>(req, CREATE_FIELDS);
         if (!body.ok) return body.response;
 
+        const policyTagError = validatePolicyTag(body.data.policy_tag);
+        if (policyTagError) return errorResponse(policyTagError, 400);
+        const patternError = validateCapabilityTagPattern(body.data.capability_tag_pattern);
+        if (patternError) return errorResponse(patternError, 400);
         if (!EFFECTS.has(body.data.effect)) {
           return errorResponse('effect must be allow or deny', 400);
         }
@@ -169,14 +237,10 @@ Deno.serve(
         ) {
           return errorResponse(`required_role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
         }
-        if (
-          body.data.metadata !== undefined &&
-          (typeof body.data.metadata !== 'object' ||
-            body.data.metadata === null ||
-            Array.isArray(body.data.metadata))
-        ) {
-          return errorResponse('metadata must be a JSON object', 400);
-        }
+        const rationaleError = validateRationale(body.data.rationale);
+        if (rationaleError) return errorResponse(rationaleError, 400);
+        const metadataError = validateMetadata(body.data.metadata);
+        if (metadataError) return errorResponse(metadataError, 400);
 
         const insertRow: Record<string, unknown> = {
           policy_tag: body.data.policy_tag,
@@ -272,15 +336,13 @@ Deno.serve(
         };
 
         if (obj.policy_tag !== undefined) {
-          if (typeof obj.policy_tag !== 'string') {
-            return errorResponse('policy_tag must be a string', 400);
-          }
+          const err = validatePolicyTag(obj.policy_tag);
+          if (err) return errorResponse(err, 400);
           next.policy_tag = obj.policy_tag;
         }
         if (obj.capability_tag_pattern !== undefined) {
-          if (typeof obj.capability_tag_pattern !== 'string') {
-            return errorResponse('capability_tag_pattern must be a string', 400);
-          }
+          const err = validateCapabilityTagPattern(obj.capability_tag_pattern);
+          if (err) return errorResponse(err, 400);
           next.capability_tag_pattern = obj.capability_tag_pattern;
         }
         if (obj.effect !== undefined) {
@@ -299,19 +361,13 @@ Deno.serve(
           next.required_role = obj.required_role;
         }
         if (obj.rationale !== undefined) {
-          if (obj.rationale !== null && typeof obj.rationale !== 'string') {
-            return errorResponse('rationale must be a string or null', 400);
-          }
+          const err = validateRationale(obj.rationale);
+          if (err) return errorResponse(err, 400);
           next.rationale = obj.rationale;
         }
         if (obj.metadata !== undefined) {
-          if (
-            typeof obj.metadata !== 'object' ||
-            obj.metadata === null ||
-            Array.isArray(obj.metadata)
-          ) {
-            return errorResponse('metadata must be a JSON object', 400);
-          }
+          const err = validateMetadata(obj.metadata);
+          if (err) return errorResponse(err, 400);
           next.metadata = obj.metadata;
         }
 

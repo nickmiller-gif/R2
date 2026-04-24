@@ -3,6 +3,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { verifyWidgetSessionToken } from '../_shared/widget-session.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
 
 interface FeedbackRequest {
   widget_token: string;
@@ -48,88 +49,90 @@ function classifyRequestError(message: string): number {
   return 500;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return corsResponse();
-  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
-  const idemError = requireIdempotencyKey(req);
-  if (idemError) return idemError;
-  const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
+Deno.serve(
+  withRequestMeta(async (req) => {
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
+    const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null;
 
-  try {
-    const body = parseRequest(await req.json());
-    const claims = await verifyWidgetSessionToken(body.widget_token);
-    const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
-    if (!origin || origin !== claims.origin) {
-      return errorResponse('Widget origin mismatch', 403);
-    }
-    if (claims.mode === 'eigenx') {
-      const auth = await guardAuth(req);
-      if (!auth.ok) return auth.response;
-      if (claims.user_id && auth.claims.userId !== claims.user_id) {
-        return errorResponse('Auth/session mismatch', 403);
+    try {
+      const body = parseRequest(await req.json());
+      const claims = await verifyWidgetSessionToken(body.widget_token);
+      const origin = (req.headers.get('origin') ?? '').replace(/\/+$/, '').toLowerCase();
+      if (!origin || origin !== claims.origin) {
+        return errorResponse('Widget origin mismatch', 403);
       }
-    }
-
-    const client = getServiceClient();
-    const { data: turn, error: turnError } = await client
-      .from('conversation_turn')
-      .select('id,site_id')
-      .eq('id', body.turn_id)
-      .single();
-    if (turnError || !turn) return errorResponse('Turn not found', 404);
-    if ((turn as { site_id: string | null }).site_id !== claims.site_id) {
-      return errorResponse('Turn/site mismatch', 403);
-    }
-
-    let feedbackAlreadyRecorded = false;
-    if (idempotencyKey) {
-      const { data: existing } = await client
-        .from('conversation_turn_feedback')
-        .select('id')
-        .eq('turn_id', body.turn_id)
-        .eq('idempotency_key', idempotencyKey)
-        .maybeSingle();
-      if (existing && (existing as { id?: string }).id) {
-        feedbackAlreadyRecorded = true;
-      }
-    }
-
-    if (!feedbackAlreadyRecorded) {
-      const { error } = await client.from('conversation_turn_feedback').insert({
-        turn_id: body.turn_id,
-        value: body.value,
-        note: body.note ?? null,
-        idempotency_key: idempotencyKey,
-      });
-      if (error) {
-        if ((error as { code?: string }).code === '23505' && idempotencyKey) {
-          feedbackAlreadyRecorded = true;
-        } else {
-          return errorResponse(error.message, 500);
+      if (claims.mode === 'eigenx') {
+        const auth = await guardAuth(req);
+        if (!auth.ok) return auth.response;
+        if (claims.user_id && auth.claims.userId !== claims.user_id) {
+          return errorResponse('Auth/session mismatch', 403);
         }
       }
-    }
 
-    // Only mirror the feedback onto the parent turn when we actually inserted
-    // a new feedback row. If the idempotent path was taken, the turn already
-    // reflects the correct value from the first call — an additional update
-    // would let a second call with a different `value`/`note` silently
-    // overwrite the turn's mirrored copy while the append-only
-    // conversation_turn_feedback row still carries the original.
-    if (!feedbackAlreadyRecorded) {
-      const { error: updateError } = await client
+      const client = getServiceClient();
+      const { data: turn, error: turnError } = await client
         .from('conversation_turn')
-        .update({
-          feedback_value: body.value,
-          feedback_text: body.note ?? null,
-        })
-        .eq('id', body.turn_id);
-      if (updateError) return errorResponse(updateError.message, 500);
-    }
+        .select('id,site_id')
+        .eq('id', body.turn_id)
+        .single();
+      if (turnError || !turn) return errorResponse('Turn not found', 404);
+      if ((turn as { site_id: string | null }).site_id !== claims.site_id) {
+        return errorResponse('Turn/site mismatch', 403);
+      }
 
-    return jsonResponse({ ok: true, replayed: feedbackAlreadyRecorded });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return errorResponse(message, classifyRequestError(message));
-  }
-});
+      let feedbackAlreadyRecorded = false;
+      if (idempotencyKey) {
+        const { data: existing } = await client
+          .from('conversation_turn_feedback')
+          .select('id')
+          .eq('turn_id', body.turn_id)
+          .eq('idempotency_key', idempotencyKey)
+          .maybeSingle();
+        if (existing && (existing as { id?: string }).id) {
+          feedbackAlreadyRecorded = true;
+        }
+      }
+
+      if (!feedbackAlreadyRecorded) {
+        const { error } = await client.from('conversation_turn_feedback').insert({
+          turn_id: body.turn_id,
+          value: body.value,
+          note: body.note ?? null,
+          idempotency_key: idempotencyKey,
+        });
+        if (error) {
+          if ((error as { code?: string }).code === '23505' && idempotencyKey) {
+            feedbackAlreadyRecorded = true;
+          } else {
+            return errorResponse(error.message, 500);
+          }
+        }
+      }
+
+      // Only mirror the feedback onto the parent turn when we actually inserted
+      // a new feedback row. If the idempotent path was taken, the turn already
+      // reflects the correct value from the first call — an additional update
+      // would let a second call with a different `value`/`note` silently
+      // overwrite the turn's mirrored copy while the append-only
+      // conversation_turn_feedback row still carries the original.
+      if (!feedbackAlreadyRecorded) {
+        const { error: updateError } = await client
+          .from('conversation_turn')
+          .update({
+            feedback_value: body.value,
+            feedback_text: body.note ?? null,
+          })
+          .eq('id', body.turn_id);
+        if (updateError) return errorResponse(updateError.message, 500);
+      }
+
+      return jsonResponse({ ok: true, replayed: feedbackAlreadyRecorded });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return errorResponse(message, classifyRequestError(message));
+    }
+  }),
+);

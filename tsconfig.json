@@ -20,6 +20,11 @@
       "src/*": ["./*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*", "supabase/functions/_shared/retrieval-budget.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "types/**/*.d.ts",
+    "supabase/functions/_shared/retrieval-budget.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

@@ -25,12 +25,41 @@ export function normalizeSignalSignature(value: string | null): string {
 }
 
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const maxLen = Math.max(a.length, b.length);
+  let mismatch = a.length ^ b.length;
+  for (let i = 0; i < maxLen; i += 1) {
+    const ca = i < a.length ? a.charCodeAt(i) : 0;
+    const cb = i < b.length ? b.charCodeAt(i) : 0;
+    mismatch |= ca ^ cb;
   }
   return mismatch === 0;
+}
+
+export type ServiceRoleAuthResult =
+  | { mode: 'service_role' }
+  | { mode: 'reject'; reason: string }
+  | null;
+
+/**
+ * Pure decision logic for the service-role auth bypass
+ * (ADR-005-service-role-ingest-bypass). Extracted from the handler so
+ * it can be unit-tested without Deno.env coupling.
+ */
+export function tryServiceRoleAuth(
+  bearer: string | null,
+  serviceRoleKey: string | undefined,
+  hmacConfigured: boolean,
+): ServiceRoleAuthResult {
+  if (!bearer || !serviceRoleKey) return null;
+  if (!timingSafeEqual(bearer, serviceRoleKey)) return null;
+
+  if (!hmacConfigured) {
+    return {
+      mode: 'reject',
+      reason: 'Service-role auth requires R2_SIGNAL_INGEST_HMAC_SECRET to be configured',
+    };
+  }
+  return { mode: 'service_role' };
 }
 
 export async function verifySignalHmac(

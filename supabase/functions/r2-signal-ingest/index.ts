@@ -1,14 +1,19 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
-import { guardAuth } from '../_shared/auth.ts';
+import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSourceSignalKey, verifySignalHmac } from '../_shared/signal-utils.ts';
+import {
+  buildSourceSignalKey,
+  tryServiceRoleAuth,
+  verifySignalHmac,
+} from '../_shared/signal-utils.ts';
 import {
   SIGNAL_CONTRACT_VERSION,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
+import { withLogger } from '../_shared/log.ts';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -53,12 +58,29 @@ function toValidationMessage(input: unknown): string {
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
+    const log = withLogger(meta, 'r2-signal-ingest');
+
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-    const auth = await guardAuth(req);
-    if (!auth.ok) return auth.response;
+    let authMode: 'service_role' | 'user_jwt';
+    let actorUserId: string | null = null;
+
+    const serviceRole = tryServiceRoleAuth(
+      extractBearerToken(req),
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      Boolean(Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim()),
+    );
+    if (serviceRole?.mode === 'reject') return errorResponse(serviceRole.reason, 401);
+    if (serviceRole?.mode === 'service_role') {
+      authMode = 'service_role';
+    } else {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      authMode = 'user_jwt';
+      actorUserId = auth.claims.userId;
+    }
 
     const idemError = requireIdempotencyKey(req);
     if (idemError) return idemError;
@@ -72,8 +94,10 @@ Deno.serve(
       return errorResponse('Failed to read request body', 400);
     }
 
-    const hmacError = await maybeVerifyHmac(req, rawBody);
-    if (hmacError) return hmacError;
+    if (authMode === 'service_role') {
+      const hmacError = await maybeVerifyHmac(req, rawBody);
+      if (hmacError) return hmacError;
+    }
 
     let parsedBody: unknown;
     try {
@@ -121,6 +145,14 @@ Deno.serve(
     if (enqueue.error) {
       return errorResponse(enqueue.error.message, 500);
     }
+
+    log.info('signal ingested', {
+      auth_mode: authMode,
+      actor_user_id: actorUserId,
+      source_system: envelope.source_system,
+      source_event_type: envelope.source_event_type,
+      signal_id: signalId,
+    });
 
     return jsonResponse({ signal_id: signalId }, 202);
   }),

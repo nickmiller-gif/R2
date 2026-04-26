@@ -231,25 +231,52 @@ CREATE POLICY select_er
 
 -- ───────────────────────────────────────────────────────────────────────
 -- Asset-graph auth-user INSERT policies (auth.uid() wrap in WITH CHECK).
+--
+-- These three tables (asset_relationship, asset_evidence_link,
+-- asset_external_identity) were specified for an earlier asset-graph
+-- design that has not landed in this project's migration history. The
+-- canonical asset-registry tables created in
+-- 202604020013_foundation_asset_registry.sql are `asset_registry` and
+-- `asset_evidence_links` (plural). To make this migration idempotent
+-- and safe to apply on every environment regardless of whether the
+-- asset-graph tables exist, each block is wrapped in a DO statement
+-- that swallows undefined_table errors. When the tables eventually
+-- land in a future migration, this batch will start applying the
+-- policies as intended on subsequent runs.
 -- ───────────────────────────────────────────────────────────────────────
 
-DROP POLICY IF EXISTS "Auth users insert asset_relationship"
-  ON public.asset_relationship;
-CREATE POLICY "Auth users insert asset_relationship"
-  ON public.asset_relationship
-  FOR INSERT TO authenticated
-  WITH CHECK ((SELECT auth.uid()) = user_id);
+DO $$
+BEGIN
+  EXECUTE 'DROP POLICY IF EXISTS "Auth users insert asset_relationship" ON public.asset_relationship';
+  EXECUTE 'CREATE POLICY "Auth users insert asset_relationship"
+    ON public.asset_relationship
+    FOR INSERT TO authenticated
+    WITH CHECK ((SELECT auth.uid()) = user_id)';
+EXCEPTION
+  WHEN undefined_table THEN
+    RAISE NOTICE 'Skipping asset_relationship policies; table does not exist';
+END $$;
 
-DROP POLICY IF EXISTS "Auth users insert asset_evidence_link"
-  ON public.asset_evidence_link;
-CREATE POLICY "Auth users insert asset_evidence_link"
-  ON public.asset_evidence_link
-  FOR INSERT TO authenticated
-  WITH CHECK ((SELECT auth.uid()) = user_id);
+DO $$
+BEGIN
+  EXECUTE 'DROP POLICY IF EXISTS "Auth users insert asset_evidence_link" ON public.asset_evidence_link';
+  EXECUTE 'CREATE POLICY "Auth users insert asset_evidence_link"
+    ON public.asset_evidence_link
+    FOR INSERT TO authenticated
+    WITH CHECK ((SELECT auth.uid()) = user_id)';
+EXCEPTION
+  WHEN undefined_table THEN
+    RAISE NOTICE 'Skipping asset_evidence_link policies; table does not exist (note: canonical is asset_evidence_links plural)';
+END $$;
 
-DROP POLICY IF EXISTS "Auth users insert asset_external_identity"
-  ON public.asset_external_identity;
-CREATE POLICY "Auth users insert asset_external_identity"
-  ON public.asset_external_identity
-  FOR INSERT TO authenticated
-  WITH CHECK ((SELECT auth.uid()) = user_id);
+DO $$
+BEGIN
+  EXECUTE 'DROP POLICY IF EXISTS "Auth users insert asset_external_identity" ON public.asset_external_identity';
+  EXECUTE 'CREATE POLICY "Auth users insert asset_external_identity"
+    ON public.asset_external_identity
+    FOR INSERT TO authenticated
+    WITH CHECK ((SELECT auth.uid()) = user_id)';
+EXCEPTION
+  WHEN undefined_table THEN
+    RAISE NOTICE 'Skipping asset_external_identity policies; table does not exist';
+END $$;

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r2.foundation/schemas/r2-signal-envelope-v1.json",
+  "title": "R2 Signal Envelope v1",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "source_system",
+    "source_repo",
+    "source_event_type",
+    "actor_meg_entity_id",
+    "related_entity_ids",
+    "event_time",
+    "summary",
+    "raw_payload",
+    "confidence",
+    "privacy_level",
+    "provenance",
+    "routing_targets"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "source_system": {
+      "type": "string",
+      "enum": [
+        "rays_retreat",
+        "centralr2",
+        "operator_workbench",
+        "oracle_operator",
+        "autonomous_bot_os",
+        "cloudflare_agent_chatbot",
+        "forma_health",
+        "health_supplement_tr",
+        "smartplrx",
+        "smartplrx_trend_tracker",
+        "ip_insights_hub",
+        "hpseller",
+        "open_intel_commons",
+        "insr",
+        "r2_widget",
+        "plrx_external"
+      ]
+    },
+    "source_repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_event_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor_meg_entity_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "related_entity_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "event_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 280
+    },
+    "raw_payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "privacy_level": {
+      "type": "string",
+      "enum": [
+        "public",
+        "members",
+        "operator",
+        "private"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "row_id": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "routing_targets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "oracle",
+          "eigen",
+          "charter",
+          "operator_workbench",
+          "meg",
+          "commons_publish"
+        ]
+      }
+    },
+    "ingest_run_id": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

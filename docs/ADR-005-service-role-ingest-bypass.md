@@ -1,6 +1,6 @@
 # ADR-005: Service-role auth bypass on r2-signal-ingest, gated by HMAC
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-04-26
 **Deciders:** Nick Miller
 **Supersedes:** none
@@ -48,7 +48,7 @@ The change is intentionally local to this function. Other edge functions continu
 
 ## Comparison to ADR-002
 
-ADR-002 mandated `guardAuth` for every edge function as the response to the prior "any non-empty bearer is accepted" pattern. That decision stands for every endpoint *except* this one. The exception is justified because:
+ADR-002 mandated `guardAuth` for every edge function as the response to the prior "any non-empty bearer is accepted" pattern. That decision stands for every endpoint _except_ this one. The exception is justified because:
 
 - This endpoint is the keystone of the ecosystem signal pipeline; it must accept server-to-server traffic from many producer projects, none of which have user sessions.
 - The HMAC layer provides a stronger origin proof than user-JWT auth would for a service-to-service flow (a producer's user JWT could be stolen and replayed; the HMAC requires the body signature to also match).

@@ -26,7 +26,7 @@ Add a narrow service-role bypass on the `r2-signal-ingest` function only.
 
 When all three conditions hold:
 
-1. The Bearer token in the request's Authorization header equals this project's `SUPABASE_SERVICE_ROLE_KEY` (timing-safe compare), and
+1. The Bearer token in the request's Authorization header is recognized as an R2 service-role credential, either by timing-safe equality with this project's `SUPABASE_SERVICE_ROLE_KEY` or by legacy Supabase JWT payload claims `role = service_role` and `ref = <R2 project ref>`, and
 2. `R2_SIGNAL_INGEST_HMAC_SECRET` is configured on this project, and
 3. The request body's `x-r2-signature` HMAC verifies against that secret,
 
@@ -57,7 +57,8 @@ If a future endpoint needs the same pattern, the implementation should be lifted
 
 ## Operational notes
 
-- The `SUPABASE_SERVICE_ROLE_KEY` env var that this function reads is the **R2 project's own** service-role key (auto-injected by Supabase). Producers will need to obtain that same key from R2's dashboard and store it in their own secret stores under `R2_SIGNAL_INGEST_BEARER`.
+- The `SUPABASE_SERVICE_ROLE_KEY` env var that this function reads is the **R2 project's own** service-role key (auto-injected by Supabase). Supabase projects may expose this as a newer short secret-style key, while older producer environments may still store a legacy service-role JWT. `r2-signal-ingest` accepts both formats for the R2 project, but still requires the HMAC body signature before accepting the request.
+- Producers should store the R2 service-role credential in their own secret stores under `R2_SIGNAL_INGEST_BEARER`.
 - Producers must also be configured with the same `R2_SIGNAL_INGEST_HMAC_SECRET` value as the R2 project, or signature verification will fail.
 - 90-day rotation cadence: when R2's service-role key rotates, every producer's `R2_SIGNAL_INGEST_BEARER` must be updated in lockstep. Automate this in CI/secrets-rotation tooling before scaling to more producers (per the ecosystem activation checklist § C5).
 - A regression in this auth path is a **policy-scope incident** under the rollout-gate definition in the ADR-001 audit log, requiring immediate manual rollback.

@@ -209,6 +209,12 @@ async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promis
   }
 }
 
+/**
+ * Resolves the profile_id used when minting oracle_evidence_items from
+ * incoming signals. Restricted to privileged roles (operator/counsel/admin)
+ * — falling back to an arbitrary charter user would silently attribute
+ * service-minted evidence to a non-privileged account.
+ */
 async function resolveEvidenceProfileId(): Promise<string> {
   const client = getServiceClient();
   const roles = await client
@@ -217,19 +223,15 @@ async function resolveEvidenceProfileId(): Promise<string> {
     .in('role', ['operator', 'counsel', 'admin'])
     .limit(1)
     .maybeSingle();
-  if (!roles.error && roles.data?.user_id) {
-    return roles.data.user_id as string;
+  if (roles.error) {
+    throw new Error(roles.error.message);
   }
-
-  const fallback = await client
-    .from('charter_user_roles')
-    .select('user_id')
-    .limit(1)
-    .maybeSingle();
-  if (fallback.error || !fallback.data?.user_id) {
-    throw new Error('Unable to resolve evidence profile_id from charter_user_roles');
+  if (!roles.data?.user_id) {
+    throw new Error(
+      'Unable to resolve evidence profile_id: no operator/counsel/admin role exists in charter_user_roles',
+    );
   }
-  return fallback.data.user_id as string;
+  return roles.data.user_id as string;
 }
 
 Deno.serve(

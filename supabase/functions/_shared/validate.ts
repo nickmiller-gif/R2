@@ -120,10 +120,18 @@ export async function validateBody<T>(
 // ---------------------------------------------------------------------------
 
 /**
+ * Upper bound on idempotency-key header length. Keeps source-signal-key /
+ * unique-index payloads from being weaponised by an oversized client header.
+ * 256 chars is well above the largest UUID/ULID/sha256 hex shape any caller
+ * is expected to mint.
+ */
+export const IDEMPOTENCY_KEY_MAX_LENGTH = 256;
+
+/**
  * Requires an `x-idempotency-key` header on mutation requests (POST/PATCH).
  *
- * Returns `null` when the header is present (caller proceeds), or a
- * ready-to-return 400 response when missing.
+ * Returns `null` when the header is present and within size bounds, or a
+ * ready-to-return 400 response when missing or oversized.
  *
  * ```ts
  * if (req.method === 'POST' || req.method === 'PATCH') {
@@ -136,6 +144,12 @@ export function requireIdempotencyKey(req: Request): Response | null {
   const key = req.headers.get(IDEMPOTENCY_KEY_HEADER);
   if (!key || key.trim().length === 0) {
     return validationError(`Missing required header: ${IDEMPOTENCY_KEY_HEADER}`, 400);
+  }
+  if (key.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    return validationError(
+      `${IDEMPOTENCY_KEY_HEADER} must be <= ${IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
+      400,
+    );
   }
   return null;
 }

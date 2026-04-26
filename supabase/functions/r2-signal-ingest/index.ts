@@ -15,8 +15,24 @@ import {
 } from '../../../packages/r2-signal-contract/src/index.ts';
 import { withLogger } from '../_shared/log.ts';
 
+/**
+ * Hard cap on the inbound signal envelope size. Keeps a malformed or
+ * malicious caller from forcing the function to buffer arbitrarily large
+ * bodies before validation. The contract validator further bounds individual
+ * fields (raw_payload, provenance, etc.) — this is the outer perimeter.
+ */
+const MAX_REQUEST_BODY_BYTES = 256 * 1024;
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exceedsBodyLimit(req: Request): boolean {
+  const declared = req.headers.get('content-length');
+  if (!declared) return false;
+  const parsed = Number.parseInt(declared, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return false;
+  return parsed > MAX_REQUEST_BODY_BYTES;
 }
 
 function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {
@@ -87,11 +103,18 @@ Deno.serve(
     const idempotencyKey = req.headers.get('x-idempotency-key')?.trim();
     if (!idempotencyKey) return errorResponse('Missing x-idempotency-key', 400);
 
+    if (exceedsBodyLimit(req)) {
+      return errorResponse('Request body exceeds maximum allowed size', 413);
+    }
+
     let rawBody: string;
     try {
       rawBody = await req.text();
     } catch {
       return errorResponse('Failed to read request body', 400);
+    }
+    if (rawBody.length > MAX_REQUEST_BODY_BYTES) {
+      return errorResponse('Request body exceeds maximum allowed size', 413);
     }
 
     if (authMode === 'service_role') {

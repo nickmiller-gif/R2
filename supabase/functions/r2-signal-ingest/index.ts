@@ -1,14 +1,15 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
-import { guardAuth } from '../_shared/auth.ts';
+import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
-import { buildSourceSignalKey, verifySignalHmac } from '../_shared/signal-utils.ts';
+import { buildSourceSignalKey, timingSafeEqual, verifySignalHmac } from '../_shared/signal-utils.ts';
 import {
   SIGNAL_CONTRACT_VERSION,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
+import { logInfo } from '../_shared/log.ts';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -47,6 +48,43 @@ async function maybeVerifyHmac(req: Request, body: string): Promise<Response | n
   return null;
 }
 
+/**
+ * Service-role auth path — see docs/ADR-005-service-role-ingest-bypass.md.
+ *
+ * Allows server-to-server callers (centralr2 and future producers) to
+ * authenticate with this project's SUPABASE_SERVICE_ROLE_KEY as the Bearer,
+ * gated on R2_SIGNAL_INGEST_HMAC_SECRET being configured. The HMAC body
+ * signature (verified separately by maybeVerifyHmac) is the real proof of
+ * origin; the bearer match is a presence check.
+ *
+ * Returns:
+ *   { mode: 'service_role' }  — bypass engaged; HMAC must verify below
+ *   { mode: 'reject', response } — service-role bearer presented but HMAC
+ *                                  is not configured (fail-closed)
+ *   null — bearer is not the service-role key; fall through to guardAuth
+ */
+function tryServiceRoleAuth(req: Request):
+  | { mode: 'service_role' }
+  | { mode: 'reject'; response: Response }
+  | null {
+  const bearer = extractBearerToken(req);
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!bearer || !serviceRoleKey) return null;
+  if (!timingSafeEqual(bearer, serviceRoleKey)) return null;
+
+  const hmacConfigured = Boolean(Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim());
+  if (!hmacConfigured) {
+    return {
+      mode: 'reject',
+      response: errorResponse(
+        'Service-role auth requires R2_SIGNAL_INGEST_HMAC_SECRET to be configured',
+        401,
+      ),
+    };
+  }
+  return { mode: 'service_role' };
+}
+
 function toValidationMessage(input: unknown): string {
   if (!isObject(input)) return 'Request body must be a JSON object';
   return JSON.stringify(input);
@@ -57,8 +95,19 @@ Deno.serve(
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-    const auth = await guardAuth(req);
-    if (!auth.ok) return auth.response;
+    let authMode: 'service_role' | 'user_jwt';
+    let actorUserId: string | null = null;
+
+    const serviceRole = tryServiceRoleAuth(req);
+    if (serviceRole?.mode === 'reject') return serviceRole.response;
+    if (serviceRole?.mode === 'service_role') {
+      authMode = 'service_role';
+    } else {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      authMode = 'user_jwt';
+      actorUserId = auth.claims.userId;
+    }
 
     const idemError = requireIdempotencyKey(req);
     if (idemError) return idemError;
@@ -74,6 +123,12 @@ Deno.serve(
 
     const hmacError = await maybeVerifyHmac(req, rawBody);
     if (hmacError) return hmacError;
+
+    // Service-role auth requires HMAC to have actually verified (not just be
+    // configured). maybeVerifyHmac returns null both on success and on the
+    // not-configured branch — but tryServiceRoleAuth above already refused to
+    // engage if not configured, so reaching this point in service_role mode
+    // means HMAC verified successfully.
 
     let parsedBody: unknown;
     try {
@@ -121,6 +176,15 @@ Deno.serve(
     if (enqueue.error) {
       return errorResponse(enqueue.error.message, 500);
     }
+
+    logInfo('signal ingested', {
+      functionName: 'r2-signal-ingest',
+      auth_mode: authMode,
+      actor_user_id: actorUserId,
+      source_system: envelope.source_system,
+      source_event_type: envelope.source_event_type,
+      signal_id: signalId,
+    });
 
     return jsonResponse({ signal_id: signalId }, 202);
   }),

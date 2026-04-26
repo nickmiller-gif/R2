@@ -1,0 +1,26 @@
+{
+  "contract_version": "1.0.0",
+  "source_system": "r2_widget",
+  "source_repo": "nickmiller-gif/R2",
+  "source_event_type": "widget_turn",
+  "actor_meg_entity_id": null,
+  "related_entity_ids": [],
+  "event_time": "2026-04-26T09:10:00Z",
+  "summary": "Widget conversation turn captured with retrieval citations.",
+  "raw_payload": {
+    "session_id": "fd67cc2f-b717-4e72-ab84-88e8cb6a4af2",
+    "turn_id": "493b4a72-7f9f-41d9-ab81-f9bcdd04d49b",
+    "citations": 3,
+    "latency_ms": 1280
+  },
+  "confidence": 0.74,
+  "privacy_level": "operator",
+  "provenance": {
+    "table": "conversation_turns",
+    "row_id": "493b4a72-7f9f-41d9-ab81-f9bcdd04d49b"
+  },
+  "routing_targets": [
+    "operator_workbench",
+    "eigen"
+  ]
+}

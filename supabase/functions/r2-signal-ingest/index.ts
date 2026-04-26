@@ -5,6 +5,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import {
   buildSourceSignalKey,
+  extractSupabaseProjectRef,
   tryServiceRoleAuth,
   verifySignalHmac,
 } from '../_shared/signal-utils.ts';
@@ -71,6 +72,7 @@ Deno.serve(
       extractBearerToken(req),
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
       Boolean(Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim()),
+      extractSupabaseProjectRef(Deno.env.get('SUPABASE_URL')),
     );
     if (serviceRole?.mode === 'reject') return errorResponse(serviceRole.reason, 401);
     if (serviceRole?.mode === 'service_role') {

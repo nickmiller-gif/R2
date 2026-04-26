@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractSupabaseProjectRef,
+  isLegacyServiceRoleJwt,
   timingSafeEqual,
   tryServiceRoleAuth,
 } from '../../supabase/functions/_shared/signal-utils.ts';
@@ -44,13 +46,38 @@ describe('r2-signal-ingest service-role bypass — constant-time compare', () =>
 describe('r2-signal-ingest service-role bypass — policy assertions', () => {
   const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.service.role-key';
   const USER_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.user.jwt-token';
+  const PROJECT_REF = 'zudslxucibosjwefojtm';
 
-  it('policy: bearer must equal SUPABASE_SERVICE_ROLE_KEY exactly to engage bypass', () => {
+  function fakeJwt(payload: Record<string, unknown>): string {
+    const encode = (value: Record<string, unknown>) =>
+      btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.signature`;
+  }
+
+  it('policy: bearer can equal SUPABASE_SERVICE_ROLE_KEY exactly to engage bypass', () => {
     const result = tryServiceRoleAuth(SERVICE_KEY, SERVICE_KEY, true);
     expect(result).toEqual({ mode: 'service_role' });
 
     const mismatch = tryServiceRoleAuth(USER_JWT, SERVICE_KEY, true);
     expect(mismatch).toBeNull();
+  });
+
+  it('policy: legacy service-role JWT for this project can engage bypass', () => {
+    const jwt = fakeJwt({ role: 'service_role', ref: PROJECT_REF, iss: 'supabase' });
+    const result = tryServiceRoleAuth(jwt, 'sb_secret_short_service_role_key', true, PROJECT_REF);
+    expect(result).toEqual({ mode: 'service_role' });
+    expect(isLegacyServiceRoleJwt(jwt, PROJECT_REF)).toBe(true);
+  });
+
+  it('policy: legacy service-role JWT must match this project ref', () => {
+    const jwt = fakeJwt({ role: 'service_role', ref: 'other-project', iss: 'supabase' });
+    expect(tryServiceRoleAuth(jwt, 'sb_secret_short_service_role_key', true, PROJECT_REF)).toBeNull();
+    expect(isLegacyServiceRoleJwt(jwt, PROJECT_REF)).toBe(false);
+  });
+
+  it('policy: user JWT-shaped bearer still falls through to guardAuth', () => {
+    const jwt = fakeJwt({ role: 'authenticated', ref: PROJECT_REF, iss: 'supabase' });
+    expect(tryServiceRoleAuth(jwt, 'sb_secret_short_service_role_key', true, PROJECT_REF)).toBeNull();
   });
 
   it('policy: HMAC must be configured for service-role bypass to engage (fail-closed)', () => {
@@ -82,5 +109,10 @@ describe('r2-signal-ingest service-role bypass — policy assertions', () => {
     expect(tryServiceRoleAuth(null, undefined, false)).toBeNull();
     expect(tryServiceRoleAuth(null, SERVICE_KEY, false)).toBeNull();
     expect(tryServiceRoleAuth(SERVICE_KEY, undefined, false)).toBeNull();
+  });
+
+  it('extracts the Supabase project ref from the configured URL', () => {
+    expect(extractSupabaseProjectRef('https://zudslxucibosjwefojtm.supabase.co')).toBe(PROJECT_REF);
+    expect(extractSupabaseProjectRef('not-a-url')).toBeNull();
   });
 });

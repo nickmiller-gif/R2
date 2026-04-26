@@ -40,6 +40,33 @@ export type ServiceRoleAuthResult =
   | { mode: 'reject'; reason: string }
   | null;
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[1]) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function extractSupabaseProjectRef(supabaseUrl: string | undefined): string | null {
+  if (!supabaseUrl) return null;
+  try {
+    return new URL(supabaseUrl).hostname.split('.')[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function isLegacyServiceRoleJwt(bearer: string, expectedProjectRef: string | null): boolean {
+  if (!expectedProjectRef) return false;
+  const payload = decodeJwtPayload(bearer);
+  return payload?.role === 'service_role' && payload.ref === expectedProjectRef;
+}
+
 /**
  * Pure decision logic for the service-role auth bypass
  * (ADR-005-service-role-ingest-bypass). Extracted from the handler so
@@ -49,9 +76,15 @@ export function tryServiceRoleAuth(
   bearer: string | null,
   serviceRoleKey: string | undefined,
   hmacConfigured: boolean,
+  expectedProjectRef: string | null = null,
 ): ServiceRoleAuthResult {
-  if (!bearer || !serviceRoleKey) return null;
-  if (!timingSafeEqual(bearer, serviceRoleKey)) return null;
+  if (!bearer) return null;
+
+  const matchesInjectedServiceKey = Boolean(
+    serviceRoleKey && timingSafeEqual(bearer, serviceRoleKey),
+  );
+  const matchesLegacyServiceJwt = isLegacyServiceRoleJwt(bearer, expectedProjectRef);
+  if (!matchesInjectedServiceKey && !matchesLegacyServiceJwt) return null;
 
   if (!hmacConfigured) {
     return {

@@ -20,6 +20,8 @@ export default {
       },
       fontFamily: {
         mono: ['var(--font-mono)', 'Courier New', 'monospace'],
+        ui: ['var(--font-ui)', '-apple-system', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'Georgia', 'serif'],
       },
       borderRadius: {
         card: 'var(--radius-card)',

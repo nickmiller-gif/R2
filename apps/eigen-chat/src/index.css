@@ -3,20 +3,48 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * R2 token bridge for eigen-chat.
+   * Light-mode canonical values (tokens.css :root palette).
+   * The app defaults to dark — App.tsx applies class="dark" on <html> on init.
+   * All --color-* vars map to the institutional-cartography token contract.
+   */
   :root {
-    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
-    --color-canvas: #0A0A0D;
-    --color-surface: #111116;
-    --color-elevated: #0F0F14;
-    --color-border: rgba(255, 255, 255, 0.08);
-    --color-border-hover: rgba(239, 159, 39, 0.35);
-    --color-muted: rgba(255, 255, 255, 0.32);
-    --color-hint: rgba(255, 255, 255, 0.18);
-    --color-fg: #FFFFFF;
-    --color-accent: #EF9F27;
-    --color-accent-hover: #BA7517;
-    --color-danger: #ef4444;
-    --color-success: #22c55e;
+    /* Typography — institutional cartography stack */
+    --font-display: "IBM Plex Serif", Georgia, serif;
+    --font-ui:      "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    /* Light mode surfaces / ink / accent (tokens.css :root) */
+    --color-canvas:       oklch(0.97 0.01 80);
+    --color-surface:      oklch(1 0 0);
+    --color-elevated:     oklch(0.985 0.005 80);
+    --color-border:       oklch(0.88 0.01 80);
+    --color-border-hover: oklch(0.55 0.16 40 / 0.5);
+    --color-muted:        oklch(0.50 0.02 250);
+    --color-hint:         oklch(0.65 0.02 250);
+    --color-fg:           oklch(0.22 0.04 250);
+    --color-accent:       oklch(0.55 0.16 40);
+    --color-accent-hover: oklch(0.45 0.16 40);
+    --color-danger:       oklch(0.55 0.20 25);
+    --color-success:      oklch(0.52 0.14 150);
+    --radius-card: 14px;
+  }
+
+  /* Dark variant — institutional-cartography dark (tokens.css .dark) */
+  .dark {
+    --color-canvas:       oklch(0.18 0.02 250);
+    --color-surface:      oklch(0.22 0.02 250);
+    --color-elevated:     oklch(0.20 0.02 250);
+    --color-border:       oklch(0.32 0.02 250);
+    --color-border-hover: oklch(0.82 0.14 70 / 0.35);
+    --color-muted:        oklch(0.70 0.02 80);
+    --color-hint:         oklch(0.50 0.02 80);
+    --color-fg:           oklch(0.94 0.02 80);
+    --color-accent:       oklch(0.82 0.14 70);
+    --color-accent-hover: oklch(0.68 0.14 70);
+    --color-danger:       oklch(0.68 0.20 25);
+    --color-success:      oklch(0.68 0.16 150);
     --radius-card: 14px;
   }
 
@@ -27,13 +55,13 @@
   body {
     background: var(--color-canvas);
     color: var(--color-fg);
-    font-family: var(--font-mono);
+    font-family: var(--font-ui);
     min-height: 100vh;
   }
 
   *:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 1px rgba(239, 159, 39, 0.5);
+    box-shadow: 0 0 0 2px var(--color-accent);
   }
 
   /* Scrollbar styling */
@@ -44,10 +72,18 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-border);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(239, 159, 39, 0.25);
+    background: var(--color-border-hover);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

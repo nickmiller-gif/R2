@@ -3,7 +3,37 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+
+// Columns the client may populate on CREATE. `profile_id` is server-injected
+// from the verified JWT so operators cannot attribute an entity to another
+// user — the edge function runs with `service_role` and bypasses the RLS
+// check that would otherwise require `profile_id = auth.uid()`. `id`,
+// `created_at`, `updated_at` are DB-controlled (uuid default + now()).
+// `status` rides the DB default ('active') and only transitions via the
+// archive action; `merged_into_id` only moves via the merge action.
+const MEG_ENTITY_INSERT_FIELDS = [
+  'entity_type',
+  'canonical_name',
+  'external_ids',
+  'attributes',
+  'metadata',
+] as const;
+
+// Columns the client may patch. `id`, `profile_id`, `merged_into_id`,
+// `created_at`, `updated_at` are excluded — `status` transitions to 'merged'
+// or 'archived' must go through the merge / archive actions, not a generic
+// PATCH, but a PATCH may still set domain-meaningful status values
+// (e.g. reactivating a deprecated entity) so it remains in the allowlist.
+const MEG_ENTITY_UPDATE_FIELDS = [
+  'canonical_name',
+  'entity_type',
+  'status',
+  'external_ids',
+  'attributes',
+  'metadata',
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -92,12 +122,20 @@ Deno.serve(
           if (error) return errorResponse(error.message, 400);
           return jsonResponse(data);
         } else {
-          // CREATE entity
-          const { data, error } = await client
-            .from('meg_entities')
-            .insert([body])
-            .select()
-            .single();
+          // CREATE entity. `profile_id` is server-injected from the JWT;
+          // `id`, `created_at`, `updated_at` ride DB defaults; `status`
+          // and `merged_into_id` only transition via the archive / merge
+          // actions above.
+          if (!body.entity_type || typeof body.entity_type !== 'string') {
+            return errorResponse('entity_type is required', 400);
+          }
+          if (!body.canonical_name || typeof body.canonical_name !== 'string') {
+            return errorResponse('canonical_name is required', 400);
+          }
+          const row = sanitizeInsert(body as Record<string, unknown>, MEG_ENTITY_INSERT_FIELDS, {
+            profile_id: auth.claims.userId,
+          });
+          const { data, error } = await client.from('meg_entities').insert([row]).select().single();
           if (error) return errorResponse(error.message, 400);
           return jsonResponse(data, 201);
         }
@@ -111,13 +149,16 @@ Deno.serve(
         const entityId = body.id;
         if (!entityId) return errorResponse('id required in body', 400);
 
-        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        if (body.canonical_name !== undefined) patch.canonical_name = body.canonical_name;
-        if (body.entity_type !== undefined) patch.entity_type = body.entity_type;
-        if (body.status !== undefined) patch.status = body.status;
-        if (body.external_ids !== undefined) patch.external_ids = body.external_ids;
-        if (body.attributes !== undefined) patch.attributes = body.attributes;
-        if (body.metadata !== undefined) patch.metadata = body.metadata;
+        const patch: Record<string, unknown> = {
+          ...sanitizeUpdate(body as Record<string, unknown>, MEG_ENTITY_UPDATE_FIELDS),
+          updated_at: new Date().toISOString(),
+        };
+        if (Object.keys(patch).length === 1) {
+          return errorResponse(
+            `No patchable fields provided. Allowed: ${MEG_ENTITY_UPDATE_FIELDS.join(', ')}. To merge or archive, use action=merge|archive.`,
+            400,
+          );
+        }
 
         const { data, error } = await client
           .from('meg_entities')

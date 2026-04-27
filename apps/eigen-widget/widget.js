@@ -33,7 +33,7 @@ const wsInput = document.getElementById('ws-input');
 const wsSubmit = document.getElementById('ws-submit');
 
 /* ---------- State ---------- */
-let activeApp = null;               // 'eigen' | 'eigenx' | null
+let activeApp = null; // 'eigen' | 'eigenx' | null
 let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
@@ -157,10 +157,13 @@ function openApp(app, options = {}) {
   otherBtn?.classList.remove('is-opening');
 
   // Seed morph origin at the button rect
-  const rect =
-    origin ||
-    sourceBtn?.getBoundingClientRect() ||
-    { left: window.innerWidth - 88, top: window.innerHeight - 88, width: 64, height: 64 };
+  const rect = origin ||
+    sourceBtn?.getBoundingClientRect() || {
+      left: window.innerWidth - 88,
+      top: window.innerHeight - 88,
+      width: 64,
+      height: 64,
+    };
   writeMorphOrigin(rect);
 
   // Make the shell visible at origin before transitioning to target
@@ -340,7 +343,8 @@ function addFeedbackControls(container, turnId) {
 }
 
 function resolveConversationIntent() {
-  if (intentParam === 'retreat_content' || intentParam === 'event_ops' || intentParam === 'general') return intentParam;
+  if (intentParam === 'retreat_content' || intentParam === 'event_ops' || intentParam === 'general')
+    return intentParam;
   if (siteId === 'raysretreat') return 'retreat_content';
   if (siteId === 'r2app') return 'event_ops';
   return 'general';
@@ -464,7 +468,11 @@ async function submitMessage(message) {
         wsBody.scrollTop = wsBody.scrollHeight;
       } else if (event === 'final') {
         let payload = null;
-        try { payload = JSON.parse(body); } catch { payload = null; }
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          payload = null;
+        }
         if (payload) {
           if (!assistantTurn.msg.textContent.trim()) {
             assistantTurn.msg.textContent = payload.response || 'No response generated.';
@@ -570,10 +578,15 @@ btnEigenX?.addEventListener('click', () => {
         { type: 'eigen_widget_request_auth', scope: 'eigenx' },
         allowedParentOrigin,
       );
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   openApp('eigenx');
-  makeTurn('system', 'EigenX requires an authenticated session. Running in preview scope until sign-in.');
+  makeTurn(
+    'system',
+    'EigenX requires an authenticated session. Running in preview scope until sign-in.',
+  );
 });
 
 wsClose?.addEventListener('click', () => closeApp());
@@ -597,6 +610,26 @@ window.addEventListener('message', (event) => {
   if (event.origin.toLowerCase() !== allowedParentOrigin) return;
   const data = event.data || {};
   if (!data || typeof data !== 'object') return;
+  if (data.type === 'eigen_widget_theme' && typeof data.theme === 'string') {
+    const theme = data.theme;
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+      try {
+        localStorage.setItem('r2-widget-theme', theme);
+      } catch {
+        /* ignore */
+      }
+    } else if (theme === 'system') {
+      try {
+        localStorage.removeItem('r2-widget-theme');
+      } catch {
+        /* ignore */
+      }
+      const isDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    }
+    return;
+  }
   if (data.type === 'eigen_widget_auth' && typeof data.authBearer === 'string') {
     if (data.authBearer) upgradeToEigenx(data.authBearer);
     else downgradeToPublic();
@@ -609,7 +642,9 @@ window.addEventListener('message', (event) => {
       if (ctx.module_scope && wsTitleSub) {
         wsTitleSub.textContent = `${ctx.module_scope}`;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 });
 
@@ -655,4 +690,6 @@ try {
   if (isEmbedded && allowedParentOrigin) {
     window.parent?.postMessage?.({ type: 'eigen_widget_ready' }, allowedParentOrigin);
   }
-} catch { /* ignore */ }
+} catch {
+  /* ignore */
+}

@@ -40,6 +40,7 @@ let authBearer = '';
 let allowedParentOrigin = '';
 let pendingAssistant = null;
 let morphRaf = 0;
+let systemThemeMqListener = null; // matchMedia listener active when theme === 'system'
 
 if (parentOriginParam) {
   try {
@@ -612,6 +613,13 @@ window.addEventListener('message', (event) => {
   if (!data || typeof data !== 'object') return;
   if (data.type === 'eigen_widget_theme' && typeof data.theme === 'string') {
     const theme = data.theme;
+    // Clear any existing system-mode listener before applying the new theme.
+    if (systemThemeMqListener) {
+      window
+        .matchMedia('(prefers-color-scheme: dark)')
+        .removeEventListener('change', systemThemeMqListener);
+      systemThemeMqListener = null;
+    }
     if (theme === 'dark' || theme === 'light') {
       document.documentElement.setAttribute('data-theme', theme);
       try {
@@ -625,8 +633,13 @@ window.addEventListener('message', (event) => {
       } catch {
         /* ignore */
       }
-      const isDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+      // Register a persistent listener so the widget stays in sync with OS changes.
+      systemThemeMqListener = (e) => {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      };
+      mq.addEventListener('change', systemThemeMqListener);
     }
     return;
   }

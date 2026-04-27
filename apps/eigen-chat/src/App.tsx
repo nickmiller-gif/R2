@@ -102,34 +102,23 @@ export function App() {
   const [sourceInventory, setSourceInventory] = useState<SourceInventoryResponse | null>(null);
   const [sourceInventoryError, setSourceInventoryError] = useState<string | null>(null);
 
-  // Theme management — persisted to localStorage under 'r2-theme'.
-  // Defaults to 'dark' (institutional cartography dark variant).
+  // Theme management — initial theme is applied by the inline script in index.html
+  // (before first paint). This effect only wires the media-query listener needed
+  // when theme is 'system', so OS changes are reflected without a page reload.
   useEffect(() => {
-    const applyTheme = (theme: string) => {
+    const stored = localStorage.getItem('r2-theme') ?? 'dark';
+    if (stored !== 'system') return;
+
+    const applySystem = (isDark: boolean) => {
       const html = document.documentElement;
-      if (theme === 'light') {
-        html.classList.remove('dark');
-        html.setAttribute('data-theme', 'light');
-      } else if (theme === 'dark') {
-        html.classList.add('dark');
-        html.setAttribute('data-theme', 'dark');
-      } else {
-        // system
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        html.classList.toggle('dark', isDark);
-        html.setAttribute('data-theme', isDark ? 'dark' : 'light');
-      }
+      html.classList.toggle('dark', isDark);
+      html.setAttribute('data-theme', isDark ? 'dark' : 'light');
     };
 
-    const stored = localStorage.getItem('r2-theme') ?? 'dark';
-    applyTheme(stored);
-
-    if (stored === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches ? 'dark' : 'system');
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => applySystem(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);

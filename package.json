@@ -60,6 +60,6 @@
   },
   "dependencies": {
     "@rolldown/pluginutils": "^1.0.0-rc.17",
-    "@supabase/supabase-js": "^2.104.1"
+    "@supabase/supabase-js": "^2.105.0"
   }
 }

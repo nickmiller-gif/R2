@@ -5,7 +5,14 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'database.types.ts', 'apps/**'],
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'node_modules/**',
+      'database.types.ts',
+      'apps/**',
+      '**/*.md',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -87,6 +94,18 @@ export default tseslint.config(
     files: ['supabase/functions/_shared/log.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      'no-undef': 'off',
     },
   },
 );

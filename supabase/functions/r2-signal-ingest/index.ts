@@ -15,6 +15,7 @@ import {
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
 import { withLogger } from '../_shared/log.ts';
+import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
 
 /**
  * Hard cap on the inbound signal envelope size. Keeps a malformed or
@@ -139,9 +140,28 @@ Deno.serve(
     if (envelope.contract_version !== SIGNAL_CONTRACT_VERSION) {
       return errorResponse(`Unsupported contract version ${envelope.contract_version}`, 400);
     }
+    const wave1Validation = validateWave1Metadata(envelope);
+    if (!wave1Validation.ok) {
+      log.warn('wave1 metadata validation failed', {
+        source_system: envelope.source_system,
+        source_event_type: envelope.source_event_type,
+        code: wave1Validation.code,
+        message: wave1Validation.message,
+      });
+      return jsonResponse(
+        {
+          error: wave1Validation.message,
+          code: wave1Validation.code,
+          source_system: envelope.source_system,
+        },
+        422,
+      );
+    }
 
     const sourceSignalKey = buildSourceSignalKey(envelope.source_system, idempotencyKey);
-    const client = getServiceClient();
+    // Service client is untyped in this edge entrypoint; generated DB types are not wired for Deno check.
+    const client =
+      getServiceClient() as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
 
     const insertResult = await client
       .from('platform_feed_items')

@@ -7,6 +7,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 const WAVE1_SOURCE_SYSTEMS = new Set(['rays_retreat', 'operator_workbench', 'oracle_operator']);
 const EVIDENCE_TIERS = new Set(['A', 'B', 'C', 'D', 'E']);
 
+/** Max entries in `sources_queried` per Wave 1 envelope (abuse + payload bounds). */
+export const WAVE1_MAX_SOURCES_QUERIED = 64;
+/** Max UTF-16 code units per `sources_queried` entry. */
+export const WAVE1_MAX_SOURCE_QUERY_ENTRY_CHARS = 512;
+
 export type Wave1MetadataValidation =
   | { ok: true }
   | { ok: false; code: string; message: string; detail?: string };
@@ -95,6 +100,23 @@ export function validateWave1Metadata(envelope: R2SignalEnvelope): Wave1Metadata
       message: 'raw_payload.sources_queried entries must be non-empty strings',
     };
   }
+  if (payload.sources_queried.length > WAVE1_MAX_SOURCES_QUERIED) {
+    return {
+      ok: false,
+      code: 'wave1_metadata_invalid',
+      message: `raw_payload.sources_queried must have at most ${WAVE1_MAX_SOURCES_QUERIED} entries`,
+    };
+  }
+  const oversizedEntry = payload.sources_queried.find(
+    (entry) => typeof entry === 'string' && entry.length > WAVE1_MAX_SOURCE_QUERY_ENTRY_CHARS,
+  );
+  if (oversizedEntry !== undefined) {
+    return {
+      ok: false,
+      code: 'wave1_metadata_invalid',
+      message: `raw_payload.sources_queried entries must be at most ${WAVE1_MAX_SOURCE_QUERY_ENTRY_CHARS} characters`,
+    };
+  }
   if (typeof payload.adversarial_pass !== 'boolean') {
     return {
       ok: false,
@@ -103,6 +125,13 @@ export function validateWave1Metadata(envelope: R2SignalEnvelope): Wave1Metadata
     };
   }
   if (typeof payload.registry_verified_ratio !== 'number') {
+    return {
+      ok: false,
+      code: 'wave1_metadata_invalid',
+      message: 'raw_payload.registry_verified_ratio must be numeric in [0,1]',
+    };
+  }
+  if (!Number.isFinite(payload.registry_verified_ratio)) {
     return {
       ok: false,
       code: 'wave1_metadata_invalid',

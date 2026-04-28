@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { validateWave1Metadata } from '../../supabase/functions/_shared/wave1-signal-metadata.ts';
+import {
+  validateWave1Metadata,
+  WAVE1_MAX_SOURCE_QUERY_ENTRY_CHARS,
+  WAVE1_MAX_SOURCES_QUERIED,
+} from '../../supabase/functions/_shared/wave1-signal-metadata.ts';
 import { type R2SignalEnvelope } from '../../packages/r2-signal-contract/src/index.ts';
 
 function validWave1Envelope(
@@ -90,5 +94,40 @@ describe('Wave 1 metadata validation', () => {
     (envelope.raw_payload as any).registry_verified_ratio = 2;
     const result = validateWave1Metadata(envelope);
     expect(result.ok).toBe(false);
+  });
+
+  it('fails when registry ratio is NaN', () => {
+    const envelope = validWave1Envelope('rays_retreat');
+    (envelope.raw_payload as any).registry_verified_ratio = Number.NaN;
+    const result = validateWave1Metadata(envelope);
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails when registry ratio is Infinity', () => {
+    const envelope = validWave1Envelope('operator_workbench');
+    (envelope.raw_payload as any).registry_verified_ratio = Number.POSITIVE_INFINITY;
+    const result = validateWave1Metadata(envelope);
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails when sources_queried exceeds max length', () => {
+    const envelope = validWave1Envelope('rays_retreat');
+    (envelope.raw_payload as any).sources_queried = Array.from(
+      { length: WAVE1_MAX_SOURCES_QUERIED + 1 },
+      (_, i) => `source_${i}`,
+    );
+    const result = validateWave1Metadata(envelope);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('at most');
+  });
+
+  it('fails when a sources_queried entry is too long', () => {
+    const envelope = validWave1Envelope('oracle_operator');
+    (envelope.raw_payload as any).sources_queried = [
+      'a'.repeat(WAVE1_MAX_SOURCE_QUERY_ENTRY_CHARS + 1),
+    ];
+    const result = validateWave1Metadata(envelope);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('at most');
   });
 });

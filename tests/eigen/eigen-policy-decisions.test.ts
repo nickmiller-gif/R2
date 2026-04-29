@@ -228,4 +228,20 @@ describe('Eigen policy decision recording', () => {
 
     expect(seenLimits).toEqual([100, 50, 1000]);
   });
+
+  it('listDecisions clamps non-positive limits to at least 1 (LIMIT -1 disables limiting in Postgres)', async () => {
+    const db = makeRecordingDb([]);
+    const seenLimits: Array<number | undefined> = [];
+    db.queryDecisions = async (filter) => {
+      seenLimits.push(filter?.limit);
+      return [];
+    };
+    const service = createEigenPolicyEngineService(db);
+
+    await service.listDecisions({ limit: 0 });
+    await service.listDecisions({ limit: -1 });
+    await service.listDecisions({ limit: -10_000 });
+
+    expect(seenLimits).toEqual([1, 1, 1]);
+  });
 });

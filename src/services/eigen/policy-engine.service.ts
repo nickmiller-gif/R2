@@ -211,10 +211,12 @@ export function createEigenPolicyEngineService(
         );
       }
       // Audit table grows with every Eigen request; cap unbounded scans.
+      // Math.max(1, ...) blocks negative/zero values: Postgres treats LIMIT -1
+      // as "no limit", which would defeat the cap.
       const requestedLimit = filter?.limit ?? DEFAULT_DECISION_LIST_LIMIT;
       const cappedFilter = {
         ...filter,
-        limit: Math.min(requestedLimit, MAX_DECISION_LIST_LIMIT),
+        limit: Math.min(Math.max(1, requestedLimit), MAX_DECISION_LIST_LIMIT),
       };
       const rows = await db.queryDecisions(cappedFilter);
       return rows.map(rowToDecision);

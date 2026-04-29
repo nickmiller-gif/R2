@@ -46,9 +46,13 @@ export interface EvaluateEigenPolicyResult {
   allowed: boolean;
   matchedRuleIds: string[];
   denyReasons: string[];
-  /** Present only when the service recorded the decision (DB supports it). */
+  /** Present only when the service successfully recorded the decision (DB supports it and insertDecision did not throw). */
   decisionId?: string;
-  /** Wall-clock ms spent in evaluator + recording. Present when recorded. */
+  /**
+   * Wall-clock ms spent loading rules and running the evaluator (excludes the audit insert).
+   * Present whenever the DB supports decision recording — independent of whether the insert succeeded —
+   * so callers can use it for evaluator latency telemetry even if recording was best-effort skipped.
+   */
   evaluationMs?: number;
 }
 

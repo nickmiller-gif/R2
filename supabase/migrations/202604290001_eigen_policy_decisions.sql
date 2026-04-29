@@ -74,10 +74,21 @@ CREATE POLICY eigen_policy_decisions_operator_read
     )
   );
 
+-- service_role gets INSERT + SELECT only — no UPDATE/DELETE so provenance
+-- rows are immutable even from the service that records them. Diverges from
+-- eigen_policy_rule_history (FOR ALL) intentionally: that table tracks
+-- mutations of operator-editable rules; this one is an audit-grade
+-- evaluation trace where any mutation is a tampering signal.
 DROP POLICY IF EXISTS eigen_policy_decisions_service_write
   ON public.eigen_policy_decisions;
 CREATE POLICY eigen_policy_decisions_service_write
   ON public.eigen_policy_decisions
-  FOR ALL TO service_role
-  USING (true)
+  FOR INSERT TO service_role
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS eigen_policy_decisions_service_read
+  ON public.eigen_policy_decisions;
+CREATE POLICY eigen_policy_decisions_service_read
+  ON public.eigen_policy_decisions
+  FOR SELECT TO service_role
+  USING (true);

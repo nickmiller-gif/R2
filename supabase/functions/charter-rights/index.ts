@@ -3,7 +3,37 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+
+const INSERT_FIELDS = [
+  'entity_id',
+  'right_type',
+  'title',
+  'description',
+  'effective_date',
+  'expiry_date',
+  'status',
+  'confidence',
+  'reviewed_by',
+] as const;
+
+const UPDATE_FIELDS = [
+  'right_type',
+  'title',
+  'description',
+  'effective_date',
+  'expiry_date',
+  'status',
+  'confidence',
+  'reviewed_by',
+] as const;
+
+const RIGHT_COLUMNS =
+  'confidence,created_at,created_by,description,effective_date,entity_id,expiry_date,id,reviewed_by,right_type,status,title,updated_at';
+
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 500;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -16,19 +46,17 @@ Deno.serve(
 
     try {
       const url = new URL(req.url);
-      const pathname = url.pathname;
-      const id = pathname.split('/').pop() === 'charter-rights' ? null : pathname.split('/').pop();
+      const segments = url.pathname.split('/').filter(Boolean);
+      const lastSegment = segments[segments.length - 1];
+      const id = lastSegment && lastSegment !== 'charter-rights' ? lastSegment : null;
 
       const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
 
       if (req.method === 'GET') {
         if (id) {
-          // GET single right
           const { data, error } = await client
             .from('charter_rights')
-            .select(
-              'confidence,created_at,created_by,description,effective_date,entity_id,expiry_date,id,reviewed_by,right_type,status,title,updated_at',
-            )
+            .select(RIGHT_COLUMNS)
             .eq('id', id)
             .single();
 
@@ -37,30 +65,36 @@ Deno.serve(
           }
 
           return jsonResponse(data);
-        } else {
-          // GET list with optional filters
-          const entityId = url.searchParams.get('entity_id');
-          const status = url.searchParams.get('status');
-
-          let query = client
-            .from('charter_rights')
-            .select(
-              'confidence,created_at,created_by,description,effective_date,entity_id,expiry_date,id,reviewed_by,right_type,status,title,updated_at',
-            );
-
-          if (entityId) query = query.eq('entity_id', entityId);
-          if (status) query = query.eq('status', status);
-
-          const { data, error } = await query;
-
-          if (error) {
-            return errorResponse(error.message, 400);
-          }
-
-          return jsonResponse(data);
         }
-      } else if (req.method === 'POST') {
-        // CREATE right
+
+        const entityId = url.searchParams.get('entity_id');
+        const status = url.searchParams.get('status');
+        const limitRaw = Number.parseInt(url.searchParams.get('limit') ?? '', 10);
+        const offsetRaw = Number.parseInt(url.searchParams.get('offset') ?? '', 10);
+        const limit = Number.isFinite(limitRaw)
+          ? Math.min(Math.max(limitRaw, 1), MAX_LIST_LIMIT)
+          : DEFAULT_LIST_LIMIT;
+        const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+        let query = client
+          .from('charter_rights')
+          .select(RIGHT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (entityId) query = query.eq('entity_id', entityId);
+        if (status) query = query.eq('status', status);
+
+        const { data, error } = await query;
+
+        if (error) {
+          return errorResponse(error.message, 400);
+        }
+
+        return jsonResponse({ rows: data, limit, offset });
+      }
+
+      if (req.method === 'POST') {
         const roleCheck = await requireRole(auth.claims.userId, 'operator');
         if (!roleCheck.ok) return roleCheck.response;
 
@@ -68,19 +102,20 @@ Deno.serve(
         if (idemError) return idemError;
 
         const body = await req.json();
-        const { data, error } = await client
-          .from('charter_rights')
-          .insert([body])
-          .select()
-          .single();
+        const row = sanitizeInsert(body, INSERT_FIELDS, {
+          created_by: auth.claims.userId,
+        });
+
+        const { data, error } = await client.from('charter_rights').insert([row]).select().single();
 
         if (error) {
           return errorResponse(error.message, 400);
         }
 
         return jsonResponse(data, 201);
-      } else if (req.method === 'PATCH') {
-        // UPDATE right
+      }
+
+      if (req.method === 'PATCH') {
         const roleCheck = await requireRole(auth.claims.userId, 'operator');
         if (!roleCheck.ok) return roleCheck.response;
 
@@ -88,15 +123,26 @@ Deno.serve(
         if (idemError) return idemError;
 
         const body = await req.json();
-        const rightId = body.id;
+        const rightId =
+          id ??
+          (typeof body === 'object' &&
+          body !== null &&
+          typeof (body as { id?: unknown }).id === 'string'
+            ? (body as { id: string }).id
+            : null);
 
         if (!rightId) {
-          return errorResponse('id required in body', 400);
+          return errorResponse('id required (in path or body)', 400);
+        }
+
+        const patch = sanitizeUpdate(body, UPDATE_FIELDS);
+        if (Object.keys(patch).length === 0) {
+          return errorResponse('No updatable fields in body', 400);
         }
 
         const { data, error } = await client
           .from('charter_rights')
-          .update(body)
+          .update(patch)
           .eq('id', rightId)
           .select()
           .single();
@@ -106,9 +152,9 @@ Deno.serve(
         }
 
         return jsonResponse(data);
-      } else {
-        return errorResponse('Method not allowed', 405);
       }
+
+      return errorResponse('Method not allowed', 405);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       return errorResponse(message, 500);

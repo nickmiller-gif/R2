@@ -1,0 +1,204 @@
+import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
+import { withRequestMeta } from '../_shared/correlation.ts';
+import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
+import { getServiceClient } from '../_shared/supabase.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
+import {
+  buildSourceSignalKey,
+  extractSupabaseProjectRef,
+  tryServiceRoleAuth,
+  verifySignalHmac,
+} from '../_shared/signal-utils.ts';
+import {
+  SIGNAL_CONTRACT_VERSION,
+  validateR2SignalEnvelope,
+  type R2SignalEnvelope,
+} from '../../../packages/r2-signal-contract/src/index.ts';
+import { withLogger } from '../_shared/log.ts';
+import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
+
+/**
+ * Hard cap on the inbound signal envelope size. Keeps a malformed or
+ * malicious caller from forcing the function to buffer arbitrarily large
+ * bodies before validation. The contract validator further bounds individual
+ * fields (raw_payload, provenance, etc.) — this is the outer perimeter.
+ */
+const MAX_REQUEST_BODY_BYTES = 256 * 1024;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exceedsBodyLimit(req: Request): boolean {
+  const declared = req.headers.get('content-length');
+  if (!declared) return false;
+  const parsed = Number.parseInt(declared, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return false;
+  return parsed > MAX_REQUEST_BODY_BYTES;
+}
+
+function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {
+  return {
+    contract_version: envelope.contract_version,
+    source_system: envelope.source_system,
+    source_repo: envelope.source_repo,
+    source_event_type: envelope.source_event_type,
+    source_signal_key: sourceSignalKey,
+    actor_meg_entity_id: envelope.actor_meg_entity_id,
+    related_entity_ids: envelope.related_entity_ids,
+    event_time: envelope.event_time,
+    summary: envelope.summary,
+    payload: envelope.raw_payload,
+    confidence: envelope.confidence,
+    privacy_level: envelope.privacy_level,
+    provenance: envelope.provenance,
+    routing_targets: envelope.routing_targets,
+    ingest_run_id: envelope.ingest_run_id ?? null,
+  };
+}
+
+async function maybeVerifyHmac(req: Request, body: string): Promise<Response | null> {
+  const sharedSecret = Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim();
+  if (!sharedSecret) return null;
+  if (!req.headers.get('x-r2-signature')) {
+    return errorResponse('Missing x-r2-signature header', 401);
+  }
+  const ok = await verifySignalHmac(sharedSecret, body, req.headers.get('x-r2-signature'));
+  if (!ok) {
+    return errorResponse('Invalid x-r2-signature', 401);
+  }
+  return null;
+}
+
+function toValidationMessage(input: unknown): string {
+  if (!isObject(input)) return 'Request body must be a JSON object';
+  return JSON.stringify(input);
+}
+
+Deno.serve(
+  withRequestMeta(async (req, meta) => {
+    const log = withLogger(meta, 'r2-signal-ingest');
+
+    if (req.method === 'OPTIONS') return corsResponse();
+    if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+    let authMode: 'service_role' | 'user_jwt';
+    let actorUserId: string | null = null;
+
+    const serviceRole = tryServiceRoleAuth(
+      extractBearerToken(req),
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      Boolean(Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim()),
+      extractSupabaseProjectRef(Deno.env.get('SUPABASE_URL')),
+    );
+    if (serviceRole?.mode === 'reject') return errorResponse(serviceRole.reason, 401);
+    if (serviceRole?.mode === 'service_role') {
+      authMode = 'service_role';
+    } else {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      authMode = 'user_jwt';
+      actorUserId = auth.claims.userId;
+    }
+
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
+    const idempotencyKey = req.headers.get('x-idempotency-key')?.trim();
+    if (!idempotencyKey) return errorResponse('Missing x-idempotency-key', 400);
+
+    if (exceedsBodyLimit(req)) {
+      return errorResponse('Request body exceeds maximum allowed size', 413);
+    }
+
+    let rawBody: string;
+    try {
+      rawBody = await req.text();
+    } catch {
+      return errorResponse('Failed to read request body', 400);
+    }
+    if (rawBody.length > MAX_REQUEST_BODY_BYTES) {
+      return errorResponse('Request body exceeds maximum allowed size', 413);
+    }
+
+    if (authMode === 'service_role') {
+      const hmacError = await maybeVerifyHmac(req, rawBody);
+      if (hmacError) return hmacError;
+    }
+
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch {
+      return errorResponse('Invalid JSON body', 400);
+    }
+
+    const parsedEnvelope = validateR2SignalEnvelope(parsedBody);
+    if (!parsedEnvelope.ok) {
+      return errorResponse(toValidationMessage({ error: parsedEnvelope.issues }), 400);
+    }
+    const envelope = parsedEnvelope.data;
+    if (envelope.contract_version !== SIGNAL_CONTRACT_VERSION) {
+      return errorResponse(`Unsupported contract version ${envelope.contract_version}`, 400);
+    }
+    const wave1Validation = validateWave1Metadata(envelope);
+    if (!wave1Validation.ok) {
+      log.warn('wave1 metadata validation failed', {
+        source_system: envelope.source_system,
+        source_event_type: envelope.source_event_type,
+        code: wave1Validation.code,
+        message: wave1Validation.message,
+      });
+      return jsonResponse(
+        {
+          error: wave1Validation.message,
+          code: wave1Validation.code,
+          source_system: envelope.source_system,
+        },
+        422,
+      );
+    }
+
+    const sourceSignalKey = buildSourceSignalKey(envelope.source_system, idempotencyKey);
+    // Service client is untyped in this edge entrypoint; generated DB types are not wired for Deno check.
+    const client =
+      getServiceClient() as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
+
+    const insertResult = await client
+      .from('platform_feed_items')
+      .insert(buildInsertRow(envelope, sourceSignalKey))
+      .select('id')
+      .single();
+
+    let signalId: string | null = null;
+    if (!insertResult.error && insertResult.data?.id) {
+      signalId = insertResult.data.id as string;
+    } else if (insertResult.error && (insertResult.error as { code?: string }).code === '23505') {
+      const existing = await client
+        .from('platform_feed_items')
+        .select('id')
+        .eq('source_signal_key', sourceSignalKey)
+        .maybeSingle();
+      if (existing.error || !existing.data?.id) {
+        return errorResponse(existing.error?.message ?? 'Failed to resolve idempotent replay', 500);
+      }
+      signalId = existing.data.id as string;
+    } else {
+      return errorResponse(insertResult.error?.message ?? 'Failed to insert signal', 500);
+    }
+
+    const enqueue = await client.rpc('enqueue_platform_feed_processing', { signal_id: signalId });
+    if (enqueue.error) {
+      return errorResponse(enqueue.error.message, 500);
+    }
+
+    log.info('signal ingested', {
+      auth_mode: authMode,
+      actor_user_id: actorUserId,
+      source_system: envelope.source_system,
+      source_event_type: envelope.source_event_type,
+      signal_id: signalId,
+    });
+
+    return jsonResponse({ signal_id: signalId }, 202);
+  }),
+);

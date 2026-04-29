@@ -25,7 +25,7 @@ describe('match_knowledge_chunks meg_entity scope migration', () => {
 describe('MEG meg_entity_type ip migration', () => {
   it('adds ip enum value', () => {
     const sql = readFileSync(
-      join(repoRoot, 'supabase/migrations/202604290001_meg_entity_type_ip.sql'),
+      join(repoRoot, 'supabase/migrations/202604290003_meg_entity_type_ip.sql'),
       'utf8',
     );
     expect(sql).toContain("ADD VALUE IF NOT EXISTS 'ip'");

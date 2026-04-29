@@ -73,7 +73,9 @@ function updateAssistantMessage(
   assistantId: string,
   updater: (message: ChatMessageAssistant) => ChatMessageAssistant,
 ): ChatMessage[] {
-  const index = messages.findIndex((message) => message.id === assistantId && message.role === 'assistant');
+  const index = messages.findIndex(
+    (message) => message.id === assistantId && message.role === 'assistant',
+  );
   if (index < 0) return messages;
   const next = [...messages];
   next[index] = updater(next[index] as ChatMessageAssistant);
@@ -100,6 +102,25 @@ export function App() {
   const [sourceInventory, setSourceInventory] = useState<SourceInventoryResponse | null>(null);
   const [sourceInventoryError, setSourceInventoryError] = useState<string | null>(null);
 
+  // Theme management — initial theme is applied by the inline script in index.html
+  // (before first paint). This effect only wires the media-query listener needed
+  // when theme is 'system', so OS changes are reflected without a page reload.
+  useEffect(() => {
+    const stored = localStorage.getItem('r2-theme') ?? 'dark';
+    if (stored !== 'system') return;
+
+    const applySystem = (isDark: boolean) => {
+      const html = document.documentElement;
+      html.classList.toggle('dark', isDark);
+      html.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    };
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => applySystem(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const streamControllerRef = useRef<AbortController | null>(null);
   const streamRequestVersionRef = useRef(0);
@@ -113,9 +134,12 @@ export function App() {
     setIsStreamingChat(false);
   }, []);
 
-  useEffect(() => () => {
-    cancelActiveStream();
-  }, [cancelActiveStream]);
+  useEffect(
+    () => () => {
+      cancelActiveStream();
+    },
+    [cancelActiveStream],
+  );
 
   const chatMutation = useMutation({
     mutationFn: async (input: {
@@ -161,14 +185,22 @@ export function App() {
   });
 
   const ingestMutation = useMutation({
-    mutationFn: async (input: { title: string; sourceRef: string; file: File; tier: IngestCorpusTier }) => {
+    mutationFn: async (input: {
+      title: string;
+      sourceRef: string;
+      file: File;
+      tier: IngestCorpusTier;
+    }) => {
       const form = new FormData();
       form.set('source_system', 'manual-upload');
       form.set('source_ref', input.sourceRef);
       form.set('title', input.title);
       form.set('file', input.file, input.file.name);
       form.set('content_type', input.file.type || 'application/octet-stream');
-      form.set('policy_tags', JSON.stringify(input.tier === 'public' ? ['eigen_public'] : ['eigenx']));
+      form.set(
+        'policy_tags',
+        JSON.stringify(input.tier === 'public' ? ['eigen_public'] : ['eigenx']),
+      );
       const response = await fetch(`${apiBaseUrl}/eigen-ingest`, {
         method: 'POST',
         headers: {
@@ -209,14 +241,17 @@ export function App() {
     if (!file) return;
     setIngestLocalError(null);
     if (file.size > MAX_UPLOAD_BYTES) {
-      setIngestLocalError(`File is too large (max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB).`);
+      setIngestLocalError(
+        `File is too large (max ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB).`,
+      );
       return;
     }
     if (file.size === 0) {
       setIngestLocalError('File is empty.');
       return;
     }
-    const defaultTitle = ingestTitle.trim() || file.name.replace(/\.[^/.]+$/, '') || 'Uploaded document';
+    const defaultTitle =
+      ingestTitle.trim() || file.name.replace(/\.[^/.]+$/, '') || 'Uploaded document';
     const sourceRef =
       ingestSourceRef.trim() || `file:${file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')}:${Date.now()}`;
     ingestMutation.mutate({ title: defaultTitle, sourceRef, file, tier: ingestTier });
@@ -332,7 +367,9 @@ export function App() {
             llm_model: result.llm_model,
             llm_fallback_used: result.llm_fallback_used,
           });
-          setMessages((prev) => updateAssistantMessage(prev, assistantId, finalizeAssistantMessage));
+          setMessages((prev) =>
+            updateAssistantMessage(prev, assistantId, finalizeAssistantMessage),
+          );
         } catch (err) {
           if (streamRequestVersionRef.current !== requestVersion) return;
           if (err instanceof Error && err.name === 'AbortError') return;

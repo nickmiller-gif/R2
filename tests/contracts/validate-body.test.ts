@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { isUuidString, validateBody } from '../../supabase/functions/_shared/validate.ts';
+import {
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  isUuidString,
+  requireIdempotencyKey,
+  validateBody,
+} from '../../supabase/functions/_shared/validate.ts';
 
 /**
  * Guards the edge-function `validateBody` helper against a typeof-based
@@ -79,5 +84,39 @@ describe('isUuidString', () => {
     expect(isUuidString('')).toBe(false);
     expect(isUuidString('not-a-uuid')).toBe(false);
     expect(isUuidString('00000000-0000-0000-0000-000000000000,inject')).toBe(false);
+  });
+});
+
+describe('requireIdempotencyKey', () => {
+  function reqWithKey(value: string | undefined): Request {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (value !== undefined) headers['x-idempotency-key'] = value;
+    return new Request('https://example.invalid/', { method: 'POST', headers });
+  }
+
+  it('returns null for a normal idempotency key', () => {
+    expect(requireIdempotencyKey(reqWithKey('abc-123'))).toBeNull();
+  });
+
+  it('rejects a missing idempotency key', () => {
+    const result = requireIdempotencyKey(reqWithKey(undefined));
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(400);
+  });
+
+  it('rejects an idempotency key above the length cap', async () => {
+    const oversized = 'a'.repeat(IDEMPOTENCY_KEY_MAX_LENGTH + 1);
+    const result = requireIdempotencyKey(reqWithKey(oversized));
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(400);
+    if (result) {
+      const body = (await result.json()) as { error: string };
+      expect(body.error).toMatch(/<= 256 characters/);
+    }
+  });
+
+  it('accepts an idempotency key exactly at the length cap', () => {
+    const atCap = 'a'.repeat(IDEMPOTENCY_KEY_MAX_LENGTH);
+    expect(requireIdempotencyKey(reqWithKey(atCap))).toBeNull();
   });
 });

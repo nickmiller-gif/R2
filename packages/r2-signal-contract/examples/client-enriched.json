@@ -1,0 +1,22 @@
+{
+  "contract_version": "1.0.0",
+  "source_system": "centralr2",
+  "source_repo": "nickmiller-gif/centralr2-core",
+  "source_event_type": "client_enriched",
+  "actor_meg_entity_id": null,
+  "related_entity_ids": [],
+  "event_time": "2026-04-26T09:00:00Z",
+  "summary": "Client profile enriched with updated market and relationship context.",
+  "raw_payload": {
+    "client_id": "a4f5d6b7-c8d9-4c11-8f4a-9c20fcb2a6db",
+    "pipeline": "client-full-pipeline",
+    "enrichment_sources": ["news", "registry", "internal_graph"]
+  },
+  "confidence": 0.81,
+  "privacy_level": "operator",
+  "provenance": {
+    "table": "ci_clients",
+    "row_id": "a4f5d6b7-c8d9-4c11-8f4a-9c20fcb2a6db"
+  },
+  "routing_targets": ["oracle", "eigen", "meg"]
+}

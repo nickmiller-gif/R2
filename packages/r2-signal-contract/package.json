@@ -1,0 +1,11 @@
+{
+  "name": "@r2/signal-contract",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical R2 signal contract types and runtime validation.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas/r2-signal-envelope-v1.json": "./schemas/r2-signal-envelope-v1.json"
+  }
+}

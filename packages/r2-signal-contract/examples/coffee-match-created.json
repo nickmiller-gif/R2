@@ -1,0 +1,24 @@
+{
+  "contract_version": "1.0.0",
+  "source_system": "rays_retreat",
+  "source_repo": "nickmiller-gif/r2app",
+  "source_event_type": "coffee_match_created",
+  "actor_meg_entity_id": null,
+  "related_entity_ids": [],
+  "event_time": "2026-04-26T09:05:00Z",
+  "summary": "Coffee match created for two retreat attendees with shared topic affinity.",
+  "raw_payload": {
+    "coffee_match_id": "cf0f0420-1608-4ab3-a912-26d8a8590f56",
+    "attendee_a_external_id": "attendee_101",
+    "attendee_b_external_id": "attendee_184",
+    "compatibility_score": 0.87,
+    "conversation_topics": ["telecom policy", "capital formation"]
+  },
+  "confidence": 0.87,
+  "privacy_level": "members",
+  "provenance": {
+    "table": "coffee_matches",
+    "row_id": "cf0f0420-1608-4ab3-a912-26d8a8590f56"
+  },
+  "routing_targets": ["oracle", "eigen", "meg", "operator_workbench"]
+}

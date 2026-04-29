@@ -26,6 +26,98 @@ export {
 const DEFAULT_DECISION_LIST_LIMIT = 100;
 const MAX_DECISION_LIST_LIMIT = 1000;
 
+// Field-level upper bounds on evaluate() inputs. Mirrored by DB CHECK
+// constraints on eigen_policy_decisions so any drift fails closed at the
+// storage layer. Generous enough that no real caller hits them; tight
+// enough that a misbehaving caller cannot weaponise the audit table.
+export const EIGEN_DECISION_BOUNDS = {
+  callerSubjectMaxLength: 256,
+  correlationIdMaxLength: 128,
+  policyTagsMax: 32,
+  policyTagMaxLength: 128,
+  capabilityTagsMax: 64,
+  capabilityTagMaxLength: 128,
+  callerRolesMax: 16,
+  callerRoleMaxLength: 64,
+  metadataMaxJsonBytes: 4 * 1024,
+} as const;
+
+function jsonByteLength(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value) ?? '').length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function assertStringArrayBounds(
+  field: string,
+  values: readonly string[],
+  maxCardinality: number,
+  maxElementLength: number,
+): void {
+  if (values.length > maxCardinality) {
+    throw new Error(
+      `evaluate(): ${field} cardinality ${values.length} exceeds max ${maxCardinality}`,
+    );
+  }
+  for (const v of values) {
+    if (typeof v !== 'string') {
+      throw new Error(`evaluate(): ${field} entries must be strings`);
+    }
+    if (v.length > maxElementLength) {
+      throw new Error(
+        `evaluate(): ${field} entry length ${v.length} exceeds max ${maxElementLength}`,
+      );
+    }
+  }
+}
+
+function assertEvaluateInputBounds(input: EvaluateEigenPolicyInput): void {
+  assertStringArrayBounds(
+    'policyTags',
+    input.policyTags,
+    EIGEN_DECISION_BOUNDS.policyTagsMax,
+    EIGEN_DECISION_BOUNDS.policyTagMaxLength,
+  );
+  assertStringArrayBounds(
+    'capabilityTags',
+    input.capabilityTags,
+    EIGEN_DECISION_BOUNDS.capabilityTagsMax,
+    EIGEN_DECISION_BOUNDS.capabilityTagMaxLength,
+  );
+  assertStringArrayBounds(
+    'callerRoles',
+    input.callerRoles,
+    EIGEN_DECISION_BOUNDS.callerRolesMax,
+    EIGEN_DECISION_BOUNDS.callerRoleMaxLength,
+  );
+  if (
+    input.callerSubject !== undefined &&
+    input.callerSubject.length > EIGEN_DECISION_BOUNDS.callerSubjectMaxLength
+  ) {
+    throw new Error(
+      `evaluate(): callerSubject length ${input.callerSubject.length} exceeds max ${EIGEN_DECISION_BOUNDS.callerSubjectMaxLength}`,
+    );
+  }
+  if (
+    input.correlationId !== undefined &&
+    input.correlationId.length > EIGEN_DECISION_BOUNDS.correlationIdMaxLength
+  ) {
+    throw new Error(
+      `evaluate(): correlationId length ${input.correlationId.length} exceeds max ${EIGEN_DECISION_BOUNDS.correlationIdMaxLength}`,
+    );
+  }
+  if (input.metadata !== undefined) {
+    const bytes = jsonByteLength(input.metadata);
+    if (bytes > EIGEN_DECISION_BOUNDS.metadataMaxJsonBytes) {
+      throw new Error(
+        `evaluate(): metadata JSON byte length ${bytes} exceeds max ${EIGEN_DECISION_BOUNDS.metadataMaxJsonBytes}`,
+      );
+    }
+  }
+}
+
 export interface DbEigenPolicyRuleRow {
   id: string;
   policy_tag: string;
@@ -167,6 +259,7 @@ export function createEigenPolicyEngineService(
     },
 
     async evaluate(input) {
+      assertEvaluateInputBounds(input);
       const startedAt = Date.now();
       const rules = await this.listRules();
       const result = evaluateEigenPolicyRules(rules, input);

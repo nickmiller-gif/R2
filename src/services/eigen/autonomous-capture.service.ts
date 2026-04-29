@@ -142,7 +142,7 @@ export function createAutonomousCaptureService(db: AutonomousCaptureDb): Autonom
               session_label: input.sessionLabel ?? existing.session_label,
               oracle_run_id: input.oracleRunId ?? existing.oracle_run_id,
               charter_decision_id: input.charterDecisionId ?? existing.charter_decision_id,
-              metadata: input.metadata ?? existing.metadata ?? {},
+              metadata: input.metadata ?? existing.metadata,
               updated_at: now,
             }
           : inputToRow(crypto.randomUUID(), input, now),
@@ -177,9 +177,7 @@ export function createAutonomousCaptureService(db: AutonomousCaptureDb): Autonom
       if (input.ingestedDocumentId !== undefined)
         patch.ingested_document_id = input.ingestedDocumentId;
       if (input.ingestedAt !== undefined)
-        patch.ingested_at = input.ingestedAt
-          ? new Date(input.ingestedAt).toISOString()
-          : null;
+        patch.ingested_at = input.ingestedAt ? new Date(input.ingestedAt).toISOString() : null;
       if (input.metadata !== undefined) patch.metadata = input.metadata;
       const row = await db.updateCapture(id, patch);
       return rowToCapture(row);

@@ -21,9 +21,11 @@ export {
 
 export {
   createEigenPolicyEngineService,
+  type CreateEigenPolicyEngineServiceOptions,
   type EigenPolicyEngineService,
   type EigenPolicyEngineDb,
   type DbEigenPolicyRuleRow,
+  type DbEigenPolicyDecisionRow,
 } from './policy-engine.service.js';
 
 export {

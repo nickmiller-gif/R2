@@ -128,8 +128,38 @@ describe('Eigen ingest client', () => {
     expect((form.get('file') as File).name).toBe('note.txt');
   });
 
+  it('includes meg_entity_id in multipart form when set', async () => {
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedInit = init;
+      return new Response(
+        JSON.stringify({
+          document_id: 'd',
+          ingestion_run_id: 'i',
+          chunks_created: 1,
+          embedding_dimensions: 1536,
+          oracle_outbox_event_id: null,
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    const client = createEigenIngestClient({ endpoint, getAccessToken: async () => 't' });
+    await client.ingestMultipart({
+      source_system: 's',
+      source_ref: 'r',
+      file: new File(['x'], 'f.txt'),
+      meg_entity_id: '00000000-0000-4000-8000-000000000099',
+    });
+    const form = capturedInit?.body as FormData;
+    expect(form.get('meg_entity_id')).toBe('00000000-0000-4000-8000-000000000099');
+  });
+
   it('throws when multipart ingest fails', async () => {
-    const fetchMock = vi.fn(async () => new Response('bad multipart', { status: 502 })) as typeof fetch;
+    const fetchMock = vi.fn(
+      async () => new Response('bad multipart', { status: 502 }),
+    ) as typeof fetch;
     globalThis.fetch = fetchMock;
 
     const client = createEigenIngestClient({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateBody } from '../../supabase/functions/_shared/validate.ts';
+import { isUuidString, validateBody } from '../../supabase/functions/_shared/validate.ts';
 
 /**
  * Guards the edge-function `validateBody` helper against a typeof-based
@@ -67,5 +67,17 @@ describe('validateBody', () => {
       { name: 'metadata', type: 'object', required: false },
     ]);
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('isUuidString', () => {
+  it('accepts canonical UUIDs', () => {
+    expect(isUuidString('00000000-0000-4000-8000-000000000001')).toBe(true);
+    expect(isUuidString(' 6ba7b810-9dad-11d1-80b4-00c04fd430c8 ')).toBe(true);
+  });
+  it('rejects non-UUIDs', () => {
+    expect(isUuidString('')).toBe(false);
+    expect(isUuidString('not-a-uuid')).toBe(false);
+    expect(isUuidString('00000000-0000-0000-0000-000000000000,inject')).toBe(false);
   });
 });

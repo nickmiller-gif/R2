@@ -26,14 +26,11 @@ This plan defines the incremental import path from the old source repository int
 | Supabase migration drift CI check                                                                            | ✅ complete | `scripts/check-supabase-migration-drift.sh` + `REQUIRE_SUPABASE_REMOTE_CHECKS=true` in ci.yml                                                                      |
 | Type generation check in CI                                                                                  | ✅ complete | `scripts/check-supabase-generated-types.sh` — compares `database.types.ts` to live schema                                                                          |
 | Eigen ecosystem ingest rollout (6 producers)                                                                 | ✅ complete | All 6 apps live: ip-insights-hub, centralr2-core, hpseller, project-darling, r2app, health-supplement-tr. 22 docs, 111 chunks, 1536-dim embeddings. PR #85 merged. |
+| EigenX/KOS operator surfaces and enforcement                                                                 | ✅ complete | policy rule versioning + history, capability-bundle enforcement in retrieve/chat/ingest paths, operator read models, and contract matrix tests all shipped.        |
 
-## Next Slices (not yet started)
+## Next Slices
 
-- EigenX/KOS operator surfaces and enforcement completion:
-  - policy rule versioning + change audit trail
-  - capability-tag enforcement in retrieve/chat paths
-  - operator-facing policy/capability read models
-  - contract tests for policy decision outcomes across `eigenx`/`eigen_public` scopes
+- No active import slices. Current follow-ups are operational cleanup only: close stale tracking issues, keep Supabase advisor noise bounded, and prune truly-unused indexes only after production traffic confirms they are dead.
 
 ## Recently landed (still iterate in follow-ups)
 

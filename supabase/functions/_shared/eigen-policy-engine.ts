@@ -48,7 +48,20 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
   };
 }
 
+const POLICY_RULES_CACHE_TTL_MS = 60_000;
+let policyRulesCache: { rules: EigenPolicyRule[]; loadedAt: number } | null = null;
+
+/** Clears the in-process policy rule cache (Vitest stubs swap rule rows per case). */
+export function clearEigenPolicyRulesCache(): void {
+  policyRulesCache = null;
+}
+
 async function loadPolicyRules(client: SupabaseClient): Promise<EigenPolicyRule[]> {
+  const now = Date.now();
+  if (policyRulesCache && now - policyRulesCache.loadedAt < POLICY_RULES_CACHE_TTL_MS) {
+    return policyRulesCache.rules;
+  }
+
   const query = await client
     .from('eigen_policy_rules')
     .select(
@@ -56,7 +69,9 @@ async function loadPolicyRules(client: SupabaseClient): Promise<EigenPolicyRule[
     );
   if (query.error) throw new Error(query.error.message);
   const rows = (query.data ?? []) as DbEigenPolicyRuleRow[];
-  return rows.map(rowToRule);
+  const rules = rows.map(rowToRule);
+  policyRulesCache = { rules, loadedAt: now };
+  return rules;
 }
 
 export async function resolveEigenCapabilityAccess(

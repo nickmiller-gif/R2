@@ -20,9 +20,10 @@
  * fixture, which surfaces the intent in review.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { enforceEigenKosCapabilityBundle } from '../../supabase/functions/_shared/eigen-kos-enforcement.ts';
+import { clearEigenPolicyRulesCache } from '../../supabase/functions/_shared/eigen-policy-engine.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 interface SeedRule {
@@ -335,6 +336,10 @@ const MATRIX: MatrixCase[] = [
 ];
 
 describe('Eigen KOS policy engine — contract matrix (seed state 2026-04-24)', () => {
+  beforeEach(() => {
+    clearEigenPolicyRulesCache();
+  });
+
   for (const tc of MATRIX) {
     const roleLabel = tc.role || 'anon';
     const policyLabel = tc.policyTags.join(',');

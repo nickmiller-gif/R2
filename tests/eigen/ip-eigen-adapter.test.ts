@@ -21,6 +21,18 @@ describe('IP Insights Hub Eigen adapter', () => {
     expect(payload.chunking_mode).toBe('hierarchical');
     expect(payload.policy_tags).toEqual(['ip-confidential', 'ip-analysis', 'ip-landscape']);
     expect(payload.entity_ids).toEqual(['entity-1']);
+    expect(payload.meg_entity_id).toBe('entity-1');
+  });
+
+  it('uses explicit meg_entity_id when provided', () => {
+    const payload = mapIpEventToEigenDocument({
+      analysis_run_id: 'run-9',
+      analysis_title: 'T',
+      full_analysis_text: 'B',
+      entity_ids: ['a', 'b'],
+      meg_entity_id: '00000000-0000-4000-8000-000000000001',
+    });
+    expect(payload.meg_entity_id).toBe('00000000-0000-4000-8000-000000000001');
   });
 
   it('appends default policy tags in adapter config', async () => {

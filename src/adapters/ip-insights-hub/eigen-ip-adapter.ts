@@ -9,6 +9,8 @@ export interface IpAnalysisCompletedEvent {
   analysis_title: string;
   full_analysis_text: string;
   entity_ids?: string[];
+  /** Canonical MEG subject; if omitted and entity_ids has exactly one id, that id is used. */
+  meg_entity_id?: string;
   generated_at?: string;
 }
 
@@ -17,6 +19,9 @@ export interface IpAdapterConfig extends EigenIngestClientConfig {
 }
 
 export function mapIpEventToEigenDocument(event: IpAnalysisCompletedEvent): EigenIngestRequest {
+  const entityIds = event.entity_ids ?? [];
+  const megEntityId =
+    event.meg_entity_id?.trim() || (entityIds.length === 1 ? entityIds[0]!.trim() : undefined);
   return {
     source_system: 'ip-insights-hub',
     source_ref: event.analysis_run_id,
@@ -32,7 +37,8 @@ export function mapIpEventToEigenDocument(event: IpAnalysisCompletedEvent): Eige
     },
     chunking_mode: 'hierarchical',
     policy_tags: ['ip-confidential', 'ip-analysis', 'ip-landscape'],
-    entity_ids: event.entity_ids ?? [],
+    entity_ids: entityIds,
+    ...(megEntityId ? { meg_entity_id: megEntityId } : {}),
   };
 }
 
@@ -43,7 +49,9 @@ export function createIpInsightsHubEigenAdapter(config: IpAdapterConfig) {
     async onAnalysisCompleted(event: IpAnalysisCompletedEvent) {
       const payload = mapIpEventToEigenDocument(event);
       if (config.defaultPolicyTags && config.defaultPolicyTags.length > 0) {
-        payload.policy_tags = Array.from(new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]));
+        payload.policy_tags = Array.from(
+          new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]),
+        );
       }
       return ingestClient.ingest(payload);
     },

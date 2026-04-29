@@ -4,7 +4,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import type { CharterRole } from '../_shared/roles.ts';
-import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { isUuidString, requireIdempotencyKey } from '../_shared/validate.ts';
 import { extractRequestMeta, withRequestMeta } from '../_shared/correlation.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { extractDocumentText } from '../_shared/extract-document.ts';
@@ -48,6 +48,7 @@ interface IngestRequestBody {
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  meg_entity_id?: string;
   embedding_model?: string;
 }
 
@@ -101,6 +102,28 @@ async function ensureEigenDocumentAsset(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseOptionalMegEntityId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const t = value.trim();
+  if (!isUuidString(t)) return undefined;
+  return t.toLowerCase();
+}
+
+async function assertActiveMegEntity(
+  client: SupabaseClient,
+  megEntityId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { data, error } = await client
+    .from('meg_entities')
+    .select('id')
+    .eq('id', megEntityId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (error) return { ok: false, message: error.message };
+  if (!data) return { ok: false, message: 'meg_entity_id must reference an active MEG entity' };
+  return { ok: true };
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -224,6 +247,7 @@ async function parseMultipartRequest(req: Request): Promise<{
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  meg_entity_id?: string;
   embedding_model?: string;
 }> {
   const form = await req.formData();
@@ -285,6 +309,7 @@ async function parseMultipartRequest(req: Request): Promise<{
     chunking_mode: toChunkingMode(form.get('chunking_mode')),
     policy_tags: normalizeStringList(form.get('policy_tags')),
     entity_ids: normalizeStringList(form.get('entity_ids')),
+    meg_entity_id: parseOptionalMegEntityId(form.get('meg_entity_id')),
     embedding_model: cleanString(form.get('embedding_model')),
   };
 }
@@ -327,6 +352,7 @@ async function parseJsonRequest(
     chunking_mode: toChunkingMode(body.chunking_mode),
     policy_tags: normalizeStringList(body.policy_tags),
     entity_ids: normalizeStringList(body.entity_ids),
+    meg_entity_id: parseOptionalMegEntityId(body.meg_entity_id),
     embedding_model: cleanString(body.embedding_model),
   };
 }
@@ -378,6 +404,10 @@ Deno.serve(
           400,
         );
       }
+      if (requestBody.meg_entity_id) {
+        const megOk = await assertActiveMegEntity(client, requestBody.meg_entity_id);
+        if (!megOk.ok) return errorResponse(megOk.message, 400);
+      }
       const sourceSystemLower = requestBody.source_system.toLowerCase();
       const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
       if (
@@ -428,7 +458,12 @@ Deno.serve(
           ? requestBody.embedding_model.trim()
           : 'text-embedding-3-small';
 
-      const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
+      const entityKey = [
+        ...requestBody.entity_ids,
+        ...(requestBody.meg_entity_id ? [requestBody.meg_entity_id] : []),
+      ]
+        .sort()
+        .join('\u0002');
       const policyKey = [...policyTags].sort().join('\u0002');
       const documentHash = await sha256Hex(
         `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
@@ -638,6 +673,7 @@ Deno.serve(
           chunk_level: chunk.chunkLevel,
           heading_path: chunk.headingPath,
           entity_ids: requestBody.entity_ids ?? [],
+          meg_entity_id: requestBody.meg_entity_id ?? null,
           policy_tags: policyTags,
           authority_score:
             sourceSystemLower.includes('upload') || sourceSystemLower.includes('manual')
@@ -693,6 +729,7 @@ Deno.serve(
                   confidence_band: null,
                   reason_traces: chunks.slice(0, 8).map((chunk) => chunk.headingPath.join(' > ')),
                   entity_ids: requestBody.entity_ids ?? [],
+                  meg_entity_id: requestBody.meg_entity_id ?? null,
                   tags: policyTags,
                   analysis_document_id: null,
                 },

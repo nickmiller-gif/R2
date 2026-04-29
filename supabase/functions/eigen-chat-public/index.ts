@@ -3,6 +3,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-retrieve-core.ts';
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { enforceEigenPublicRateLimit } from '../_shared/public-rate-limit.ts';
+import { logAnonGateReject } from '../_shared/anon-gate-log.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
   withEigenChatProseStyle,
@@ -211,7 +212,7 @@ async function synthesizePublicResponse(
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -219,6 +220,13 @@ Deno.serve(
       const client = getServiceClient();
       const rate = await enforceEigenPublicRateLimit(client, req);
       if (!rate.ok) {
+        logAnonGateReject({
+          gate: 'rate_limit',
+          functionName: 'eigen-chat-public',
+          correlationId: meta.correlationId,
+          status: 429,
+          detail: `limit=${rate.limit}`,
+        });
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded', retry_after_sec: rate.retryAfterSec }),
           {

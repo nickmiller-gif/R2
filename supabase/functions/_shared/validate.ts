@@ -116,6 +116,18 @@ export async function validateBody<T>(
 }
 
 // ---------------------------------------------------------------------------
+// UUID (hex + hyphens) — safe for PostgREST `.or()` filter interpolation
+// ---------------------------------------------------------------------------
+
+const UUID_HEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when `value` is a non-empty RFC-style UUID string (any hex case). */
+export function isUuidString(value: string): boolean {
+  const t = value.trim();
+  return t.length > 0 && UUID_HEX.test(t);
+}
+
+// ---------------------------------------------------------------------------
 // Idempotency key enforcement
 // ---------------------------------------------------------------------------
 

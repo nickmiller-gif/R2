@@ -15,6 +15,8 @@ export interface EigenIngestRequest {
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  /** Optional MEG canonical subject for all chunks in this document ingest. */
+  meg_entity_id?: string;
   embedding_model?: string;
 }
 
@@ -42,6 +44,7 @@ export interface EigenMultipartIngestInput {
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  meg_entity_id?: string;
   embedding_model?: string;
 }
 
@@ -86,8 +89,10 @@ export function createEigenIngestClient(config: EigenIngestClientConfig) {
       if (input.entity_ids && input.entity_ids.length > 0) {
         form.set('entity_ids', JSON.stringify(input.entity_ids));
       }
+      if (input.meg_entity_id) form.set('meg_entity_id', input.meg_entity_id);
 
-      const fileName = input.file_name ?? (input.file instanceof File ? input.file.name : 'upload.bin');
+      const fileName =
+        input.file_name ?? (input.file instanceof File ? input.file.name : 'upload.bin');
       form.set('file', input.file, fileName);
 
       const response = await fetch(config.endpoint, {

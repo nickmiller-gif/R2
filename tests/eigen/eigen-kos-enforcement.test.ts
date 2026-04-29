@@ -11,12 +11,13 @@
  *   4. Empty required tag bundle → short-circuits to allow (helper is a no-op).
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildEigenKosCapabilityDenialBody,
   enforceEigenKosCapabilityBundle,
 } from '../../supabase/functions/_shared/eigen-kos-enforcement.ts';
+import { clearEigenPolicyRulesCache } from '../../supabase/functions/_shared/eigen-policy-engine.ts';
 
 interface FakeRuleRow {
   id: string;
@@ -66,6 +67,10 @@ function makeFakeClient(rules: FakeRuleRow[]): SupabaseClient {
 }
 
 describe('enforceEigenKosCapabilityBundle', () => {
+  beforeEach(() => {
+    clearEigenPolicyRulesCache();
+  });
+
   it('short-circuits to allow when no rules are configured (rollout backstop)', async () => {
     const client = makeFakeClient([]);
     const result = await enforceEigenKosCapabilityBundle(client, {

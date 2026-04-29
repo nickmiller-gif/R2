@@ -10,6 +10,7 @@ import { createWidgetSessionToken, type WidgetMode } from '../_shared/widget-ses
 import { POLICY_TAG_EIGEN_PUBLIC } from '../_shared/eigen-policy.ts';
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logAnonGateReject } from '../_shared/anon-gate-log.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface WidgetSessionRequest {
@@ -100,27 +101,67 @@ async function loadRegistryConfig(siteId: string): Promise<RegistryConfig | null
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     const rawOrigin = req.headers.get('origin');
     if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
     if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
 
     try {
       const body = parseRequest(await req.json());
-      if (!rawOrigin) return reflectedErrorResponse(rawOrigin, 'Missing Origin header', 400);
+      if (!rawOrigin) {
+        logAnonGateReject({
+          gate: 'origin',
+          functionName: 'eigen-widget-session',
+          correlationId: meta.correlationId,
+          site_id: body.site_id,
+          origin: rawOrigin,
+          status: 400,
+          detail: 'missing_origin',
+        });
+        return reflectedErrorResponse(rawOrigin, 'Missing Origin header', 400);
+      }
       const origin = normalizeOrigin(rawOrigin);
 
       const config = await loadRegistryConfig(body.site_id);
       if (!config)
         return reflectedErrorResponse(rawOrigin, `Unknown site_id: ${body.site_id}`, 404);
-      if (config.status !== 'active')
+      if (config.status !== 'active') {
+        logAnonGateReject({
+          gate: 'origin',
+          functionName: 'eigen-widget-session',
+          correlationId: meta.correlationId,
+          site_id: body.site_id,
+          origin,
+          status: 403,
+          detail: 'site_inactive',
+        });
         return reflectedErrorResponse(rawOrigin, 'Site is not active', 403);
-      if (!config.origins.includes(origin))
+      }
+      if (!config.origins.includes(origin)) {
+        logAnonGateReject({
+          gate: 'origin',
+          functionName: 'eigen-widget-session',
+          correlationId: meta.correlationId,
+          site_id: body.site_id,
+          origin,
+          status: 403,
+          detail: 'origin_not_allowlisted',
+        });
         return reflectedErrorResponse(rawOrigin, 'Origin not allowed for site', 403);
+      }
 
       const requestedMode: WidgetMode = body.mode ?? 'public';
       if (requestedMode === 'eigenx') {
         if (config.mode === 'public') {
+          logAnonGateReject({
+            gate: 'origin',
+            functionName: 'eigen-widget-session',
+            correlationId: meta.correlationId,
+            site_id: body.site_id,
+            origin,
+            status: 403,
+            detail: 'public_only_site_eigenx_requested',
+          });
           return reflectedErrorResponse(rawOrigin, 'Site is configured for public mode only', 403);
         }
         const auth = await guardAuth(req);

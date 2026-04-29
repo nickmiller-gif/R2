@@ -66,9 +66,11 @@ There are **45** deployed function entrypoints under `supabase/functions/` (each
 
 ## Next priorities
 
-1. Eigen policy engine + capability registry completion (EigenX/KOS operator surfaces and contract tests)
-2. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
-3. Expand observability baseline (correlation-id propagation and structured logging across all edge functions)
+1. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+2. Expand observability baseline (correlation-id propagation and structured logging across remaining edge functions)
+3. EigenX retrieval depth (query decomposition, optional rerank stage) — see [`docs/eigenx-retrieval-roadmap.md`](./docs/eigenx-retrieval-roadmap.md)
+
+EigenX/KOS operator surfaces, capability bundles, and contract tests are shipped; see [`plan.md`](./plan.md) and [`docs/ADR-003-anonymous-kos-surface-policy.md`](./docs/ADR-003-anonymous-kos-surface-policy.md) for boundaries.
 
 ## Supabase Client Factory Pattern
 

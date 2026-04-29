@@ -75,7 +75,7 @@ All three would break on Option B. The product requirement is unambiguous: anony
 ## Follow-ups (out of scope for this ADR)
 
 1. **Consolidation helper** — factor the rate-limit + origin-allowlist + widget-HMAC sequence in `eigen-chat-public` and `eigen-widget-chat` public-mode into one shared `enforceAnonymousSurfaceGates(...)` helper so adding a new anonymous surface can't accidentally skip a gate.
-2. **Audit counter** — emit a structured log entry whenever an anonymous gate rejects a request (`anon_gate_reject` with `gate: 'rate_limit' | 'origin' | 'widget_token_expired' | 'widget_token_invalid'`) so operators can see denial rates in the same telemetry view as KOS bundle denials.
+2. ~~**Audit counter**~~ — **Done:** `logAnonGateReject` in [`supabase/functions/_shared/anon-gate-log.ts`](../supabase/functions/_shared/anon-gate-log.ts) emits structured `anon_gate_reject` logs from `eigen-chat-public` (rate limit), `eigen-widget-session` (origin / inactive site / mode mismatch), and `eigen-widget-chat` (widget token + origin mismatch).
 3. **Revisit if a genuinely role-unrestricted-but-authenticated rule appears** — Option A's semantic confusion is only a hazard if we conflate "no role needed" with "anon allowed". If a future use case needs the former, that's the trigger to introduce an explicit `anon` pseudo-role in `charter_role` rather than reusing `null`.
 
 ## References

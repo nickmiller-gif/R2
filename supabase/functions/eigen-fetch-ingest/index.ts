@@ -18,6 +18,7 @@ interface FetchIngestRequest {
   title?: string;
   policy_tags?: string[];
   entity_ids?: string[];
+  meg_entity_id?: string;
   chunking_mode?: 'hierarchical' | 'flat';
   embedding_model?: string;
 }
@@ -98,6 +99,10 @@ function parseRequest(value: unknown): FetchIngestRequest {
     title: typeof body.title === 'string' ? body.title.trim() : undefined,
     policy_tags: toList(body.policy_tags),
     entity_ids: toList(body.entity_ids),
+    meg_entity_id:
+      typeof body.meg_entity_id === 'string' && body.meg_entity_id.trim().length > 0
+        ? body.meg_entity_id.trim()
+        : undefined,
     chunking_mode: body.chunking_mode === 'flat' ? 'flat' : 'hierarchical',
     embedding_model:
       typeof body.embedding_model === 'string' ? body.embedding_model.trim() : undefined,
@@ -204,6 +209,9 @@ Deno.serve(
         chunking_mode: body.chunking_mode ?? 'hierarchical',
         policy_tags: [POLICY_TAG_EIGEN_PUBLIC],
         entity_ids: body.entity_ids ?? [],
+        ...(body.meg_entity_id && body.meg_entity_id.length > 0
+          ? { meg_entity_id: body.meg_entity_id }
+          : {}),
         embedding_model: body.embedding_model,
       };
 

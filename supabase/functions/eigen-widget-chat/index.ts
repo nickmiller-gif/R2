@@ -24,6 +24,7 @@ import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logAnonGateReject } from '../_shared/anon-gate-log.ts';
 import {
   buildEigenKosCapabilityDenialBody,
   enforceEigenKosCapabilityBundle,
@@ -211,17 +212,40 @@ async function synthesize(
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     const rawOrigin = req.headers.get('origin');
     if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
     if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
 
     try {
       const body = parseRequest(await req.json());
-      const claims = await verifyWidgetSessionToken(body.widget_token);
+      let claims: Awaited<ReturnType<typeof verifyWidgetSessionToken>>;
+      try {
+        claims = await verifyWidgetSessionToken(body.widget_token);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const gate = msg.includes('expired') ? 'widget_token_expired' : 'widget_token_invalid';
+        logAnonGateReject({
+          gate,
+          functionName: 'eigen-widget-chat',
+          correlationId: meta.correlationId,
+          detail: msg,
+          status: 403,
+        });
+        return reflectedErrorResponse(rawOrigin, msg || 'Invalid widget session token', 403);
+      }
 
       const origin = (rawOrigin ?? '').replace(/\/+$/, '').toLowerCase();
       if (!origin || origin !== claims.origin) {
+        logAnonGateReject({
+          gate: 'widget_origin_mismatch',
+          functionName: 'eigen-widget-chat',
+          correlationId: meta.correlationId,
+          site_id: claims.site_id,
+          origin: rawOrigin,
+          status: 403,
+          detail: 'token_origin_mismatch',
+        });
         return reflectedErrorResponse(rawOrigin, 'Widget origin mismatch', 403);
       }
 

@@ -86,6 +86,11 @@ When both of these GitHub Actions repository secrets are set, `npm run check` al
 
 If either secret is missing (for example on a fork pull request), CI still runs typecheck, tests, and local guards, but **skips** remote drift and typegen the same way as a local machine without credentials.
 
+### R2 Signal pipeline (`platform_feed_items`)
+
+- Migration [`supabase/migrations/202604270002_schedule_r2_signal_process.sql`](./supabase/migrations/202604270002_schedule_r2_signal_process.sql) schedules `r2-signal-process` via **pg_cron** + **pg_net** when Vault contains a non-empty secret named **`r2_signal_process_token`** (value must match the bearer the `r2-signal-process` function expects). If `pg_cron` or the secret is absent, the migration skips scheduling so preview branches do not fail.
+- For ingest contract auth choices, see **ADR-0003** in the umbrella workspace (`docs/adr/ADR-0003-r2-signal-ingest-edge-auth.md` on `R2 Complete`).
+
 See [`plan.md`](./plan.md) for the full slice roadmap.
 
 For multi-repo Eigen rollout safety, see [`docs/eigen-safe-rollout-checklist.md`](./docs/eigen-safe-rollout-checklist.md).

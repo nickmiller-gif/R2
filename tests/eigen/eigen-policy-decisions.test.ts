@@ -245,3 +245,182 @@ describe('Eigen policy decision recording', () => {
     expect(seenLimits).toEqual([1, 1, 1]);
   });
 });
+
+describe('Eigen policy decision audit-write bounds', () => {
+  it('truncates oversized tag arrays + over-long tag strings and notes the cuts in metadata', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    const longTag = 'x'.repeat(500);
+    const policyTags = Array.from({ length: 50 }, (_, i) => `pt-${i}`);
+    const capabilityTags = [longTag, ...Array.from({ length: 40 }, (_, i) => `cap-${i}`)];
+
+    await service.evaluate({ policyTags, capabilityTags, callerRoles: ['member'] });
+
+    expect(db.recorded).toHaveLength(1);
+    const row = db.recorded[0];
+    // Array dropped to cap (32).
+    expect(row.policy_tags).toHaveLength(32);
+    expect(row.capability_tags).toHaveLength(32);
+    // First-element-clamped to per-string cap (256).
+    expect(row.capability_tags[0]).toHaveLength(256);
+    expect(row.metadata).toMatchObject({
+      __decision_truncations: {
+        policy_tags_dropped: 18,
+        capability_tags_dropped: 9,
+        capability_tags_clamped: 1,
+      },
+    });
+  });
+
+  it('truncates over-long caller_subject and correlation_id and clamps oversized roles array', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['read:tool-capability'],
+      callerRoles: Array.from({ length: 30 }, (_, i) => `role-${i}`),
+      callerSubject: 's'.repeat(1000),
+      correlationId: 'c'.repeat(500),
+    });
+
+    const row = db.recorded[0];
+    expect(row.caller_roles).toHaveLength(16);
+    expect(row.caller_subject).toHaveLength(256);
+    expect(row.correlation_id).toHaveLength(128);
+    expect(row.metadata).toMatchObject({
+      __decision_truncations: {
+        caller_roles_dropped: 14,
+        caller_subject_clamped: true,
+        correlation_id_clamped: true,
+      },
+    });
+  });
+
+  it('replaces metadata that exceeds the byte cap with a marker and records original size', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    const huge = { blob: 'z'.repeat(20_000) };
+    await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['read:tool-capability'],
+      callerRoles: ['member'],
+      metadata: huge,
+    });
+
+    const row = db.recorded[0];
+    expect(row.metadata.blob).toBeUndefined();
+    expect(row.metadata.__replaced).toBe(true);
+    expect(typeof row.metadata.__original_bytes).toBe('number');
+    expect(row.metadata.__original_bytes as number).toBeGreaterThan(20_000);
+    expect(row.metadata).toMatchObject({
+      __decision_truncations: { metadata_replaced: true },
+    });
+  });
+
+  it('does not annotate metadata when no truncation occurred', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['read:tool-capability'],
+      callerRoles: ['member'],
+      metadata: { source: 'test' },
+    });
+
+    const row = db.recorded[0];
+    expect(row.metadata).toEqual({ source: 'test' });
+    expect((row.metadata as Record<string, unknown>).__decision_truncations).toBeUndefined();
+  });
+
+  it('truncates matched_rule_ids and deny_reasons when an evaluator returns pathological output', async () => {
+    // Synthesize an evaluator-output shape with too many entries by stuffing
+    // many deny rules. Each deny rule contributes one matched-rule-id and
+    // one deny-reason; we want both to exceed 256.
+    const overflow = 300;
+    const rules: DbEigenPolicyRuleRow[] = Array.from({ length: overflow }, (_, i) =>
+      makeRow({
+        id: `deny-${i}`,
+        capability_tag_pattern: '*',
+        effect: 'deny',
+        rationale: `r${i}`,
+      }),
+    );
+    const db = makeRecordingDb(rules);
+    const service = createEigenPolicyEngineService(db);
+
+    await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['read:tool-capability'],
+      callerRoles: ['member'],
+    });
+
+    const row = db.recorded[0];
+    expect(row.matched_rule_ids).toHaveLength(256);
+    expect(row.deny_reasons).toHaveLength(256);
+    expect(row.metadata).toMatchObject({
+      __decision_truncations: {
+        matched_rule_ids_dropped: overflow - 256,
+        deny_reasons_dropped: overflow - 256,
+      },
+    });
+  });
+
+  it('clamps negative wall-clock evaluation_ms (clock skew safety) to zero', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+    const dateSpy = vi.spyOn(Date, 'now');
+    dateSpy.mockReturnValueOnce(1_000); // started_at
+    dateSpy.mockReturnValueOnce(500); // ended_at — backwards (clock-skew)
+
+    try {
+      await service.evaluate({
+        policyTags: ['eigenx'],
+        capabilityTags: ['read:tool-capability'],
+        callerRoles: ['member'],
+      });
+    } finally {
+      dateSpy.mockRestore();
+    }
+
+    expect(db.recorded[0].evaluation_ms).toBe(0);
+  });
+
+  it('preserves caller-supplied truncation marker key only as an internal annotation', async () => {
+    // If a caller sneaks the truncation marker key into their metadata, the
+    // bounder still overwrites it with the authoritative truncation summary.
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    await service.evaluate({
+      policyTags: Array.from({ length: 50 }, (_, i) => `pt-${i}`),
+      capabilityTags: ['read:tool-capability'],
+      callerRoles: ['member'],
+      metadata: { __decision_truncations: { fake: 999 }, real: 'data' },
+    });
+
+    const row = db.recorded[0];
+    const truncations = (row.metadata as Record<string, unknown>).__decision_truncations as Record<
+      string,
+      unknown
+    >;
+    expect(truncations.fake).toBeUndefined();
+    expect(truncations.policy_tags_dropped).toBe(18);
+    expect(row.metadata.real).toBe('data');
+  });
+});

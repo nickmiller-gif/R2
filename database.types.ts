@@ -447,6 +447,992 @@ export type Database = {
         }
         Relationships: []
       }
+      botos_action_proposals: {
+        Row: {
+          agent_id: string
+          approved_at: string | null
+          created_at: string
+          description: string
+          evidence_ids: string[]
+          executed_at: string | null
+          expected_gain: string
+          id: string
+          metadata: Json | null
+          rationale: string | null
+          risk: string
+          status: string
+          title: string
+          type: string
+        }
+        Insert: {
+          agent_id: string
+          approved_at?: string | null
+          created_at?: string
+          description: string
+          evidence_ids?: string[]
+          executed_at?: string | null
+          expected_gain: string
+          id: string
+          metadata?: Json | null
+          rationale?: string | null
+          risk: string
+          status?: string
+          title: string
+          type: string
+        }
+        Update: {
+          agent_id?: string
+          approved_at?: string | null
+          created_at?: string
+          description?: string
+          evidence_ids?: string[]
+          executed_at?: string | null
+          expected_gain?: string
+          id?: string
+          metadata?: Json | null
+          rationale?: string | null
+          risk?: string
+          status?: string
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_action_proposals_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_adjustment_requests: {
+        Row: {
+          agent_id: string
+          created_at: string
+          evidence_ids: string[]
+          executed_at: string | null
+          expected_gain: string
+          expiry_date: string | null
+          id: string
+          rationale: string
+          resolution: string | null
+          resolved_at: string | null
+          review_date: string | null
+          risk: string
+          status: string
+          title: string
+          type: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          evidence_ids?: string[]
+          executed_at?: string | null
+          expected_gain: string
+          expiry_date?: string | null
+          id: string
+          rationale: string
+          resolution?: string | null
+          resolved_at?: string | null
+          review_date?: string | null
+          risk: string
+          status?: string
+          title: string
+          type: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          evidence_ids?: string[]
+          executed_at?: string | null
+          expected_gain?: string
+          expiry_date?: string | null
+          id?: string
+          rationale?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          review_date?: string | null
+          risk?: string
+          status?: string
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_adjustment_requests_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_agents: {
+        Row: {
+          approval_policy: string
+          autonomy_mode: string
+          bot_profile: Json | null
+          budget_policy: Json | null
+          created_at: string
+          github_repo: string | null
+          id: string
+          journal_policy: Json | null
+          kind: string
+          last_run: string | null
+          name: string
+          status: string
+          total_runs: number
+          updated_at: string
+        }
+        Insert: {
+          approval_policy?: string
+          autonomy_mode?: string
+          bot_profile?: Json | null
+          budget_policy?: Json | null
+          created_at?: string
+          github_repo?: string | null
+          id: string
+          journal_policy?: Json | null
+          kind: string
+          last_run?: string | null
+          name: string
+          status?: string
+          total_runs?: number
+          updated_at?: string
+        }
+        Update: {
+          approval_policy?: string
+          autonomy_mode?: string
+          bot_profile?: Json | null
+          budget_policy?: Json | null
+          created_at?: string
+          github_repo?: string | null
+          id?: string
+          journal_policy?: Json | null
+          kind?: string
+          last_run?: string | null
+          name?: string
+          status?: string
+          total_runs?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_article_recommendations: {
+        Row: {
+          anticipated_questions: string[]
+          confidence: number
+          content_type: string
+          created_at: string
+          id: string
+          proposed_outline: string[]
+          proposed_title: string
+          reasoning: string
+          related_features: string[]
+          suggested_visuals: string[]
+          target_word_count: number
+          urgency: string
+        }
+        Insert: {
+          anticipated_questions?: string[]
+          confidence?: number
+          content_type: string
+          created_at?: string
+          id: string
+          proposed_outline?: string[]
+          proposed_title: string
+          reasoning: string
+          related_features?: string[]
+          suggested_visuals?: string[]
+          target_word_count?: number
+          urgency: string
+        }
+        Update: {
+          anticipated_questions?: string[]
+          confidence?: number
+          content_type?: string
+          created_at?: string
+          id?: string
+          proposed_outline?: string[]
+          proposed_title?: string
+          reasoning?: string
+          related_features?: string[]
+          suggested_visuals?: string[]
+          target_word_count?: number
+          urgency?: string
+        }
+        Relationships: []
+      }
+      botos_audit_trail: {
+        Row: {
+          action: string
+          actor_id: string | null
+          agent_id: string | null
+          id: string
+          ip_hash: string | null
+          metadata: Json | null
+          timestamp: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          agent_id?: string | null
+          id: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          timestamp?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          agent_id?: string | null
+          id?: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          timestamp?: string
+        }
+        Relationships: []
+      }
+      botos_autonomous_runs: {
+        Row: {
+          agent_id: string
+          end_time: string | null
+          errors_count: number | null
+          findings_count: number | null
+          id: string
+          metadata: Json | null
+          opportunities_count: number | null
+          start_time: string
+          status: string
+          trigger_type: string
+        }
+        Insert: {
+          agent_id: string
+          end_time?: string | null
+          errors_count?: number | null
+          findings_count?: number | null
+          id: string
+          metadata?: Json | null
+          opportunities_count?: number | null
+          start_time?: string
+          status?: string
+          trigger_type: string
+        }
+        Update: {
+          agent_id?: string
+          end_time?: string | null
+          errors_count?: number | null
+          findings_count?: number | null
+          id?: string
+          metadata?: Json | null
+          opportunities_count?: number | null
+          start_time?: string
+          status?: string
+          trigger_type?: string
+        }
+        Relationships: []
+      }
+      botos_behavior_snapshots: {
+        Row: {
+          agent_id: string
+          created_at: string
+          decision_patterns: Json
+          id: string
+          performance_metrics: Json
+          reasoning_style: Json
+          timestamp: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          decision_patterns?: Json
+          id: string
+          performance_metrics?: Json
+          reasoning_style?: Json
+          timestamp: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          decision_patterns?: Json
+          id?: string
+          performance_metrics?: Json
+          reasoning_style?: Json
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_behavior_snapshots_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_content_gaps: {
+        Row: {
+          created_at: string
+          description: string
+          estimated_impact: string
+          id: string
+          keywords_for_seo: string[]
+          missing_topics: string[]
+          priority: string
+          reasoning: string
+          related_code_paths: string[]
+          suggested_structure: string[]
+          target_audience: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          estimated_impact: string
+          id: string
+          keywords_for_seo?: string[]
+          missing_topics?: string[]
+          priority?: string
+          reasoning: string
+          related_code_paths?: string[]
+          suggested_structure?: string[]
+          target_audience: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          estimated_impact?: string
+          id?: string
+          keywords_for_seo?: string[]
+          missing_topics?: string[]
+          priority?: string
+          reasoning?: string
+          related_code_paths?: string[]
+          suggested_structure?: string[]
+          target_audience?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      botos_drift_detections: {
+        Row: {
+          agent_id: string
+          comparison_period: Json
+          description: string
+          detected_at: string
+          drift_type: string
+          evidence: string[]
+          id: string
+          metrics: Json
+          recommendation: string
+          resolution: string | null
+          resolved_at: string | null
+          saved_to_supabase: boolean | null
+          severity: string
+          status: string
+        }
+        Insert: {
+          agent_id: string
+          comparison_period: Json
+          description: string
+          detected_at: string
+          drift_type: string
+          evidence?: string[]
+          id: string
+          metrics?: Json
+          recommendation: string
+          resolution?: string | null
+          resolved_at?: string | null
+          saved_to_supabase?: boolean | null
+          severity: string
+          status?: string
+        }
+        Update: {
+          agent_id?: string
+          comparison_period?: Json
+          description?: string
+          detected_at?: string
+          drift_type?: string
+          evidence?: string[]
+          id?: string
+          metrics?: Json
+          recommendation?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          saved_to_supabase?: boolean | null
+          severity?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_drift_detections_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_evidence: {
+        Row: {
+          agent_id: string
+          content: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          source: string
+          timestamp: string
+          type: string
+        }
+        Insert: {
+          agent_id: string
+          content: string
+          created_at?: string
+          id: string
+          metadata?: Json | null
+          source: string
+          timestamp: string
+          type: string
+        }
+        Update: {
+          agent_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          source?: string
+          timestamp?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_evidence_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_flow_profiles: {
+        Row: {
+          authentication: Json | null
+          created_at: string
+          description: string
+          error_detection: Json
+          id: string
+          name: string
+          notifications: Json | null
+          schedule: Json | null
+          steps: Json
+          target_url: string
+          updated_at: string
+        }
+        Insert: {
+          authentication?: Json | null
+          created_at?: string
+          description: string
+          error_detection?: Json
+          id: string
+          name: string
+          notifications?: Json | null
+          schedule?: Json | null
+          steps?: Json
+          target_url: string
+          updated_at?: string
+        }
+        Update: {
+          authentication?: Json | null
+          created_at?: string
+          description?: string
+          error_detection?: Json
+          id?: string
+          name?: string
+          notifications?: Json | null
+          schedule?: Json | null
+          steps?: Json
+          target_url?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_flow_results: {
+        Row: {
+          agent_id: string
+          completed_at: string | null
+          completed_steps: number
+          console_errors: Json
+          errors: Json
+          id: string
+          metrics: Json
+          network_errors: Json
+          profile_id: string
+          screenshots: string[]
+          started_at: string
+          status: string
+          total_steps: number
+          warnings: string[]
+        }
+        Insert: {
+          agent_id: string
+          completed_at?: string | null
+          completed_steps?: number
+          console_errors?: Json
+          errors?: Json
+          id: string
+          metrics?: Json
+          network_errors?: Json
+          profile_id: string
+          screenshots?: string[]
+          started_at: string
+          status: string
+          total_steps?: number
+          warnings?: string[]
+        }
+        Update: {
+          agent_id?: string
+          completed_at?: string | null
+          completed_steps?: number
+          console_errors?: Json
+          errors?: Json
+          id?: string
+          metrics?: Json
+          network_errors?: Json
+          profile_id?: string
+          screenshots?: string[]
+          started_at?: string
+          status?: string
+          total_steps?: number
+          warnings?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_flow_results_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "botos_flow_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_journal_entries: {
+        Row: {
+          agent_id: string
+          content: string
+          created_at: string
+          evidence_links: string[]
+          id: string
+          metadata: Json | null
+          timestamp: string
+          type: string
+        }
+        Insert: {
+          agent_id: string
+          content: string
+          created_at?: string
+          evidence_links?: string[]
+          id: string
+          metadata?: Json | null
+          timestamp: string
+          type: string
+        }
+        Update: {
+          agent_id?: string
+          content?: string
+          created_at?: string
+          evidence_links?: string[]
+          id?: string
+          metadata?: Json | null
+          timestamp?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_journal_entries_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_memory_edges: {
+        Row: {
+          created_at: string
+          from_id: string
+          id: string
+          metadata: Json | null
+          relation: string
+          to_id: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          from_id: string
+          id: string
+          metadata?: Json | null
+          relation: string
+          to_id: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          from_id?: string
+          id?: string
+          metadata?: Json | null
+          relation?: string
+          to_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_memory_edges_from_id_fkey"
+            columns: ["from_id"]
+            isOneToOne: false
+            referencedRelation: "botos_memory_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "botos_memory_edges_to_id_fkey"
+            columns: ["to_id"]
+            isOneToOne: false
+            referencedRelation: "botos_memory_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_memory_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          metadata: Json | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          label: string
+          metadata?: Json | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          metadata?: Json | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_outcome_records: {
+        Row: {
+          action: string
+          agent_id: string
+          created_at: string
+          duration_ms: number
+          evidence: string[]
+          id: string
+          impact: number
+          metadata: Json | null
+          run_id: string
+          started_at: string
+          status: string
+          strategy: string
+        }
+        Insert: {
+          action: string
+          agent_id: string
+          created_at?: string
+          duration_ms?: number
+          evidence?: string[]
+          id: string
+          impact?: number
+          metadata?: Json | null
+          run_id: string
+          started_at: string
+          status: string
+          strategy: string
+        }
+        Update: {
+          action?: string
+          agent_id?: string
+          created_at?: string
+          duration_ms?: number
+          evidence?: string[]
+          id?: string
+          impact?: number
+          metadata?: Json | null
+          run_id?: string
+          started_at?: string
+          status?: string
+          strategy?: string
+        }
+        Relationships: []
+      }
+      botos_policy_state: {
+        Row: {
+          action_cooldown_until: Json
+          denial_log: Json
+          execution_log: Json
+          global_blocked_until: string | null
+          id: string
+          rules: Json
+          updated_at: string
+        }
+        Insert: {
+          action_cooldown_until?: Json
+          denial_log?: Json
+          execution_log?: Json
+          global_blocked_until?: string | null
+          id?: string
+          rules?: Json
+          updated_at?: string
+        }
+        Update: {
+          action_cooldown_until?: Json
+          denial_log?: Json
+          execution_log?: Json
+          global_blocked_until?: string | null
+          id?: string
+          rules?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_predictive_opportunities: {
+        Row: {
+          agent_id: string | null
+          category: string
+          confidence: number
+          created_at: string
+          description: string
+          estimated_effort: string
+          evidence_ids: string[] | null
+          id: string
+          potential_impact: string
+          reasoning: string
+          risk_factors: string[]
+          signals: Json
+          status: string
+          success_metrics: string[]
+          suggested_actions: string[]
+          time_to_relevance: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          category: string
+          confidence?: number
+          created_at?: string
+          description: string
+          estimated_effort: string
+          evidence_ids?: string[] | null
+          id: string
+          potential_impact: string
+          reasoning: string
+          risk_factors?: string[]
+          signals?: Json
+          status?: string
+          success_metrics?: string[]
+          suggested_actions?: string[]
+          time_to_relevance: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          category?: string
+          confidence?: number
+          created_at?: string
+          description?: string
+          estimated_effort?: string
+          evidence_ids?: string[] | null
+          id?: string
+          potential_impact?: string
+          reasoning?: string
+          risk_factors?: string[]
+          signals?: Json
+          status?: string
+          success_metrics?: string[]
+          suggested_actions?: string[]
+          time_to_relevance?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_predictive_opportunities_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_secrets: {
+        Row: {
+          created_at: string
+          description: string | null
+          encrypted_value: string
+          id: string
+          key: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          encrypted_value: string
+          id: string
+          key: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          encrypted_value?: string
+          id?: string
+          key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_strategy_posteriors: {
+        Row: {
+          agent_id: string
+          alpha: number
+          beta: number
+          id: string
+          last_outcome: string | null
+          posterior_mean: number
+          samples: number
+          strategy: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string
+          alpha?: number
+          beta?: number
+          id: string
+          last_outcome?: string | null
+          posterior_mean?: number
+          samples?: number
+          strategy: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          alpha?: number
+          beta?: number
+          id?: string
+          last_outcome?: string | null
+          posterior_mean?: number
+          samples?: number
+          strategy?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      botos_webhook_configs: {
+        Row: {
+          agent_id: string
+          created_at: string
+          enabled: boolean
+          events: string[]
+          github_repo: string
+          id: string
+          last_triggered: string | null
+          secret: string
+          total_triggers: number
+          webhook_url: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          enabled?: boolean
+          events?: string[]
+          github_repo: string
+          id: string
+          last_triggered?: string | null
+          secret: string
+          total_triggers?: number
+          webhook_url: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          enabled?: boolean
+          events?: string[]
+          github_repo?: string
+          id?: string
+          last_triggered?: string | null
+          secret?: string
+          total_triggers?: number
+          webhook_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_webhook_configs_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "botos_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      botos_webhook_events: {
+        Row: {
+          agent_id: string
+          event: string
+          hmac_valid: boolean | null
+          id: string
+          payload: Json
+          processed: boolean
+          processed_at: string | null
+          received_at: string
+          verified: boolean
+          webhook_id: string | null
+        }
+        Insert: {
+          agent_id: string
+          event: string
+          hmac_valid?: boolean | null
+          id: string
+          payload: Json
+          processed?: boolean
+          processed_at?: string | null
+          received_at?: string
+          verified?: boolean
+          webhook_id?: string | null
+        }
+        Update: {
+          agent_id?: string
+          event?: string
+          hmac_valid?: boolean | null
+          id?: string
+          payload?: Json
+          processed?: boolean
+          processed_at?: string | null
+          received_at?: string
+          verified?: boolean
+          webhook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "botos_webhook_events_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "botos_webhook_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       charter_asset_valuations: {
         Row: {
           amount_numeric: number
@@ -1896,6 +2882,51 @@ export type Database = {
           principal_type?: Database["public"]["Enums"]["eigen_policy_principal_type"]
           status?: Database["public"]["Enums"]["eigen_policy_grant_status"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      eigen_policy_decisions: {
+        Row: {
+          allowed: boolean
+          caller_roles: string[]
+          caller_subject: string | null
+          capability_tags: string[]
+          correlation_id: string | null
+          deny_reasons: string[]
+          evaluation_ms: number | null
+          id: string
+          matched_rule_ids: string[]
+          metadata: Json
+          policy_tags: string[]
+          recorded_at: string
+        }
+        Insert: {
+          allowed: boolean
+          caller_roles?: string[]
+          caller_subject?: string | null
+          capability_tags?: string[]
+          correlation_id?: string | null
+          deny_reasons?: string[]
+          evaluation_ms?: number | null
+          id?: string
+          matched_rule_ids?: string[]
+          metadata?: Json
+          policy_tags?: string[]
+          recorded_at?: string
+        }
+        Update: {
+          allowed?: boolean
+          caller_roles?: string[]
+          caller_subject?: string | null
+          capability_tags?: string[]
+          correlation_id?: string | null
+          deny_reasons?: string[]
+          evaluation_ms?: number | null
+          id?: string
+          matched_rule_ids?: string[]
+          metadata?: Json
+          policy_tags?: string[]
+          recorded_at?: string
         }
         Relationships: []
       }
@@ -4272,6 +5303,102 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_feed_items: {
+        Row: {
+          actor_meg_entity_id: string | null
+          attempt_count: number
+          confidence: number | null
+          contract_version: string
+          error: string | null
+          event_time: string
+          evidence_item_id: string | null
+          id: string
+          ingest_run_id: string | null
+          ingested_at: string
+          next_retry_at: string | null
+          payload: Json
+          privacy_level: string
+          processed_at: string | null
+          processing_status: string
+          provenance: Json
+          related_entity_ids: string[]
+          routing_targets: string[]
+          source_event_type: string
+          source_repo: string
+          source_signal_key: string
+          source_system: string
+          summary: string
+          thesis_ids: string[]
+        }
+        Insert: {
+          actor_meg_entity_id?: string | null
+          attempt_count?: number
+          confidence?: number | null
+          contract_version: string
+          error?: string | null
+          event_time: string
+          evidence_item_id?: string | null
+          id?: string
+          ingest_run_id?: string | null
+          ingested_at?: string
+          next_retry_at?: string | null
+          payload: Json
+          privacy_level: string
+          processed_at?: string | null
+          processing_status?: string
+          provenance?: Json
+          related_entity_ids?: string[]
+          routing_targets?: string[]
+          source_event_type: string
+          source_repo: string
+          source_signal_key: string
+          source_system: string
+          summary: string
+          thesis_ids?: string[]
+        }
+        Update: {
+          actor_meg_entity_id?: string | null
+          attempt_count?: number
+          confidence?: number | null
+          contract_version?: string
+          error?: string | null
+          event_time?: string
+          evidence_item_id?: string | null
+          id?: string
+          ingest_run_id?: string | null
+          ingested_at?: string
+          next_retry_at?: string | null
+          payload?: Json
+          privacy_level?: string
+          processed_at?: string | null
+          processing_status?: string
+          provenance?: Json
+          related_entity_ids?: string[]
+          routing_targets?: string[]
+          source_event_type?: string
+          source_repo?: string
+          source_signal_key?: string
+          source_system?: string
+          summary?: string
+          thesis_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_feed_items_actor_meg_entity_id_fkey"
+            columns: ["actor_meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_feed_items_evidence_item_id_fkey"
+            columns: ["evidence_item_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_evidence_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       poll_votes: {
         Row: {
           created_at: string
@@ -5924,7 +7051,46 @@ export type Database = {
         Returns: boolean
       }
       can_read_centralr2: { Args: { _user_id: string }; Returns: boolean }
+      claim_platform_feed_items: {
+        Args: { p_limit?: number }
+        Returns: {
+          actor_meg_entity_id: string | null
+          attempt_count: number
+          confidence: number | null
+          contract_version: string
+          error: string | null
+          event_time: string
+          evidence_item_id: string | null
+          id: string
+          ingest_run_id: string | null
+          ingested_at: string
+          next_retry_at: string | null
+          payload: Json
+          privacy_level: string
+          processed_at: string | null
+          processing_status: string
+          provenance: Json
+          related_entity_ids: string[]
+          routing_targets: string[]
+          source_event_type: string
+          source_repo: string
+          source_signal_key: string
+          source_system: string
+          summary: string
+          thesis_ids: string[]
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "platform_feed_items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       dispatch_embedding_jobs: { Args: never; Returns: undefined }
+      enqueue_platform_feed_processing: {
+        Args: { signal_id: string }
+        Returns: undefined
+      }
       entity_neighborhood: {
         Args: {
           p_entity_id: string

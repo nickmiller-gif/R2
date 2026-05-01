@@ -24,7 +24,51 @@ export type FeedRowForMeg = {
   related_entity_ids?: string[] | null;
 };
 
-const MAX_RELATED_INFER = 20;
+// Caller-supplied input caps for meg_resolve_or_create / meg_link_entities.
+// Mirrored by RAISE EXCEPTION guards inside the SECURITY DEFINER functions
+// (see 202605040001_meg_phase3_input_bounds.sql) and CHECK constraints on
+// meg_entity_source_refs so drift fails closed at the storage layer.
+export const MEG_RESOLVE_BOUNDS = {
+  entityTypeMaxLength: 64,
+  canonicalNameMaxLength: 500,
+  canonicalEmailMaxLength: 320,
+  canonicalExternalIdMaxLength: 256,
+  sourceSystemMaxLength: 64,
+  sourceTableMaxLength: 96,
+  sourceRowIdMaxLength: 256,
+  payloadMaxJsonBytes: 32 * 1024,
+  edgeMetadataMaxJsonBytes: 4 * 1024,
+  maxRelatedInfer: 20,
+} as const;
+
+const MAX_RELATED_INFER = MEG_RESOLVE_BOUNDS.maxRelatedInfer;
+
+function clamp(s: string | null, max: number): string | null {
+  if (s === null) return null;
+  return s.length <= max ? s : s.slice(0, max);
+}
+
+function jsonByteLength(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value ?? {})).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/**
+ * Replace oversized payloads with a marker so downstream
+ * meg_resolve_or_create cannot bloat meg_entities.attributes.
+ */
+function boundPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const bytes = jsonByteLength(payload);
+  if (bytes <= MEG_RESOLVE_BOUNDS.payloadMaxJsonBytes) return payload;
+  return {
+    __meg_payload_truncated: true,
+    original_byte_length: bytes,
+    cap_bytes: MEG_RESOLVE_BOUNDS.payloadMaxJsonBytes,
+  };
+}
 
 export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -88,22 +132,25 @@ export function inferActorMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs 
     p.userName,
   );
 
-  const canonicalName = (nameFromPayload ?? row.summary).trim().slice(0, 500) || 'unknown actor';
+  const canonicalName =
+    (nameFromPayload ?? row.summary).trim().slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) ||
+    'unknown actor';
 
-  const entityType =
+  const rawEntityType =
     typeof p.actor_entity_type === 'string' && p.actor_entity_type.startsWith('meg:')
       ? p.actor_entity_type
       : 'meg:person';
+  const entityType = clamp(rawEntityType, MEG_RESOLVE_BOUNDS.entityTypeMaxLength) ?? 'meg:person';
 
   return {
     p_entity_type: entityType,
     p_canonical_name: canonicalName,
-    p_canonical_email: email,
-    p_canonical_external_id: externalId,
-    p_source_system: row.source_system,
+    p_canonical_email: clamp(email, MEG_RESOLVE_BOUNDS.canonicalEmailMaxLength),
+    p_canonical_external_id: clamp(externalId, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength),
+    p_source_system: clamp(row.source_system, MEG_RESOLVE_BOUNDS.sourceSystemMaxLength) ?? '',
     p_source_table: 'platform_feed_items',
-    p_source_row_id: row.id,
-    p_payload: p,
+    p_source_row_id: clamp(row.id, MEG_RESOLVE_BOUNDS.sourceRowIdMaxLength) ?? row.id,
+    p_payload: boundPayload(p),
   };
 }
 
@@ -159,26 +206,29 @@ function pushRelatedResolve(
   if (seen.has(dedupeKey)) return;
   seen.add(dedupeKey);
 
-  const entityType =
+  const rawEntityType =
     typeof fields.entityType === 'string' && fields.entityType.startsWith('meg:')
       ? fields.entityType
       : 'meg:person';
+  const entityType = clamp(rawEntityType, MEG_RESOLVE_BOUNDS.entityTypeMaxLength) ?? 'meg:person';
 
   const nameFromPayload = firstString(fields.name);
   const canonicalName =
     (nameFromPayload ?? (externalId ? `related:${externalId}` : email) ?? 'related entity')
       .trim()
-      .slice(0, 500) || 'related entity';
+      .slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) || 'related entity';
+
+  const sourceRowId = `${row.id}:${suffix}`;
 
   out.push({
     p_entity_type: entityType,
     p_canonical_name: canonicalName,
-    p_canonical_email: email,
-    p_canonical_external_id: externalId,
-    p_source_system: row.source_system,
+    p_canonical_email: clamp(email, MEG_RESOLVE_BOUNDS.canonicalEmailMaxLength),
+    p_canonical_external_id: clamp(externalId, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength),
+    p_source_system: clamp(row.source_system, MEG_RESOLVE_BOUNDS.sourceSystemMaxLength) ?? '',
     p_source_table: 'platform_feed_items.related',
-    p_source_row_id: `${row.id}:${suffix}`,
-    p_payload: fields.payloadSlice,
+    p_source_row_id: clamp(sourceRowId, MEG_RESOLVE_BOUNDS.sourceRowIdMaxLength) ?? sourceRowId,
+    p_payload: boundPayload(fields.payloadSlice),
   });
 }
 

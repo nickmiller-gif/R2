@@ -16,6 +16,79 @@ type BackfillArgs = {
 
 const MAX_BODY = 256 * 1024;
 
+function parseBackfillArgs(
+  raw: string,
+): { ok: true; data: BackfillArgs } | { ok: false; response: Response } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, response: errorResponse('Invalid JSON', 400) };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, response: errorResponse('Request body must be a JSON object', 400) };
+  }
+  const o = parsed as Record<string, unknown>;
+  const sys = o.source_system;
+  const tbl = o.source_table;
+  if (typeof sys !== 'string' || sys.trim().length === 0) {
+    return {
+      ok: false,
+      response: errorResponse('source_system is required (non-empty string)', 400),
+    };
+  }
+  if (typeof tbl !== 'string' || tbl.trim().length === 0) {
+    return {
+      ok: false,
+      response: errorResponse('source_table is required (non-empty string)', 400),
+    };
+  }
+  if (o.batch_size !== undefined && o.batch_size !== null) {
+    if (typeof o.batch_size !== 'number' || !Number.isFinite(o.batch_size)) {
+      return { ok: false, response: errorResponse('batch_size must be a number', 400) };
+    }
+  }
+  if (o.max_batches !== undefined && o.max_batches !== null) {
+    if (typeof o.max_batches !== 'number' || !Number.isFinite(o.max_batches)) {
+      return { ok: false, response: errorResponse('max_batches must be a number', 400) };
+    }
+  }
+  if (o.dry_run !== undefined && o.dry_run !== null && typeof o.dry_run !== 'boolean') {
+    return { ok: false, response: errorResponse('dry_run must be a boolean', 400) };
+  }
+  if (o.cursor !== undefined && o.cursor !== null && typeof o.cursor !== 'string') {
+    return { ok: false, response: errorResponse('cursor must be a string or null', 400) };
+  }
+  return {
+    ok: true,
+    data: {
+      source_system: sys.trim(),
+      source_table: tbl.trim(),
+      batch_size: typeof o.batch_size === 'number' ? o.batch_size : undefined,
+      dry_run: typeof o.dry_run === 'boolean' ? o.dry_run : undefined,
+      cursor: typeof o.cursor === 'string' ? o.cursor : o.cursor === null ? null : undefined,
+      max_batches: typeof o.max_batches === 'number' ? o.max_batches : undefined,
+    },
+  };
+}
+
+async function thesisEntityExists(
+  client: ReturnType<typeof getServiceClient>,
+  entityType: string,
+  externalId: string,
+): Promise<boolean> {
+  const { data: hits } = await client
+    .from('meg_entities')
+    .select('id,metadata')
+    .eq('status', 'active')
+    .contains('external_ids', { canonical_external_id: externalId });
+  return Boolean(
+    (hits ?? []).find(
+      (r) => (r.metadata as Record<string, string> | null)?.meg_catalog_entity_type === entityType,
+    ),
+  );
+}
+
 function requireBackfillAuth(req: Request): Response | null {
   const expected = Deno.env.get('MEG_BACKFILL_BEARER')?.trim();
   if (!expected) {
@@ -79,16 +152,9 @@ Deno.serve(
     const raw = await req.text();
     if (raw.length > MAX_BODY) return errorResponse('Body too large', 413);
 
-    let args: BackfillArgs;
-    try {
-      args = JSON.parse(raw) as BackfillArgs;
-    } catch {
-      return errorResponse('Invalid JSON', 400);
-    }
-
-    if (!args.source_system || !args.source_table) {
-      return errorResponse('source_system and source_table are required', 400);
-    }
+    const parsedArgs = parseBackfillArgs(raw);
+    if (!parsedArgs.ok) return parsedArgs.response;
+    const args = parsedArgs.data;
 
     const batch = Math.min(Math.max(args.batch_size ?? 500, 1), 5000);
     const maxBatches = Math.min(Math.max(args.max_batches ?? 1, 1), 500);
@@ -118,6 +184,7 @@ Deno.serve(
     let matched = 0;
     let inserted = 0;
     let errors = 0;
+    const noteLines: string[] = [];
 
     const key = `${args.source_system}:${args.source_table}`;
 
@@ -132,6 +199,7 @@ Deno.serve(
         }
       } catch (e) {
         log.error('fetchBatch failed', { key, err: String(e) });
+        noteLines.push(`fetchBatch: ${String(e).slice(0, 400)}`);
         errors += 1;
         break;
       }
@@ -147,23 +215,18 @@ Deno.serve(
           if (dry) {
             const ext = mapped.external_id;
             if (ext) {
-              const { data: hits } = await client
-                .from('meg_entities')
-                .select('id,metadata')
-                .eq('status', 'active')
-                .contains('external_ids', { canonical_external_id: ext });
-              const hit = (hits ?? []).find(
-                (r) =>
-                  (r.metadata as Record<string, string> | null)?.meg_catalog_entity_type ===
-                  mapped.entity_type,
-              );
-              if (hit) matched += 1;
+              const existed = await thesisEntityExists(client, mapped.entity_type, ext);
+              if (existed) matched += 1;
               else inserted += 1;
             } else {
               inserted += 1;
             }
             continue;
           }
+
+          const entityExisted = mapped.external_id
+            ? await thesisEntityExists(client, mapped.entity_type, mapped.external_id)
+            : false;
 
           const { data: megId, error: rpcErr } = await client.rpc('meg_resolve_or_create', {
             p_entity_type: mapped.entity_type,
@@ -193,15 +256,12 @@ Deno.serve(
             .eq('id', row.id);
           if (updErr) throw new Error(updErr.message);
 
-          const { count, error: cntErr } = await client
-            .from('meg_entity_source_refs')
-            .select('id', { count: 'exact', head: true })
-            .eq('meg_entity_id', megId as string);
-          if (cntErr) throw new Error(cntErr.message);
-          if ((count ?? 0) > 1) matched += 1;
+          if (entityExisted) matched += 1;
           else inserted += 1;
         } catch (e) {
           errors += 1;
+          const msg = String(e).slice(0, 500);
+          noteLines.push(`row ${row.id}: ${msg}`);
           log.error('row backfill error', { row_id: row.id, err: String(e) });
         }
       }
@@ -209,6 +269,9 @@ Deno.serve(
 
     const status =
       errors === 0 ? 'completed' : scanned === 0 && errors > 0 ? 'failed' : 'completed_with_errors';
+
+    const baseNote = cursor ? `next_cursor=${cursor}` : 'exhausted';
+    const notes = [baseNote, ...noteLines].join(' | ').slice(0, 8000);
 
     await client
       .from('meg_backfill_runs')
@@ -219,7 +282,7 @@ Deno.serve(
         matched_existing: matched,
         inserted_new: inserted,
         errors,
-        notes: cursor ? `next_cursor=${cursor}` : 'exhausted',
+        notes,
       })
       .eq('id', runId);
 

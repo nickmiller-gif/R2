@@ -65,7 +65,7 @@ supabase db query --linked "select to_regclass('public.entities'), to_regclass('
 | First adapter | `r2:oracle_theses` — fills `oracle_theses.meg_entity_id` where null (same table must exist on the R2 project you target)                                                                                                                                                                                               |
 | Signal worker | [`supabase/functions/r2-signal-process/index.ts`](../supabase/functions/r2-signal-process/index.ts) calls `meg_resolve_or_create` when `actor_meg_entity_id` is null but `payload` has a stable **email** or **actor/user id**; updates `platform_feed_items` and threads the actor into `knowledge_chunks.entity_ids` |
 
-Apply to the linked project: `cd R2 && supabase db push --linked` (after review). Deploy the function: `supabase functions deploy meg-backfill-source` from `R2/`.
+**Apply migrations:** For a **local or personal linked** Supabase project, `cd R2 && supabase db push --linked` is fine after review. For the **shared production** R2 project, follow [docs/production-deploy-checklist.md](./production-deploy-checklist.md) (out-of-band MCP/Dashboard/CI process — do not rely on ad-hoc `db push` as the sole production gate). Deploy edge functions from `R2/` with `supabase functions deploy …` against the intended project ref.
 
 ## 6. Optional UI artifact
 

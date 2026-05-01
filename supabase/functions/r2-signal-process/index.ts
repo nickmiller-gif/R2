@@ -3,6 +3,7 @@ import { withRequestMeta } from '../_shared/correlation.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { computeNextRetryAt, inferSignalPolicyTags } from '../_shared/signal-utils.ts';
 import {
@@ -71,9 +72,23 @@ async function ensureActorMegEntityLinked(
   const upd = await client
     .from('platform_feed_items')
     .update({ actor_meg_entity_id: megId as string })
-    .eq('id', row.id);
+    .eq('id', row.id)
+    .is('actor_meg_entity_id', null)
+    .select('id')
+    .maybeSingle();
   if (upd.error) {
     throw new Error(upd.error.message);
+  }
+  if (!upd.data) {
+    const { data: refreshed, error: refErr } = await client
+      .from('platform_feed_items')
+      .select(
+        'id, source_system, source_event_type, summary, payload, confidence, privacy_level, event_time, related_entity_ids, routing_targets, actor_meg_entity_id',
+      )
+      .eq('id', row.id)
+      .maybeSingle();
+    if (refErr) throw new Error(refErr.message);
+    return refreshed ? { ...(refreshed as FeedRow) } : row;
   }
 
   return { ...row, actor_meg_entity_id: megId as string };
@@ -121,7 +136,7 @@ async function maybeRecordCoffeePairingEdge(
 ): Promise<void> {
   if (!isCoffeePairingSignal(row)) return;
   const actorId = row.actor_meg_entity_id;
-  if (!actorId) return;
+  if (!actorId || !isUuid(actorId)) return;
   const target = pickCoffeeMatchTargetMegEntityId(actorId, row.related_entity_ids ?? []);
   if (!target) return;
 
@@ -346,6 +361,8 @@ Deno.serve(
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
     if (!resolveTrustedProcessCaller(req)) {
+      const idemError = requireIdempotencyKey(req);
+      if (idemError) return idemError;
       const auth = await guardAuth(req);
       if (!auth.ok) return auth.response;
       const roleCheck = await requireRole(auth.claims.userId, 'operator');

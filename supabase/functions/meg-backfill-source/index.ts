@@ -16,6 +16,9 @@ type BackfillArgs = {
 
 const MAX_BODY = 256 * 1024;
 
+/** `source_system:source_table` pairs implemented in this worker. */
+const SUPPORTED_ADAPTER_KEYS = new Set<string>(['r2:oracle_theses']);
+
 function parseBackfillArgs(
   raw: string,
 ): { ok: true; data: BackfillArgs } | { ok: false; response: Response } {
@@ -160,6 +163,18 @@ Deno.serve(
     const maxBatches = Math.min(Math.max(args.max_batches ?? 1, 1), 500);
     const dry = Boolean(args.dry_run);
 
+    const key = `${args.source_system}:${args.source_table}`;
+    if (!SUPPORTED_ADAPTER_KEYS.has(key)) {
+      return jsonResponse(
+        {
+          error: 'unknown_source_pair',
+          key,
+          supported_keys: [...SUPPORTED_ADAPTER_KEYS],
+        },
+        400,
+      );
+    }
+
     const client =
       getServiceClient() as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient;
 
@@ -186,17 +201,10 @@ Deno.serve(
     let errors = 0;
     const noteLines: string[] = [];
 
-    const key = `${args.source_system}:${args.source_table}`;
-
     for (let b = 0; b < maxBatches; b += 1) {
       let rows: SourceRow[] = [];
       try {
-        if (key === 'r2:oracle_theses') {
-          rows = await fetchOracleThesesBatch(client, cursor, batch);
-        } else {
-          log.warn('no adapter for source pair — no rows fetched', { key });
-          break;
-        }
+        rows = await fetchOracleThesesBatch(client, cursor, batch);
       } catch (e) {
         log.error('fetchBatch failed', { key, err: String(e) });
         noteLines.push(`fetchBatch: ${String(e).slice(0, 400)}`);

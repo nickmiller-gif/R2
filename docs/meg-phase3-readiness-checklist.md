@@ -10,8 +10,8 @@ Use this list with **audit (S1)**, **external retreat**, and **platform** owners
 
 | Check                                               | Result                                                                                                                           |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **`public.entities` on linked R2 Supabase**         | **Present** — `to_regclass('public.entities')` → `entities`                                                                      |
-| **`public.entity_relations` on linked R2 Supabase** | **Present** — `to_regclass('public.entity_relations')` → `entity_relations`                                                      |
+| **`public.entities` on linked R2 Supabase**         | **Present** (legacy / Oracle graph — **not** the Phase 3 MEG registry)                                                           |
+| **`public.entity_relations` on linked R2 Supabase** | **Present** (same caveat — canonical identity for new ingest is **`meg_entities`**)                                              |
 | **Creation migration in `R2/supabase/migrations/`** | **None** for `public.entities` — table likely created outside tracked migrations; runbook §2.1 `IF NOT EXISTS` path remains safe |
 | **`@r2/meg-catalog`**                               | **Added** at `R2/packages/meg-catalog` v1.0.0 (private); publish/registry path TBD                                               |
 | **centralr2 dedup sources in umbrella**             | **Not present** — map in [meg-phase3-centralr2-resolver-research.md](./meg-phase3-centralr2-resolver-research.md)                |

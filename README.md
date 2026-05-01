@@ -54,21 +54,24 @@ plan.md
 
 Domain slices are ported with CI verification (`npm run check`):
 
-| Domain         | Edge functions (indicative)                                                                                                                                                                               | Tests |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| **Charter**    | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations                                                                                  | ✅    |
-| **MEG**        | entities, aliases, edges                                                                                                                                                                                  | ✅    |
-| **Oracle**     | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models                                                                                                        | ✅    |
-| **Eigen**      | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest | ✅    |
-| **Foundation** | documents, asset-registry                                                                                                                                                                                 | ✅    |
+| Domain         | Edge functions (indicative)                                                                                                                                                                                                                             | Tests |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **Charter**    | governance, entities, rights, obligations, evidence, payouts, decisions, roles, provenance, audit-read, asset-valuations                                                                                                                                | ✅    |
+| **MEG**        | entities, aliases, edges; Postgres **`meg_resolve_or_create`** / **`meg_entity_full_context`**; edge **`meg-backfill-source`** (cursor backfill); **`r2-signal-process`** links actors/related MEG ids from signals; package **`@r2/meg-catalog`** (v1) | ✅    |
+| **Oracle**     | signals, theses, evidence-items, source-packs, thesis-evidence-links, whitespace-runs, read-models                                                                                                                                                      | ✅    |
+| **Eigen**      | ingest, fetch-ingest, retrieve, chat, chat-public, widget session/chat, knowledge-chunks, retrieval-runs, memory, tools, source inventory, public sources, oracle outbox drain, autonomous-capture-ingest                                               | ✅    |
+| **Foundation** | documents, asset-registry                                                                                                                                                                                                                               | ✅    |
 
-There are **45** deployed function entrypoints under `supabase/functions/` (each `*/index.ts` excluding `_shared`). Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
+There are **many** deployed function entrypoints under `supabase/functions/` (each `*/index.ts` excluding `_shared`; count changes as slices land). Most require a valid JWT; **eigen-chat-public** is rate-limited and unauthenticated by design. Run `npm run test` for the current test count. No `@/` alias imports.
+
+**MEG Phase 3 handoff** (resolver, sidecars, signal worker, backfill): [`docs/meg-phase3-readiness-checklist.md`](./docs/meg-phase3-readiness-checklist.md) and [`docs/meg-phase3-centralr2-resolver-research.md`](./docs/meg-phase3-centralr2-resolver-research.md).
 
 ## Next priorities
 
-1. Eigen policy engine + capability registry completion (EigenX/KOS operator surfaces and contract tests)
-2. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
-3. Expand observability baseline (correlation-id propagation and structured logging across all edge functions)
+1. MEG: port **centralr2 dedup** invariants into R2 (`meg_resolve_or_create` + backfill adapters); add more **`meg-backfill-source`** source pairs after each producer schema is stable.
+2. Eigen policy engine + capability registry completion (EigenX/KOS operator surfaces and contract tests)
+3. Harden Oracle operator surfaces (narrow PATCH bodies, align rescore with versioned supersede path)
+4. Expand observability baseline (correlation-id propagation and structured logging across all edge functions)
 
 ## Supabase Client Factory Pattern
 

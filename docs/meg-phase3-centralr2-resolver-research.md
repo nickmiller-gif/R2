@@ -22,9 +22,9 @@ Resolver **logic** should be sourced from whatever centralr2 ships today—commo
 
 ## R2 target architecture (Phase 3)
 
-1. **Canonical registry** lives in R2: `public.entities`, `public.entity_relations`, `public.entity_source_refs`, sidecars per [R2-MEG-Conversion-Runbook.md](../../R2-MEG-Conversion-Runbook.md) §2.
-2. **Link columns** on producer projects point at R2 entity UUIDs (`meg_entity_id` pattern in runbook §2.3).
-3. **Backfill edge function** (runbook §3) batches source rows, calls `meg_resolve_or_create`, upserts sidecars, writes link columns—idempotent and cursor-paged.
+1. **Canonical identity registry** for new work lives in R2 **`public.meg_entities`**, with provenance in **`public.meg_entity_source_refs`**, graph links in **`public.meg_entity_edges`**, and typed **sidecars** (see migrations `202605010001_*` and `202605030001_*`). Legacy Oracle tables **`public.entities`** / **`public.entity_relations`** remain separate; do not conflate them with MEG in new ingest code.
+2. **Link columns** on producer projects point at R2 MEG UUIDs (`meg_entity_id` / `actor_meg_entity_id` patterns in the runbook §2.3 sense).
+3. **Backfill edge function** [`meg-backfill-source`](../supabase/functions/meg-backfill-source/index.ts) (runbook §3) batches source rows, calls **`meg_resolve_or_create`**, upserts sidecars, writes link columns—idempotent and cursor-paged.
 
 ## Open questions for resolver design
 

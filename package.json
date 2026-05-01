@@ -8,7 +8,7 @@
     "test": "tests"
   },
   "scripts": {
-    "lint": "eslint \"src/**/*.ts\" \"supabase/functions/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" \"supabase/functions/**/*.ts\" \"tests/**/*.ts\" \"packages/**/*.ts\"",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "prepare": "husky",

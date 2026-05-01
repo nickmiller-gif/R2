@@ -24,7 +24,8 @@
     "src/**/*",
     "tests/**/*",
     "types/**/*.d.ts",
-    "supabase/functions/_shared/retrieval-budget.ts"
+    "supabase/functions/_shared/retrieval-budget.ts",
+    "packages/meg-catalog/src/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

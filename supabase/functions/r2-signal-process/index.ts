@@ -5,6 +5,13 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { computeNextRetryAt, inferSignalPolicyTags } from '../_shared/signal-utils.ts';
+import {
+  inferActorMegResolveArgs,
+  inferRelatedMegResolveArgsList,
+  isCoffeePairingSignal,
+  isUuid,
+  pickCoffeeMatchTargetMegEntityId,
+} from '../_shared/meg-resolve-signal.ts';
 
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_BATCH_LIMIT = 15;
@@ -20,6 +27,7 @@ type FeedRow = {
   event_time: string;
   related_entity_ids: string[];
   routing_targets: string[];
+  actor_meg_entity_id?: string | null;
 };
 
 function resolveTrustedProcessCaller(req: Request): boolean {
@@ -38,6 +46,97 @@ function parseBatchLimit(req: Request): number {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BATCH_LIMIT;
   return Math.min(parsed, 50);
+}
+
+/**
+ * When ingest left actor_meg_entity_id null but the payload carries a stable
+ * email or actor id, resolve (or create) the MEG node and persist the link on
+ * platform_feed_items so retrieval and downstream joins see the same UUID.
+ */
+async function ensureActorMegEntityLinked(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<FeedRow> {
+  const args = inferActorMegResolveArgs(row);
+  if (!args) return row;
+
+  const { data: megId, error } = await client.rpc('meg_resolve_or_create', args);
+  if (error) {
+    throw new Error(`meg_resolve_or_create: ${error.message}`);
+  }
+  if (!megId) {
+    throw new Error('meg_resolve_or_create returned empty');
+  }
+
+  const upd = await client
+    .from('platform_feed_items')
+    .update({ actor_meg_entity_id: megId as string })
+    .eq('id', row.id);
+  if (upd.error) {
+    throw new Error(upd.error.message);
+  }
+
+  return { ...row, actor_meg_entity_id: megId as string };
+}
+
+async function ensureRelatedMegEntitiesLinked(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<FeedRow> {
+  const existing = (row.related_entity_ids ?? []).filter((id) => isUuid(id));
+  const inferred = inferRelatedMegResolveArgsList(row);
+  const merged = new Set<string>(existing);
+
+  for (const args of inferred) {
+    const { data: megId, error } = await client.rpc('meg_resolve_or_create', args);
+    if (error) {
+      throw new Error(`meg_resolve_or_create related: ${error.message}`);
+    }
+    if (megId && isUuid(String(megId))) {
+      merged.add(String(megId));
+    }
+  }
+
+  const next = [...merged];
+  const sameSize = next.length === existing.length;
+  const sameMembers = sameSize && existing.every((id) => merged.has(id));
+  if (sameMembers && inferred.length === 0) {
+    return row;
+  }
+
+  const upd = await client
+    .from('platform_feed_items')
+    .update({ related_entity_ids: next })
+    .eq('id', row.id);
+  if (upd.error) {
+    throw new Error(upd.error.message);
+  }
+
+  return { ...row, related_entity_ids: next };
+}
+
+async function maybeRecordCoffeePairingEdge(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<void> {
+  if (!isCoffeePairingSignal(row)) return;
+  const actorId = row.actor_meg_entity_id;
+  if (!actorId) return;
+  const target = pickCoffeeMatchTargetMegEntityId(actorId, row.related_entity_ids ?? []);
+  if (!target) return;
+
+  const { error } = await client.rpc('meg_link_entities', {
+    p_source_entity_id: actorId,
+    p_target_entity_id: target,
+    p_edge_type: 'coffee_pairing',
+    p_metadata: {
+      platform_feed_item_id: row.id,
+      source_event_type: row.source_event_type,
+    },
+  });
+  if (error) {
+    throw new Error(`meg_link_entities: ${error.message}`);
+  }
 }
 
 async function markSignalFailed(signalId: string, message: string): Promise<void> {
@@ -134,11 +233,18 @@ async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promis
   const hashes = await Promise.all(
     chunks.map((chunk) => sha256Hex(`${documentId}:${chunk.chunkLevel}:${chunk.content}`)),
   );
+
+  const related = [...(row.related_entity_ids ?? [])];
+  const actorId = row.actor_meg_entity_id;
+  if (actorId && !related.includes(actorId)) {
+    related.unshift(actorId);
+  }
+
   const chunkRows = chunks.map((chunk, idx) => ({
     document_id: documentId,
     chunk_level: chunk.chunkLevel,
     heading_path: chunk.headingPath,
-    entity_ids: row.related_entity_ids,
+    entity_ids: related,
     policy_tags: policyTags,
     authority_score: row.privacy_level === 'public' ? 70 : 85,
     freshness_score: 100,
@@ -272,7 +378,10 @@ Deno.serve(
     let failed = 0;
     for (const row of rows) {
       try {
-        await processOneSignal(row, evidenceProfileId);
+        let rowReady = await ensureActorMegEntityLinked(client, row);
+        rowReady = await ensureRelatedMegEntitiesLinked(client, rowReady);
+        await maybeRecordCoffeePairingEdge(client, rowReady);
+        await processOneSignal(rowReady, evidenceProfileId);
         processed += 1;
       } catch (error) {
         failed += 1;

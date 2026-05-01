@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity_log: {
@@ -3839,6 +3864,187 @@ export type Database = {
         }
         Relationships: []
       }
+      meg_backfill_runs: {
+        Row: {
+          dry_run: boolean
+          errors: number
+          finished_at: string | null
+          id: string
+          inserted_new: number
+          matched_existing: number
+          notes: string | null
+          scanned: number
+          source_system: string
+          source_table: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          dry_run?: boolean
+          errors?: number
+          finished_at?: string | null
+          id?: string
+          inserted_new?: number
+          matched_existing?: number
+          notes?: string | null
+          scanned?: number
+          source_system: string
+          source_table: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          dry_run?: boolean
+          errors?: number
+          finished_at?: string | null
+          id?: string
+          inserted_new?: number
+          matched_existing?: number
+          notes?: string | null
+          scanned?: number
+          source_system?: string
+          source_table?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      meg_closing_file_sidecar: {
+        Row: {
+          meg_entity_id: string
+          property_meg_entity_id: string | null
+          scheduled_close_date: string | null
+          seller_closing_file_id: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          meg_entity_id: string
+          property_meg_entity_id?: string | null
+          scheduled_close_date?: string | null
+          seller_closing_file_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          meg_entity_id?: string
+          property_meg_entity_id?: string | null
+          scheduled_close_date?: string | null
+          seller_closing_file_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_closing_file_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meg_closing_file_sidecar_property_meg_entity_id_fkey"
+            columns: ["property_meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_company_sidecar: {
+        Row: {
+          ci_client_id: string | null
+          domain: string | null
+          ein: string | null
+          founded_year: number | null
+          hq_city: string | null
+          hq_state: string | null
+          industry: string | null
+          legal_name: string | null
+          meg_entity_id: string
+          size_band: string | null
+          updated_at: string
+        }
+        Insert: {
+          ci_client_id?: string | null
+          domain?: string | null
+          ein?: string | null
+          founded_year?: number | null
+          hq_city?: string | null
+          hq_state?: string | null
+          industry?: string | null
+          legal_name?: string | null
+          meg_entity_id: string
+          size_band?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ci_client_id?: string | null
+          domain?: string | null
+          ein?: string | null
+          founded_year?: number | null
+          hq_city?: string | null
+          hq_state?: string | null
+          industry?: string | null
+          legal_name?: string | null
+          meg_entity_id?: string
+          size_band?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_company_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_document_sidecar: {
+        Row: {
+          document_uri: string | null
+          meg_entity_id: string
+          mime_type: string | null
+          retention_class: string | null
+          size_bytes: number | null
+          source_row_id: string | null
+          source_system: string | null
+          source_table: string | null
+          updated_at: string
+        }
+        Insert: {
+          document_uri?: string | null
+          meg_entity_id: string
+          mime_type?: string | null
+          retention_class?: string | null
+          size_bytes?: number | null
+          source_row_id?: string | null
+          source_system?: string | null
+          source_table?: string | null
+          updated_at?: string
+        }
+        Update: {
+          document_uri?: string | null
+          meg_entity_id?: string
+          mime_type?: string | null
+          retention_class?: string | null
+          size_bytes?: number | null
+          source_row_id?: string | null
+          source_system?: string | null
+          source_table?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_document_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meg_entities: {
         Row: {
           attributes: Json
@@ -3981,6 +4187,602 @@ export type Database = {
           {
             foreignKeyName: "meg_entity_edges_target_entity_id_fkey"
             columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_entity_source_refs: {
+        Row: {
+          id: string
+          meg_entity_id: string
+          resolved_at: string
+          resolver_version: string
+          source_row_id: string
+          source_row_pk_type: string
+          source_system: string
+          source_table: string
+        }
+        Insert: {
+          id?: string
+          meg_entity_id: string
+          resolved_at?: string
+          resolver_version?: string
+          source_row_id: string
+          source_row_pk_type?: string
+          source_system: string
+          source_table: string
+        }
+        Update: {
+          id?: string
+          meg_entity_id?: string
+          resolved_at?: string
+          resolver_version?: string
+          source_row_id?: string
+          source_row_pk_type?: string
+          source_system?: string
+          source_table?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_entity_source_refs_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_event_session_sidecar: {
+        Row: {
+          day_number: number | null
+          end_time: string | null
+          meg_entity_id: string
+          parent_event_id: string | null
+          session_type: string | null
+          speaker_meg_entity_id: string | null
+          start_time: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          day_number?: number | null
+          end_time?: string | null
+          meg_entity_id: string
+          parent_event_id?: string | null
+          session_type?: string | null
+          speaker_meg_entity_id?: string | null
+          start_time?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          day_number?: number | null
+          end_time?: string | null
+          meg_entity_id?: string
+          parent_event_id?: string | null
+          session_type?: string | null
+          speaker_meg_entity_id?: string | null
+          start_time?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_event_session_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meg_event_session_sidecar_parent_event_id_fkey"
+            columns: ["parent_event_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meg_event_session_sidecar_speaker_meg_entity_id_fkey"
+            columns: ["speaker_meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_event_sidecar: {
+        Row: {
+          end_date: string | null
+          hero_image_url: string | null
+          location: string | null
+          meg_entity_id: string
+          retreat_year: number | null
+          start_date: string | null
+          theme: string | null
+          updated_at: string
+        }
+        Insert: {
+          end_date?: string | null
+          hero_image_url?: string | null
+          location?: string | null
+          meg_entity_id: string
+          retreat_year?: number | null
+          start_date?: string | null
+          theme?: string | null
+          updated_at?: string
+        }
+        Update: {
+          end_date?: string | null
+          hero_image_url?: string | null
+          location?: string | null
+          meg_entity_id?: string
+          retreat_year?: number | null
+          start_date?: string | null
+          theme?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_event_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_ip_matter_sidecar: {
+        Row: {
+          ip_matter_id: string | null
+          matter_type: string | null
+          meg_entity_id: string
+          participant_meg_ids: string[] | null
+          status: string | null
+          updated_at: string
+          uspto_application_no: string | null
+        }
+        Insert: {
+          ip_matter_id?: string | null
+          matter_type?: string | null
+          meg_entity_id: string
+          participant_meg_ids?: string[] | null
+          status?: string | null
+          updated_at?: string
+          uspto_application_no?: string | null
+        }
+        Update: {
+          ip_matter_id?: string | null
+          matter_type?: string | null
+          meg_entity_id?: string
+          participant_meg_ids?: string[] | null
+          status?: string | null
+          updated_at?: string
+          uspto_application_no?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_ip_matter_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_opportunity_sidecar: {
+        Row: {
+          economic_value_estimate: number | null
+          meg_entity_id: string
+          opportunity_id: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          economic_value_estimate?: number | null
+          meg_entity_id: string
+          opportunity_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          economic_value_estimate?: number | null
+          meg_entity_id?: string
+          opportunity_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_opportunity_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_person_athlete_sidecar: {
+        Row: {
+          athlete_id: string
+          conference: string | null
+          graduation_year: number | null
+          meg_entity_id: string
+          nil_deal_count: number | null
+          school: string | null
+          sport: string | null
+          total_nil_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          conference?: string | null
+          graduation_year?: number | null
+          meg_entity_id: string
+          nil_deal_count?: number | null
+          school?: string | null
+          sport?: string | null
+          total_nil_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          athlete_id?: string
+          conference?: string | null
+          graduation_year?: number | null
+          meg_entity_id?: string
+          nil_deal_count?: number | null
+          school?: string | null
+          sport?: string | null
+          total_nil_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_person_athlete_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_person_attendee_sidecar: {
+        Row: {
+          attendance_years: number[] | null
+          bio: string | null
+          email: string | null
+          interests: string[] | null
+          is_speaker: boolean
+          is_sponsor: boolean
+          linkedin_url: string | null
+          meg_entity_id: string
+          organization: string | null
+          retreat_attendee_id: string | null
+          role: string | null
+          source_system: string
+          updated_at: string
+        }
+        Insert: {
+          attendance_years?: number[] | null
+          bio?: string | null
+          email?: string | null
+          interests?: string[] | null
+          is_speaker?: boolean
+          is_sponsor?: boolean
+          linkedin_url?: string | null
+          meg_entity_id: string
+          organization?: string | null
+          retreat_attendee_id?: string | null
+          role?: string | null
+          source_system: string
+          updated_at?: string
+        }
+        Update: {
+          attendance_years?: number[] | null
+          bio?: string | null
+          email?: string | null
+          interests?: string[] | null
+          is_speaker?: boolean
+          is_sponsor?: boolean
+          linkedin_url?: string | null
+          meg_entity_id?: string
+          organization?: string | null
+          retreat_attendee_id?: string | null
+          role?: string | null
+          source_system?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_person_attendee_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_person_contact_sidecar: {
+        Row: {
+          alternate_emails: string[] | null
+          ci_contact_ids: string[] | null
+          ci_master_contact_id: string | null
+          company_meg_entity_id: string | null
+          meg_entity_id: string
+          primary_email: string | null
+          primary_phone: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          alternate_emails?: string[] | null
+          ci_contact_ids?: string[] | null
+          ci_master_contact_id?: string | null
+          company_meg_entity_id?: string | null
+          meg_entity_id: string
+          primary_email?: string | null
+          primary_phone?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alternate_emails?: string[] | null
+          ci_contact_ids?: string[] | null
+          ci_master_contact_id?: string | null
+          company_meg_entity_id?: string | null
+          meg_entity_id?: string
+          primary_email?: string | null
+          primary_phone?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_person_contact_sidecar_company_meg_entity_id_fkey"
+            columns: ["company_meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meg_person_contact_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_person_operator_sidecar: {
+        Row: {
+          is_active: boolean
+          is_admin: boolean
+          last_seen_at: string | null
+          meg_entity_id: string
+          operator_profile_id: string
+          scope_grants: Json | null
+          updated_at: string
+        }
+        Insert: {
+          is_active?: boolean
+          is_admin?: boolean
+          last_seen_at?: string | null
+          meg_entity_id: string
+          operator_profile_id: string
+          scope_grants?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          is_active?: boolean
+          is_admin?: boolean
+          last_seen_at?: string | null
+          meg_entity_id?: string
+          operator_profile_id?: string
+          scope_grants?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_person_operator_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_person_speaker_sidecar: {
+        Row: {
+          bio: string | null
+          events_spoken_at: string[] | null
+          meg_entity_id: string
+          speaker_topics: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          bio?: string | null
+          events_spoken_at?: string[] | null
+          meg_entity_id: string
+          speaker_topics?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          bio?: string | null
+          events_spoken_at?: string[] | null
+          meg_entity_id?: string
+          speaker_topics?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_person_speaker_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_property_sidecar: {
+        Row: {
+          acreage: number | null
+          address_line_1: string | null
+          address_line_2: string | null
+          city: string | null
+          county: string | null
+          meg_entity_id: string
+          parcel_id: string | null
+          postal_code: string | null
+          property_id: string | null
+          property_type: string | null
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          acreage?: number | null
+          address_line_1?: string | null
+          address_line_2?: string | null
+          city?: string | null
+          county?: string | null
+          meg_entity_id: string
+          parcel_id?: string | null
+          postal_code?: string | null
+          property_id?: string | null
+          property_type?: string | null
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          acreage?: number | null
+          address_line_1?: string | null
+          address_line_2?: string | null
+          city?: string | null
+          county?: string | null
+          meg_entity_id?: string
+          parcel_id?: string | null
+          postal_code?: string | null
+          property_id?: string | null
+          property_type?: string | null
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_property_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_property_tower_sidecar: {
+        Row: {
+          carriers_on_tower: string[] | null
+          fcc_registration_id: string | null
+          ground_lease_status: string | null
+          height_ft: number | null
+          meg_entity_id: string
+          tower_asset_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          carriers_on_tower?: string[] | null
+          fcc_registration_id?: string | null
+          ground_lease_status?: string | null
+          height_ft?: number | null
+          meg_entity_id: string
+          tower_asset_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          carriers_on_tower?: string[] | null
+          fcc_registration_id?: string | null
+          ground_lease_status?: string | null
+          height_ft?: number | null
+          meg_entity_id?: string
+          tower_asset_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_property_tower_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_thesis_sidecar: {
+        Row: {
+          confidence: number | null
+          domain: string | null
+          meg_entity_id: string
+          publication_status: string | null
+          thesis_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number | null
+          domain?: string | null
+          meg_entity_id: string
+          publication_status?: string | null
+          thesis_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number | null
+          domain?: string | null
+          meg_entity_id?: string
+          publication_status?: string | null
+          thesis_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_thesis_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meg_topic_sidecar: {
+        Row: {
+          embedding_vector_id: string | null
+          meg_entity_id: string
+          parent_topic_meg_entity_id: string | null
+          topic_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          embedding_vector_id?: string | null
+          meg_entity_id: string
+          parent_topic_meg_entity_id?: string | null
+          topic_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          embedding_vector_id?: string | null
+          meg_entity_id?: string
+          parent_topic_meg_entity_id?: string | null
+          topic_label?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meg_topic_sidecar_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: true
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meg_topic_sidecar_parent_topic_meg_entity_id_fkey"
+            columns: ["parent_topic_meg_entity_id"]
             isOneToOne: false
             referencedRelation: "meg_entities"
             referencedColumns: ["id"]
@@ -7157,6 +7959,44 @@ export type Database = {
         }
         Returns: Json
       }
+      meg_catalog_to_meg_entity_type: {
+        Args: { p_catalog: string }
+        Returns: Database["public"]["Enums"]["meg_entity_type"]
+      }
+      meg_entity_full_context: {
+        Args: { p_meg_entity_id: string }
+        Returns: Json
+      }
+      meg_link_entities: {
+        Args: {
+          p_edge_type: Database["public"]["Enums"]["meg_edge_type"]
+          p_metadata?: Json
+          p_source_entity_id: string
+          p_target_entity_id: string
+        }
+        Returns: undefined
+      }
+      meg_resolve_or_create: {
+        Args: {
+          p_canonical_email?: string
+          p_canonical_external_id?: string
+          p_canonical_name: string
+          p_entity_type: string
+          p_payload?: Json
+          p_source_row_id?: string
+          p_source_system?: string
+          p_source_table?: string
+        }
+        Returns: string
+      }
+      meg_upsert_person_attendee_sidecar: {
+        Args: { p_entity_id: string; p_payload: Json; p_source_system: string }
+        Returns: undefined
+      }
+      meg_upsert_thesis_sidecar: {
+        Args: { p_entity_id: string; p_payload: Json; p_source_system: string }
+        Returns: undefined
+      }
       pgmq_delete: {
         Args: { msg_id: number; queue_name: string }
         Returns: boolean
@@ -7352,6 +8192,7 @@ export type Database = {
         | "related_to"
         | "derived_from"
         | "supersedes"
+        | "coffee_pairing"
       meg_entity_status: "active" | "merged" | "archived"
       meg_entity_type:
         | "person"
@@ -7592,6 +8433,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "analyst", "viewer"],
@@ -7779,6 +8623,7 @@ export const Constants = {
         "related_to",
         "derived_from",
         "supersedes",
+        "coffee_pairing",
       ],
       meg_entity_status: ["active", "merged", "archived"],
       meg_entity_type: [

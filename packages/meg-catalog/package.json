@@ -1,0 +1,17 @@
+{
+  "name": "@r2/meg-catalog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical MEG entity/edge/source vocabulary for Phase 3 and producers.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v1": "./src/v1.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

@@ -360,6 +360,8 @@ Deno.serve(
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
+    // JWT path: same idempotency contract as other write edge functions.
+    // Trusted x-r2-signal-process-token callers (e.g. pg_cron) skip this header.
     if (!resolveTrustedProcessCaller(req)) {
       const idemError = requireIdempotencyKey(req);
       if (idemError) return idemError;

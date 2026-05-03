@@ -19,6 +19,8 @@ const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_BATCH_LIMIT = 15;
 /** Hard cap per invocation; matches cron `limit=` and claim RPC backpressure. */
 const MAX_BATCH_LIMIT = 25;
+/** Must match `max_attempts` in `claim_platform_feed_items` (signal_contract migrations). */
+const MAX_SIGNAL_PROCESS_ATTEMPTS = 10;
 
 /** True when `x-r2-signal-process-token` matches configured `R2_SIGNAL_PROCESS_TOKEN`. */
 function resolveTrustedProcessCaller(req: Request): boolean {
@@ -161,14 +163,24 @@ async function maybeRecordCoffeePairingEdge(
   }
 }
 
-/** Marks a feed item failed with bounded error text and next retry timestamp. */
+/** Marks a feed item failed (retryable) or deadletter (terminal after attempt budget). */
 async function markSignalFailed(signalId: string, message: string): Promise<void> {
   const client = getServiceClient();
-  const nextRetryAt = computeNextRetryAt();
+  const { data: row, error } = await client
+    .from('platform_feed_items')
+    .select('attempt_count')
+    .eq('id', signalId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  const attempts = row?.attempt_count ?? 0;
+  const terminal = attempts >= MAX_SIGNAL_PROCESS_ATTEMPTS ? 'deadletter' : 'failed';
+  const nextRetryAt = terminal === 'deadletter' ? null : computeNextRetryAt();
   await client
     .from('platform_feed_items')
     .update({
-      processing_status: 'failed',
+      processing_status: terminal,
       error: message.slice(0, 2000),
       next_retry_at: nextRetryAt,
       processed_at: new Date().toISOString(),

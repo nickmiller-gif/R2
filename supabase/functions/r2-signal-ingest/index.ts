@@ -1,3 +1,15 @@
+/**
+ * Inbound R2 Signal Contract v1 envelopes (producer → platform_feed_items).
+ *
+ * Gateway JWT verification for this function is disabled in
+ * `supabase/config.toml` (`[functions.r2-signal-ingest] verify_jwt = false`) so
+ * ES256 user tokens and custom auth paths reach this handler; enforcement is in
+ * code via `guardAuth`, optional service-role bearer matching, and HMAC when
+ * configured (`R2_SIGNAL_INGEST_HMAC_SECRET`). Rationale: ADR-0003.
+ *
+ * @see ADR-0003 in the umbrella repo: `docs/adr/ADR-0003-signal-contract.md`
+ *   (nickmiller-gif/R2-Complete).
+ */
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { extractBearerToken, guardAuth } from '../_shared/auth.ts';

@@ -21,10 +21,9 @@ jobs:
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # Linked migration drift + remote typegen require the linked DB to already include every
-      # migration in the branch — false on pull_request so schema PRs pass before db push.
-      # push to main (post-merge) still runs full checks when secrets are set.
-      REQUIRE_SUPABASE_REMOTE_CHECKS: ${{ github.event_name != 'pull_request' && secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
+      # Remote typegen + drift require SUPABASE_* secrets. When unset, scripts skip
+      # with exit 0. When set (org secrets on PR + push), gates run on every event.
+      REQUIRE_SUPABASE_REMOTE_CHECKS: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
 
     steps:
       - uses: actions/checkout@v6

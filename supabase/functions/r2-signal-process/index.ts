@@ -1,5 +1,6 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
@@ -16,6 +17,8 @@ import {
 
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_BATCH_LIMIT = 15;
+/** Hard cap per invocation; matches cron `limit=` and claim RPC backpressure. */
+const MAX_BATCH_LIMIT = 25;
 
 type FeedRow = {
   id: string;
@@ -46,7 +49,7 @@ function parseBatchLimit(req: Request): number {
     String(DEFAULT_BATCH_LIMIT);
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BATCH_LIMIT;
-  return Math.min(parsed, 50);
+  return Math.min(parsed, MAX_BATCH_LIMIT);
 }
 
 /**
@@ -356,7 +359,8 @@ async function resolveEvidenceProfileId(): Promise<string> {
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
+    const log = withLogger(meta, 'r2-signal-process');
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -373,11 +377,28 @@ Deno.serve(
 
     const client = getServiceClient();
     const limit = parseBatchLimit(req);
+    const batchStarted = performance.now();
     const claim = await client.rpc('claim_platform_feed_items', { p_limit: limit });
-    if (claim.error) return errorResponse(claim.error.message, 500);
+    if (claim.error) {
+      log.error('signal_process_claim_failed', {
+        event: 'signal_process_claim_failed',
+        message: claim.error.message,
+        batch_limit: limit,
+        duration_ms: Math.round(performance.now() - batchStarted),
+      });
+      return errorResponse(claim.error.message, 500);
+    }
 
     const rows = (claim.data ?? []) as FeedRow[];
     if (rows.length === 0) {
+      log.info('signal_process_batch', {
+        event: 'signal_process_batch',
+        claimed: 0,
+        processed: 0,
+        failed: 0,
+        duration_ms: Math.round(performance.now() - batchStarted),
+        batch_limit: limit,
+      });
       return jsonResponse({ claimed: 0, processed: 0, failed: 0 });
     }
 
@@ -390,6 +411,15 @@ Deno.serve(
       for (const row of rows) {
         await markSignalFailed(row.id, message);
       }
+      log.error('signal_process_batch', {
+        event: 'signal_process_batch',
+        claimed: rows.length,
+        processed: 0,
+        failed: rows.length,
+        duration_ms: Math.round(performance.now() - batchStarted),
+        batch_limit: limit,
+        error: message,
+      });
       return errorResponse(message, 500);
     }
 
@@ -408,6 +438,16 @@ Deno.serve(
         await markSignalFailed(row.id, message);
       }
     }
+
+    const durationMs = Math.round(performance.now() - batchStarted);
+    log.info('signal_process_batch', {
+      event: 'signal_process_batch',
+      claimed: rows.length,
+      processed,
+      failed,
+      duration_ms: durationMs,
+      batch_limit: limit,
+    });
 
     return jsonResponse({ claimed: rows.length, processed, failed });
   }),

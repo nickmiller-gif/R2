@@ -1,3 +1,13 @@
+/**
+ * Inbound R2 Signal Contract v1 envelopes (producer → platform_feed_items).
+ *
+ * Auth model is documented in ADR-0003 (verify_jwt=false on this function plus
+ * guardAuth / service-role+HMAC paths) so JWT verification stays consistent with
+ * other R2 edge surfaces while still enforcing a strict trust boundary.
+ *
+ * @see ADR-0003 in the umbrella repo: `docs/adr/ADR-0003-signal-contract.md`
+ *   (nickmiller-gif/R2-Complete).
+ */
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { extractBearerToken, guardAuth } from '../_shared/auth.ts';

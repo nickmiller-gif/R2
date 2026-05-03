@@ -9,6 +9,10 @@ import {
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
+  eigenRetrievalQualityAppend,
+  formatRetrievalContextForLlm,
+} from '../../../src/lib/eigen/chat-retrieval-context.ts';
+import {
   buildCitations,
   buildCompositeConfidence,
   buildUploadFirstStrataWeights,
@@ -87,7 +91,11 @@ function readNoContextResponse(): string {
   );
 }
 
-function readSystemPrompt(format: 'structured' | 'freeform', voiceAddendum = ''): string {
+function readSystemPrompt(
+  format: 'structured' | 'freeform',
+  voiceAddendum = '',
+  retrievalAppend = '',
+): string {
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
   const base =
     fromEnv && fromEnv.length > 0
@@ -99,6 +107,7 @@ function readSystemPrompt(format: 'structured' | 'freeform', voiceAddendum = '')
     withEigenChatProseStyle(base),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
     voiceAddendum,
+    retrievalAppend,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -162,10 +171,6 @@ function parseRequest(value: unknown): ChatRequest {
   };
 }
 
-function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
-  return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
-}
-
 function buildContextHandlesMessage(body: ChatRequest): string {
   const handles: string[] = [];
   if (body.oracle_run_id) handles.push(`oracle_run_id=${body.oracle_run_id}`);
@@ -179,7 +184,7 @@ function buildUserMessageWithContext(
   chunks: EigenRetrieveChunk[],
   body: ChatRequest,
 ): string {
-  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}${buildContextHandlesMessage(body)}`;
+  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${formatRetrievalContextForLlm(chunks)}${buildContextHandlesMessage(body)}`;
 }
 
 Deno.serve(
@@ -281,6 +286,10 @@ Deno.serve(
         includePrivate: true,
         policyScope: resolvedScope.effectivePolicyScope,
       });
+      const retrievalQualityAppend = eigenRetrievalQualityAppend(
+        retrievedChunks,
+        confidence.overall,
+      );
 
       const maxHistoryTurns = readMaxHistoryTurns();
       let conversationHistory: ConversationTurn[] = [];
@@ -329,6 +338,7 @@ Deno.serve(
                   systemPrompt: readSystemPrompt(
                     body.response_format ?? 'structured',
                     voiceStyleAddendum,
+                    retrievalQualityAppend,
                   ),
                   userContent: streamUserContent,
                   conversationHistory,
@@ -470,7 +480,11 @@ Deno.serve(
         const llmResult = await completeLlmChat({
           provider: body.llm_provider,
           model: body.llm_model,
-          systemPrompt: readSystemPrompt(body.response_format ?? 'structured', voiceStyleAddendum),
+          systemPrompt: readSystemPrompt(
+            body.response_format ?? 'structured',
+            voiceStyleAddendum,
+            retrievalQualityAppend,
+          ),
           userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
           conversationHistory,
           maxTokens: readMaxCompletionTokens(),

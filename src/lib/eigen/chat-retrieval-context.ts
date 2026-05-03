@@ -30,7 +30,19 @@ export const LOW_CONFIDENCE_MAX_COMPOSITE = 0.48;
  */
 export const MEDIUM_CONFIDENCE_MAX_COMPOSITE = 0.62;
 
-/** Builds the labeled context block passed inside the user message to the LLM. */
+/**
+ * Builds the labeled context block passed inside the user message to the LLM.
+ *
+ * Format per chunk (separated by `\n\n---\n\n`):
+ *
+ *   [N]
+ *   Path: A › B          (omitted if no heading_path)
+ *   Origin: src · ref    (omitted if neither source_system nor source_ref)
+ *   <content>
+ *
+ * The [N] label sits on its own line so chunks scan cleanly even when
+ * the path or content lines are long.
+ */
 export function formatRetrievalContextForLlm(chunks: ChatRetrievalChunkForPrompt[]): string {
   return chunks
     .map((chunk, index) => {
@@ -43,7 +55,7 @@ export function formatRetrievalContextForLlm(chunks: ChatRetrievalChunkForPrompt
         lines.push(`Origin: ${[sys, ref].filter(Boolean).join(' · ')}`);
       }
       const header = lines.length > 0 ? `${lines.join('\n')}\n` : '';
-      return `[${index + 1}] ${header}${chunk.content.trim()}`;
+      return `[${index + 1}]\n${header}${chunk.content.trim()}`;
     })
     .join('\n\n---\n\n');
 }

@@ -71,6 +71,27 @@ describe('formatRetrievalContextForLlm', () => {
     expect(out).toContain('Path: Real');
     expect(out).not.toContain('Origin:');
   });
+
+  it('puts [N] on its own line, then path/origin metadata, then body', () => {
+    const out = formatRetrievalContextForLlm([
+      chunk({
+        content: 'Body.',
+        provenance: {
+          document_id: 'd',
+          source_system: 's',
+          source_ref: 'r',
+          heading_path: ['A'],
+          valid_from: null,
+        },
+      }),
+    ]);
+    expect(out).toMatch(/^\[1\]\nPath: A\nOrigin: s · r\nBody\.$/);
+  });
+
+  it('puts [N] on its own line even when no provenance is present', () => {
+    const out = formatRetrievalContextForLlm([chunk({ content: 'Body.' })]);
+    expect(out).toMatch(/^\[1\]\nBody\.$/);
+  });
 });
 
 describe('eigenRetrievalQualityAppend', () => {

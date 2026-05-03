@@ -7,6 +7,7 @@ export const EIGEN_CHAT_PROSE_STYLE = [
   'Answer in clear, conversational prose.',
   'Do not use inline citation markers: no bracketed numbers like [1], no footnotes, and no "Source 1" / "Snippet 2" labels in the body of the answer.',
   'The retrieved snippets may be labeled [1], [2], … only to help you read them; do not echo those labels back to the user.',
+  'Synthesize across snippets when they agree; if two snippets conflict, say so briefly and prefer higher-trust material (charter or oracle-linked evidence over generic corpus text).',
   'If the user explicitly asks where the information came from, what sources you used, or similar, then give a short separate answer: plain-language bullets with page titles, section names, or URLs as they appear in the snippets—still without numeric citation brackets.',
 ].join(' ');
 

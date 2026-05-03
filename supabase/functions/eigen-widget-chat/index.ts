@@ -14,6 +14,10 @@ import {
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
+  eigenRetrievalQualityAppend,
+  formatRetrievalContextForLlm,
+} from '../../../src/lib/eigen/chat-retrieval-context.ts';
+import {
   buildCitations,
   buildCompositeConfidence,
   buildUploadFirstStrataWeights,
@@ -85,10 +89,6 @@ function parseRequest(value: unknown): WidgetChatRequest {
     },
     stream: body.stream === true,
   };
-}
-
-function buildContext(chunks: EigenRetrieveChunk[]): string {
-  return chunks.map((chunk, i) => `[${i + 1}] ${chunk.content}`).join('\n\n');
 }
 
 function readWidgetMaxTokens(format: 'structured' | 'freeform'): number {
@@ -176,15 +176,17 @@ async function synthesize(
     includePrivate: mode === 'eigenx',
     policyScope,
   });
+  const retrievalAppend = eigenRetrievalQualityAppend(chunks, confidenceLabel);
   const systemPrompt = [
     withEigenChatProseStyle(basePrompt),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
     voiceStyleAddendum,
+    retrievalAppend,
   ]
     .filter(Boolean)
     .join('\n\n');
 
-  const labeled = buildContext(chunks);
+  const labeled = formatRetrievalContextForLlm(chunks);
   const userContent = hasContext
     ? `User message: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
     : `User message: ${message}`;

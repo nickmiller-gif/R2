@@ -8,6 +8,10 @@ import {
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
+  eigenRetrievalQualityAppend,
+  formatRetrievalContextForLlm,
+} from '../../../src/lib/eigen/chat-retrieval-context.ts';
+import {
   buildCitations,
   buildCompositeConfidence,
   buildUploadFirstStrataWeights,
@@ -102,12 +106,9 @@ function parseRequest(value: unknown): PublicChatRequest {
   };
 }
 
-function buildContextBlock(chunks: EigenRetrieveChunk[]): string {
-  return chunks.map((chunk, index) => `[${index + 1}] ${chunk.content}`).join('\n\n');
-}
-
 function buildUserMessageWithContext(message: string, chunks: EigenRetrieveChunk[]): string {
-  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${buildContextBlock(chunks)}`;
+  const block = formatRetrievalContextForLlm(chunks);
+  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${block}`;
 }
 
 function readPublicChatTemperature(): number {
@@ -176,10 +177,12 @@ async function synthesizePublicResponse(
   const basePrompt = withEigenChatProseStyle(
     envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
   );
+  const retrievalAppend = eigenRetrievalQualityAppend(retrievedChunks, confidenceLabel);
   const systemPrompt = [
     basePrompt,
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
     voiceStyleAddendum,
+    retrievalAppend,
   ]
     .filter(Boolean)
     .join('\n\n');

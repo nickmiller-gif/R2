@@ -7868,10 +7868,6 @@ export type Database = {
         Args: { signal_id: string }
         Returns: undefined
       }
-      replay_platform_feed_item: {
-        Args: { p_feed_item_id: string }
-        Returns: undefined
-      }
       entity_neighborhood: {
         Args: {
           p_entity_id: string

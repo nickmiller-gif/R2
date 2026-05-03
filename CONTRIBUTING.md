@@ -17,6 +17,14 @@ The migration sanity check (`npm run lint:migrations`) enforces a twelve-digit n
 
 Do not edit migration SQL after it has been applied to any shared environment (checksum drift). Fix forward with a new migration. See `R2-Operational-Pitfalls.md` (Pitfall C3).
 
+After a migration that adds tables, columns, or RPCs is **applied** to the linked Supabase project, regenerate types so CI passes:
+
+```bash
+npx supabase gen types typescript --project-id "<ref>" --schema public > database.types.ts
+```
+
+(Use the Supabase CLI version pinned in `scripts/supabase-cli-version.sh`.)
+
 ### Verify locally
 
 ```bash

@@ -17,13 +17,26 @@ export interface ChatRetrievalChunkForPrompt {
   };
 }
 
+/**
+ * Composite-score boundary below which we emit the strongest caution
+ * string regardless of the overall confidence label.
+ */
+export const LOW_CONFIDENCE_MAX_COMPOSITE = 0.48;
+
+/**
+ * Composite-score boundary used together with overall = 'medium' to emit
+ * the mixed-quality guidance string. Above this, medium retrieval is
+ * treated as good enough that no extra caution is added.
+ */
+export const MEDIUM_CONFIDENCE_MAX_COMPOSITE = 0.62;
+
 /** Builds the labeled context block passed inside the user message to the LLM. */
 export function formatRetrievalContextForLlm(chunks: ChatRetrievalChunkForPrompt[]): string {
   return chunks
     .map((chunk, index) => {
       const lines: string[] = [];
       const hp = chunk.provenance?.heading_path?.filter((s) => String(s).trim().length > 0) ?? [];
-      if (hp.length) lines.push(`Path: ${hp.map(String).join(' › ')}`);
+      if (hp.length) lines.push(`Path: ${hp.join(' › ')}`);
       const sys = chunk.provenance?.source_system?.trim();
       const ref = chunk.provenance?.source_ref?.trim();
       if (sys || ref) {
@@ -37,6 +50,7 @@ export function formatRetrievalContextForLlm(chunks: ChatRetrievalChunkForPrompt
 
 /**
  * Extra system guidance when retrieval scores are weak or confidence is low.
+ * Returns '' when retrieval is strong enough to need no extra caution.
  */
 export function eigenRetrievalQualityAppend(
   chunks: ChatRetrievalChunkForPrompt[],
@@ -49,13 +63,13 @@ export function eigenRetrievalQualityAppend(
       : (c.similarity_score ?? 0),
   );
   const maxComposite = Math.max(0, ...scores);
-  if (overall === 'low' || maxComposite < 0.48) {
+  if (overall === 'low' || maxComposite < LOW_CONFIDENCE_MAX_COMPOSITE) {
     return (
       'Retrieval relevance is limited. Stay tightly tied to the snippets: use cautious wording, ' +
       'and do not invent facts. If they do not answer the question, say so plainly.'
     );
   }
-  if (overall === 'medium' && maxComposite < 0.62) {
+  if (overall === 'medium' && maxComposite < MEDIUM_CONFIDENCE_MAX_COMPOSITE) {
     return (
       'Relevance is mixed: synthesize carefully. Where the material is thin or ambiguous, ' +
       'say that explicitly instead of guessing.'

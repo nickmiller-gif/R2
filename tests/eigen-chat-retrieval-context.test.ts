@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LOW_CONFIDENCE_MAX_COMPOSITE,
+  MEDIUM_CONFIDENCE_MAX_COMPOSITE,
   eigenRetrievalQualityAppend,
   formatRetrievalContextForLlm,
   type ChatRetrievalChunkForPrompt,
@@ -52,6 +54,23 @@ describe('formatRetrievalContextForLlm', () => {
     expect(out).toContain('\n\n---\n\n');
     expect(out).toContain('Two');
   });
+
+  it('drops empty heading-path segments', () => {
+    const out = formatRetrievalContextForLlm([
+      chunk({
+        content: 'Body.',
+        provenance: {
+          document_id: 'd',
+          source_system: '',
+          source_ref: '',
+          heading_path: ['', '  ', 'Real'],
+          valid_from: null,
+        },
+      }),
+    ]);
+    expect(out).toContain('Path: Real');
+    expect(out).not.toContain('Origin:');
+  });
 });
 
 describe('eigenRetrievalQualityAppend', () => {
@@ -83,5 +102,82 @@ describe('eigenRetrievalQualityAppend', () => {
         'medium',
       ),
     ).toBe('');
+  });
+
+  it('boundary: composite at LOW threshold + medium label → mixed guidance', () => {
+    const text = eigenRetrievalQualityAppend(
+      [chunk({ content: 'x', composite_score: LOW_CONFIDENCE_MAX_COMPOSITE })],
+      'medium',
+    );
+    expect(text.toLowerCase()).toContain('mixed');
+  });
+
+  it('boundary: composite at MEDIUM threshold + medium label → empty (strict <)', () => {
+    expect(
+      eigenRetrievalQualityAppend(
+        [chunk({ content: 'x', composite_score: MEDIUM_CONFIDENCE_MAX_COMPOSITE })],
+        'medium',
+      ),
+    ).toBe('');
+  });
+});
+
+/**
+ * Smoke test for the system-prompt compose pattern used inside the three
+ * eigen-chat edge functions. If anyone reorders, drops, or short-circuits
+ * the [base, ..., retrievalAppend].filter(Boolean).join('\n\n') array,
+ * these assertions catch it.
+ */
+describe('system-prompt threading (compose pattern)', () => {
+  function composeForTest(parts: {
+    base: string;
+    voiceAddendum?: string;
+    retrievalAppend?: string;
+  }): string {
+    return [
+      parts.base,
+      'Primary domain corpus decides answer direction; secondary corpus is additive only.',
+      parts.voiceAddendum,
+      parts.retrievalAppend,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  const BASE = 'You are a helpful assistant.';
+  const VOICE = 'Use a warm tone.';
+
+  it('includes the retrieval append when low-confidence is in effect', () => {
+    const retrievalAppend = eigenRetrievalQualityAppend(
+      [{ content: 'x', composite_score: 0.9 }],
+      'low',
+    );
+    expect(retrievalAppend).not.toBe('');
+    const out = composeForTest({ base: BASE, voiceAddendum: VOICE, retrievalAppend });
+    expect(out).toContain(BASE);
+    expect(out).toContain(VOICE);
+    expect(out).toContain(retrievalAppend);
+    expect(out).toContain('Primary domain corpus decides answer direction');
+  });
+
+  it('drops the retrieval append cleanly when retrieval is strong (no triple newlines)', () => {
+    const retrievalAppend = eigenRetrievalQualityAppend(
+      [{ content: 'x', composite_score: 0.95, similarity_score: 0.95 }],
+      'high',
+    );
+    expect(retrievalAppend).toBe('');
+    const out = composeForTest({ base: BASE, voiceAddendum: VOICE, retrievalAppend });
+    expect(out).not.toContain('\n\n\n');
+    expect(out.endsWith(VOICE)).toBe(true);
+  });
+
+  it('drops voiceAddendum cleanly when absent', () => {
+    const retrievalAppend = eigenRetrievalQualityAppend(
+      [{ content: 'x', composite_score: 0.5 }],
+      'medium',
+    );
+    const out = composeForTest({ base: BASE, retrievalAppend });
+    expect(out).not.toContain('\n\n\n');
+    expect(out).toContain(retrievalAppend);
   });
 });

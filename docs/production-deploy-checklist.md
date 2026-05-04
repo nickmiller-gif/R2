@@ -30,6 +30,8 @@ The Supabase project `zudslxucibosjwefojtm` hosts multiple apps — R2 (`public`
 
 Because the tracking table interleaves migrations from every deploy channel, `supabase db push` from R2's CI would error with `Remote migration versions not found in local migrations directory` every cycle (the `works.*` apps apply via the Supabase Dashboard / their own CI — those rows never appear as `.sql` files in this repo). Using `supabase migration repair --status reverted` to clean them up would just invite the `works.*` CI to re-apply them on its next push — an endless fight between the two channels.
 
+For **Supabase GitHub Preview** on PRs hitting the same error, see [docs/supabase-github-preview.md](supabase-github-preview.md) (placeholder migrations + alternatives).
+
 **R2's chosen operating model:**
 
 1. **Migrations apply via the Supabase MCP** (`apply_migration`) out of band — from the operator's local Cursor / review session, or from the Supabase Dashboard after peer review of the SQL. The MCP writes to the same `supabase_migrations.schema_migrations` table so drift checks keep seeing R2's history.

@@ -7976,6 +7976,10 @@ export type Database = {
         Args: { msg_id: number; queue_name: string }
         Returns: boolean
       }
+      replay_platform_feed_item: {
+        Args: { p_feed_item_id: string }
+        Returns: undefined
+      }
       sign: {
         Args: { algorithm?: string; payload: Json; secret: string }
         Returns: string

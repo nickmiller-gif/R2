@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MEG_RESOLVE_BOUNDS,
   inferActorMegResolveArgs,
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
@@ -127,5 +128,99 @@ describe('coffee pairing helpers', () => {
   it('isUuid accepts lowercase uuid', () => {
     expect(isUuid('aaaaaaaa-bbbb-4ccc-8eee-eeeeeeeeeeee')).toBe(true);
     expect(isUuid('not-a-uuid')).toBe(false);
+  });
+});
+
+describe('MEG_RESOLVE_BOUNDS — caller-supplied input caps', () => {
+  it('clamps oversize canonical_name (from summary fallback) to bound', () => {
+    const longSummary = 'x'.repeat(MEG_RESOLVE_BOUNDS.canonicalNameMaxLength + 200);
+    const r = inferActorMegResolveArgs({
+      id: 'sig-long-1',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: longSummary,
+      payload: { email: 'a@b.co' },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_canonical_name.length).toBeLessThanOrEqual(
+      MEG_RESOLVE_BOUNDS.canonicalNameMaxLength,
+    );
+  });
+
+  it('clamps oversize email and external_id', () => {
+    const longLocal = 'a'.repeat(MEG_RESOLVE_BOUNDS.canonicalEmailMaxLength + 100);
+    const longExt = 'e'.repeat(MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength + 100);
+    const r = inferActorMegResolveArgs({
+      id: 'sig-long-2',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: 's',
+      payload: { email: `${longLocal}@x.co`, user_id: longExt },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_canonical_email!.length).toBeLessThanOrEqual(
+      MEG_RESOLVE_BOUNDS.canonicalEmailMaxLength,
+    );
+    expect(r!.p_canonical_external_id!.length).toBeLessThanOrEqual(
+      MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength,
+    );
+  });
+
+  it('replaces oversize payload with truncation marker', () => {
+    const fat = 'p'.repeat(MEG_RESOLVE_BOUNDS.payloadMaxJsonBytes + 1024);
+    const r = inferActorMegResolveArgs({
+      id: 'sig-long-3',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: 's',
+      payload: { email: 'a@b.co', blob: fat },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_payload.__meg_payload_truncated).toBe(true);
+    expect(r!.p_payload.cap_bytes).toBe(MEG_RESOLVE_BOUNDS.payloadMaxJsonBytes);
+    expect(typeof r!.p_payload.original_byte_length).toBe('number');
+  });
+
+  it('clamps oversize related external_id entries', () => {
+    const longExt = 'r'.repeat(MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength + 100);
+    const list = inferRelatedMegResolveArgsList({
+      id: 'sig-long-4',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: 's',
+      payload: { related_external_ids: [longExt] },
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.p_canonical_external_id!.length).toBeLessThanOrEqual(
+      MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength,
+    );
+  });
+
+  it('caps related-entity inference at maxRelatedInfer', () => {
+    const ids = Array.from(
+      { length: MEG_RESOLVE_BOUNDS.maxRelatedInfer + 5 },
+      (_, i) => `ext-${i}`,
+    );
+    const list = inferRelatedMegResolveArgsList({
+      id: 'sig-long-5',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: 's',
+      payload: { related_external_ids: ids },
+    });
+    expect(list.length).toBeLessThanOrEqual(MEG_RESOLVE_BOUNDS.maxRelatedInfer);
+  });
+
+  it('clamps oversize entity_type to bound (no overflow into metadata catalog field)', () => {
+    const longType = `meg:${'z'.repeat(MEG_RESOLVE_BOUNDS.entityTypeMaxLength + 50)}`;
+    const r = inferActorMegResolveArgs({
+      id: 'sig-long-6',
+      source_system: 'r2_widget',
+      source_event_type: 'x',
+      summary: 's',
+      payload: { email: 'a@b.co', actor_entity_type: longType },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_entity_type.length).toBeLessThanOrEqual(MEG_RESOLVE_BOUNDS.entityTypeMaxLength);
   });
 });

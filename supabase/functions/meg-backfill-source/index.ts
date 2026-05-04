@@ -4,6 +4,9 @@ import { extractBearerToken } from '../_shared/auth.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withLogger } from '../_shared/log.ts';
+import { MEG_RESOLVE_BOUNDS } from '../_shared/meg-resolve-signal.ts';
+
+const CURSOR_MAX_LENGTH = 256;
 
 type BackfillArgs = {
   source_system: string;
@@ -37,10 +40,28 @@ function parseBackfillArgs(
       response: errorResponse('source_system is required (non-empty string)', 400),
     };
   }
+  if (sys.length > MEG_RESOLVE_BOUNDS.sourceSystemMaxLength) {
+    return {
+      ok: false,
+      response: errorResponse(
+        `source_system must be <= ${MEG_RESOLVE_BOUNDS.sourceSystemMaxLength} chars`,
+        400,
+      ),
+    };
+  }
   if (typeof tbl !== 'string' || tbl.trim().length === 0) {
     return {
       ok: false,
       response: errorResponse('source_table is required (non-empty string)', 400),
+    };
+  }
+  if (tbl.length > MEG_RESOLVE_BOUNDS.sourceTableMaxLength) {
+    return {
+      ok: false,
+      response: errorResponse(
+        `source_table must be <= ${MEG_RESOLVE_BOUNDS.sourceTableMaxLength} chars`,
+        400,
+      ),
     };
   }
   if (o.batch_size !== undefined && o.batch_size !== null) {
@@ -58,6 +79,12 @@ function parseBackfillArgs(
   }
   if (o.cursor !== undefined && o.cursor !== null && typeof o.cursor !== 'string') {
     return { ok: false, response: errorResponse('cursor must be a string or null', 400) };
+  }
+  if (typeof o.cursor === 'string' && o.cursor.length > CURSOR_MAX_LENGTH) {
+    return {
+      ok: false,
+      response: errorResponse(`cursor must be <= ${CURSOR_MAX_LENGTH} chars`, 400),
+    };
   }
   return {
     ok: true,
@@ -123,19 +150,21 @@ async function fetchOracleThesesBatch(
 }
 
 function mapOracleThesisRow(row: SourceRow) {
+  const trimmedTitle = row.title?.trim() ?? '';
+  const boundedTitle = trimmedTitle.slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength);
   return {
     entity_type: 'meg:thesis',
     payload: {
       thesis_id: row.id,
-      title: row.title,
+      title: boundedTitle || null,
       domain: null,
       confidence: null,
       publication_status: null,
     },
     dedup_email: null as string | null,
-    external_id: row.id,
-    source_row_id: row.id,
-    canonical_name: row.title?.trim() || `thesis ${row.id}`,
+    external_id: row.id.slice(0, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength),
+    source_row_id: row.id.slice(0, MEG_RESOLVE_BOUNDS.sourceRowIdMaxLength),
+    canonical_name: boundedTitle || `thesis ${row.id}`,
   };
 }
 

@@ -15,6 +15,11 @@ BEGIN
     RETURN;
   END IF;
 
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'net') THEN
+    RAISE NOTICE 'Skipping r2-signal-process-dispatcher reschedule; pg_net / net schema not available (net.http_post unavailable).';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM vault.decrypted_secrets

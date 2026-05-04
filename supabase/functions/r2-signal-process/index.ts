@@ -19,6 +19,28 @@ const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_BATCH_LIMIT = 15;
 /** Hard cap per invocation; matches cron `limit=` and claim RPC backpressure. */
 const MAX_BATCH_LIMIT = 25;
+/** Must match `max_attempts` in `claim_platform_feed_items` (signal_contract migrations). */
+const MAX_SIGNAL_PROCESS_ATTEMPTS = 10;
+
+/** True when `x-r2-signal-process-token` matches configured `R2_SIGNAL_PROCESS_TOKEN`. */
+function resolveTrustedProcessCaller(req: Request): boolean {
+  const configured = Deno.env.get('R2_SIGNAL_PROCESS_TOKEN')?.trim();
+  if (!configured) return false;
+  const provided = req.headers.get('x-r2-signal-process-token')?.trim();
+  return Boolean(provided && provided === configured);
+}
+
+/** Parses `limit` query param or env override, clamped to [1, MAX_BATCH_LIMIT]. */
+function parseBatchLimit(req: Request): number {
+  const url = new URL(req.url);
+  const raw =
+    url.searchParams.get('limit') ??
+    Deno.env.get('R2_SIGNAL_PROCESS_BATCH_LIMIT') ??
+    String(DEFAULT_BATCH_LIMIT);
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BATCH_LIMIT;
+  return Math.min(parsed, MAX_BATCH_LIMIT);
+}
 
 type FeedRow = {
   id: string;
@@ -33,24 +55,6 @@ type FeedRow = {
   routing_targets: string[];
   actor_meg_entity_id?: string | null;
 };
-
-function resolveTrustedProcessCaller(req: Request): boolean {
-  const configured = Deno.env.get('R2_SIGNAL_PROCESS_TOKEN')?.trim();
-  if (!configured) return false;
-  const provided = req.headers.get('x-r2-signal-process-token')?.trim();
-  return Boolean(provided && provided === configured);
-}
-
-function parseBatchLimit(req: Request): number {
-  const url = new URL(req.url);
-  const raw =
-    url.searchParams.get('limit') ??
-    Deno.env.get('R2_SIGNAL_PROCESS_BATCH_LIMIT') ??
-    String(DEFAULT_BATCH_LIMIT);
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BATCH_LIMIT;
-  return Math.min(parsed, MAX_BATCH_LIMIT);
-}
 
 /**
  * When ingest left actor_meg_entity_id null but the payload carries a stable
@@ -97,6 +101,7 @@ async function ensureActorMegEntityLinked(
   return { ...row, actor_meg_entity_id: megId as string };
 }
 
+/** Merges UUID + inferred MEG ids into `related_entity_ids` on the feed row. */
 async function ensureRelatedMegEntitiesLinked(
   client: ReturnType<typeof getServiceClient>,
   row: FeedRow,
@@ -133,6 +138,7 @@ async function ensureRelatedMegEntitiesLinked(
   return { ...row, related_entity_ids: next };
 }
 
+/** Records a `coffee_pairing` MEG edge when the signal is a coffee-match pairing. */
 async function maybeRecordCoffeePairingEdge(
   client: ReturnType<typeof getServiceClient>,
   row: FeedRow,
@@ -157,13 +163,24 @@ async function maybeRecordCoffeePairingEdge(
   }
 }
 
+/** Marks a feed item failed (retryable) or deadletter (terminal after attempt budget). */
 async function markSignalFailed(signalId: string, message: string): Promise<void> {
   const client = getServiceClient();
-  const nextRetryAt = computeNextRetryAt();
+  const { data: row, error } = await client
+    .from('platform_feed_items')
+    .select('attempt_count')
+    .eq('id', signalId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  const attempts = row?.attempt_count ?? 0;
+  const terminal = attempts >= MAX_SIGNAL_PROCESS_ATTEMPTS ? 'deadletter' : 'failed';
+  const nextRetryAt = terminal === 'deadletter' ? null : computeNextRetryAt();
   await client
     .from('platform_feed_items')
     .update({
-      processing_status: 'failed',
+      processing_status: terminal,
       error: message.slice(0, 2000),
       next_retry_at: nextRetryAt,
       processed_at: new Date().toISOString(),
@@ -171,6 +188,7 @@ async function markSignalFailed(signalId: string, message: string): Promise<void
     .eq('id', signalId);
 }
 
+/** Chunks signal content, embeds, writes document + ingestion run + evidence, marks published. */
 async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promise<void> {
   const client = getServiceClient();
   const signalRef = `platform_feed_items:${row.id}`;

@@ -3,7 +3,7 @@ name: Eigen Ingest Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 * * * *"
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
@@ -26,13 +26,29 @@ jobs:
       EMBEDDING_MODEL: ${{ vars.EIGEN_SYNC_EMBEDDING_MODEL || '' }}
       ALLOWED_EXTENSIONS: ${{ vars.EIGEN_SYNC_ALLOWED_EXTENSIONS || '.txt,.md,.csv,.pdf,.docx' }}
       MANIFEST_PATH: .cache/eigen-ingest-manifest.json
-      PRUNE_MANIFEST_MISSING: "true"
+      PRUNE_MANIFEST_MISSING: 'true'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Gate — secrets and input dir
+        id: gate
+        run: |
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${AUTH_BEARER}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Eigen ingest sync skipped (set SUPABASE_URL and EIGEN_SYNC_AUTH_BEARER on the workflow environment)."
+            exit 0
+          fi
+          if [ ! -d "$INPUT_DIR" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Eigen ingest sync skipped (INPUT_DIR missing: $INPUT_DIR)."
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
       - name: Restore sync manifest cache
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/cache/restore@v5
         with:
           path: .cache/eigen-ingest-manifest.json
@@ -40,18 +56,12 @@ jobs:
           restore-keys: |
             eigen-ingest-manifest-
 
-      - name: Validate input directory
-        run: |
-          if [ ! -d "$INPUT_DIR" ]; then
-            echo "Missing INPUT_DIR: $INPUT_DIR"
-            exit 1
-          fi
-
       - name: Run incremental ingest sync
+        if: steps.gate.outputs.skip != 'true'
         run: ./scripts/eigen-ingest-sync.sh
 
       - name: Save sync manifest cache
-        if: always()
+        if: always() && steps.gate.outputs.skip != 'true'
         uses: actions/cache/save@v5
         with:
           path: .cache/eigen-ingest-manifest.json

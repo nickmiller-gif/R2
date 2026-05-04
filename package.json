@@ -49,17 +49,17 @@
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
-    "globals": "^17.5.0",
+    "globals": "^17.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.3",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.59.0",
+    "typescript-eslint": "^8.59.1",
     "vite": "^8.0.10",
     "vitest": "^4.1.2"
   },
   "dependencies": {
-    "@rolldown/pluginutils": "^1.0.0-rc.17",
-    "@supabase/supabase-js": "^2.104.1"
+    "@rolldown/pluginutils": "^1.0.0-rc.18",
+    "@supabase/supabase-js": "^2.105.1"
   }
 }

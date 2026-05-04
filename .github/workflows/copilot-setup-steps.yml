@@ -1,13 +1,10 @@
-name: "Copilot Setup Steps"
+name: 'Copilot Setup Steps'
 
+# Manual / PR-only: `copilot_setup` is not available on all org/repo types and
+# caused workflow-parse failures on normal pushes to main. Use workflow_dispatch
+# to run this check when needed; main quality gate remains CI.
 on:
-  copilot_setup:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
-      - package.json
-      - package-lock.json
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
@@ -25,8 +22,8 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
-          cache: "npm"
+          node-version: '24'
+          cache: 'npm'
 
       - run: npm ci
 

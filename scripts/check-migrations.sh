@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-migrations.sh — migration sanity checks for R2
-# Validates naming convention, ordering, and basic SQL hygiene.
+# Validates naming convention (YYYYMMDDHHMM_snake_case.sql), ordering, and basic SQL hygiene.
 set -euo pipefail
 
 EXIT=0
@@ -17,12 +17,12 @@ echo "=== Migration Sanity Check ==="
 BAD_NAMES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | grep -vE '^[0-9]{12}_[a-z0-9_]+\.sql$' || true)
 if [ -n "$BAD_NAMES" ]; then
   echo ""
-  echo "FAIL: Migration files with non-standard names (expected YYYYMMDDNNNN_snake_case.sql):"
+  echo "FAIL: Migration files with non-standard names (expected YYYYMMDDHHMM_snake_case.sql):"
   echo "$BAD_NAMES"
   EXIT=1
 fi
 
-# 2. Check for duplicate prefixes (same timestamp)
+# 2. Check for duplicate prefixes (same twelve-digit key)
 DUPES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | cut -c1-12 | sort | uniq -d || true)
 if [ -n "$DUPES" ]; then
   echo ""

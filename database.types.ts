@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       activity_log: {
@@ -8001,6 +7976,10 @@ export type Database = {
         Args: { msg_id: number; queue_name: string }
         Returns: boolean
       }
+      replay_platform_feed_item: {
+        Args: { p_feed_item_id: string }
+        Returns: undefined
+      }
       sign: {
         Args: { algorithm?: string; payload: Json; secret: string }
         Returns: string
@@ -8433,9 +8412,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: ["admin", "analyst", "viewer"],

@@ -13,8 +13,9 @@ fi
 
 echo "=== Migration Sanity Check ==="
 
-# 1. All files must match naming convention: YYYYMMDDNNNN_description.sql
-BAD_NAMES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | grep -vE '^[0-9]{12}_[a-z0-9_]+\.sql$' || true)
+# 1. All files must match naming convention: numeric prefix (12–14 digits) + _description.sql
+#    (14-digit prefixes appear when remote schema_migrations rows were created outside this repo.)
+BAD_NAMES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | grep -vE '^[0-9]{12,14}_[a-z0-9_]+\.sql$' || true)
 if [ -n "$BAD_NAMES" ]; then
   echo ""
   echo "FAIL: Migration files with non-standard names (expected YYYYMMDDHHMM_snake_case.sql):"
@@ -22,8 +23,8 @@ if [ -n "$BAD_NAMES" ]; then
   EXIT=1
 fi
 
-# 2. Check for duplicate prefixes (same twelve-digit key)
-DUPES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | cut -c1-12 | sort | uniq -d || true)
+# 2. Check for duplicate migration version keys (digits before first underscore)
+DUPES=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | xargs -I{} basename {} | awk -F_ 'NF>=2 && $1 ~ /^[0-9]{12,14}$/{print $1}' | sort | uniq -d || true)
 if [ -n "$DUPES" ]; then
   echo ""
   echo "FAIL: Duplicate migration timestamps found:"

@@ -21,6 +21,7 @@ export {
 
 export {
   createEigenPolicyEngineService,
+  EIGEN_DECISION_BOUNDS,
   type CreateEigenPolicyEngineServiceOptions,
   type EigenPolicyEngineService,
   type EigenPolicyEngineDb,

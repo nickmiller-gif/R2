@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createEigenPolicyEngineService,
+  EIGEN_DECISION_BOUNDS,
   type DbEigenPolicyDecisionRow,
   type DbEigenPolicyRuleRow,
   type EigenPolicyEngineDb,
@@ -243,5 +244,112 @@ describe('Eigen policy decision recording', () => {
     await service.listDecisions({ limit: -10_000 });
 
     expect(seenLimits).toEqual([1, 1, 1]);
+  });
+});
+
+describe('Eigen policy evaluate() input bounds (defense in depth)', () => {
+  function setup(): {
+    service: ReturnType<typeof createEigenPolicyEngineService>;
+    db: ReturnType<typeof makeRecordingDb>;
+  } {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-all', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+    return { service, db };
+  }
+
+  const baseInput = {
+    policyTags: ['eigenx'],
+    capabilityTags: ['read:tool-capability'],
+    callerRoles: ['member'],
+  };
+
+  it('rejects oversized policyTags cardinality without inserting a decision row', async () => {
+    const { service, db } = setup();
+    const tooMany = Array.from(
+      { length: EIGEN_DECISION_BOUNDS.policyTagsMax + 1 },
+      (_, i) => `t${i}`,
+    );
+    await expect(service.evaluate({ ...baseInput, policyTags: tooMany })).rejects.toThrow(
+      /policyTags cardinality/,
+    );
+    expect(db.recorded).toHaveLength(0);
+  });
+
+  it('rejects oversized capabilityTags cardinality', async () => {
+    const { service } = setup();
+    const tooMany = Array.from(
+      { length: EIGEN_DECISION_BOUNDS.capabilityTagsMax + 1 },
+      (_, i) => `c${i}`,
+    );
+    await expect(service.evaluate({ ...baseInput, capabilityTags: tooMany })).rejects.toThrow(
+      /capabilityTags cardinality/,
+    );
+  });
+
+  it('rejects oversized callerRoles cardinality', async () => {
+    const { service } = setup();
+    const tooMany = Array.from(
+      { length: EIGEN_DECISION_BOUNDS.callerRolesMax + 1 },
+      (_, i) => `r${i}`,
+    );
+    await expect(service.evaluate({ ...baseInput, callerRoles: tooMany })).rejects.toThrow(
+      /callerRoles cardinality/,
+    );
+  });
+
+  it('rejects oversized individual tag length', async () => {
+    const { service } = setup();
+    const huge = 'x'.repeat(EIGEN_DECISION_BOUNDS.policyTagMaxLength + 1);
+    await expect(service.evaluate({ ...baseInput, policyTags: [huge] })).rejects.toThrow(
+      /policyTags entry length/,
+    );
+  });
+
+  it('rejects oversized callerSubject length', async () => {
+    const { service } = setup();
+    const huge = 's'.repeat(EIGEN_DECISION_BOUNDS.callerSubjectMaxLength + 1);
+    await expect(service.evaluate({ ...baseInput, callerSubject: huge })).rejects.toThrow(
+      /callerSubject length/,
+    );
+  });
+
+  it('rejects oversized correlationId length', async () => {
+    const { service } = setup();
+    const huge = 'c'.repeat(EIGEN_DECISION_BOUNDS.correlationIdMaxLength + 1);
+    await expect(service.evaluate({ ...baseInput, correlationId: huge })).rejects.toThrow(
+      /correlationId length/,
+    );
+  });
+
+  it('rejects metadata that exceeds the JSON byte cap', async () => {
+    const { service, db } = setup();
+    // Each char is ~1 byte once JSON-encoded; pad slightly over the cap.
+    const blob = 'a'.repeat(EIGEN_DECISION_BOUNDS.metadataMaxJsonBytes + 1);
+    await expect(service.evaluate({ ...baseInput, metadata: { blob } })).rejects.toThrow(
+      /metadata JSON byte length/,
+    );
+    expect(db.recorded).toHaveLength(0);
+  });
+
+  it('accepts inputs at the boundary (cap-equal) without throwing', async () => {
+    const db = makeRecordingDb([
+      makeRow({ id: 'allow-star', policy_tag: '*', capability_tag_pattern: '*', effect: 'allow' }),
+    ]);
+    const service = createEigenPolicyEngineService(db);
+
+    const result = await service.evaluate({
+      policyTags: Array.from({ length: EIGEN_DECISION_BOUNDS.policyTagsMax }, (_, i) => `t${i}`),
+      capabilityTags: Array.from(
+        { length: EIGEN_DECISION_BOUNDS.capabilityTagsMax },
+        (_, i) => `c${i}`,
+      ),
+      callerRoles: Array.from({ length: EIGEN_DECISION_BOUNDS.callerRolesMax }, (_, i) => `r${i}`),
+      callerSubject: 's'.repeat(EIGEN_DECISION_BOUNDS.callerSubjectMaxLength),
+      correlationId: 'c'.repeat(EIGEN_DECISION_BOUNDS.correlationIdMaxLength),
+    });
+    expect(result.allowed).toBe(true);
+    expect(db.recorded).toHaveLength(1);
   });
 });

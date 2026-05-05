@@ -22,13 +22,13 @@ import {
   verifySignalHmac,
 } from '../_shared/signal-utils.ts';
 import {
-  SIGNAL_BOUNDS,
   SIGNAL_CONTRACT_VERSION,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
+import { resolveIngestRunIdAndProvenance } from '../_shared/r2-ingest-run-default.ts';
 import { withLogger } from '../_shared/log.ts';
-import { isWave1SourceSystem, validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
+import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
 
 /**
  * Hard cap on the inbound signal envelope size. Keeps a malformed or
@@ -50,78 +50,8 @@ function exceedsBodyLimit(req: Request): boolean {
   return parsed > MAX_REQUEST_BODY_BYTES;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Wave 1 producers (rays_retreat, operator_workbench, oracle_operator) carry
- * their ingest run id inside `raw_payload.ingest_run.id`. If the envelope
- * omitted the column-level `ingest_run_id`, prefer the payload's id so the
- * column joins back to the same run instead of getting a fresh per-row UUID.
- * Non–Wave-1 sources never read payload run ids (avoids accidental reuse of
- * arbitrary `raw_payload.ingest_run` shapes).
- */
-function tryExtractWave1RunId(envelope: R2SignalEnvelope): string | null {
-  if (!isWave1SourceSystem(envelope.source_system)) return null;
-  const payload = envelope.raw_payload;
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return null;
-  }
-  const ingestRun = (payload as Record<string, unknown>).ingest_run;
-  if (typeof ingestRun !== 'object' || ingestRun === null || Array.isArray(ingestRun)) {
-    return null;
-  }
-  const id = (ingestRun as Record<string, unknown>).id;
-  return typeof id === 'string' && UUID_RE.test(id) ? id : null;
-}
-
-/**
- * When the producer omits `ingest_run_id`, augment provenance with a marker
- * so backfilled rows are distinguishable from producer-supplied IDs in audit
- * joins. Markers live under `_r2` so producer top-level provenance keys are
- * not overwritten. If adding both `ingest_run_source` and `server_default_at`
- * would breach the contract provenance byte cap, keeps only `ingest_run_source`;
- * if even that does not fit, returns the original provenance unchanged.
- */
-function withServerDefaultProvenance(
-  provenance: Record<string, unknown>,
-  source: 'wave1_payload' | 'server_default',
-): Record<string, unknown> {
-  const encoder = new TextEncoder();
-  const max = SIGNAL_BOUNDS.provenanceMaxJsonBytes;
-  const stamp = new Date().toISOString();
-  const { _r2: existingRaw, ...rest } = provenance;
-  const r2Base = isObject(existingRaw) ? { ...(existingRaw as Record<string, unknown>) } : {};
-
-  const withSource: Record<string, unknown> = {
-    ...rest,
-    _r2: { ...r2Base, ingest_run_source: source },
-  };
-  if (encoder.encode(JSON.stringify(withSource)).byteLength > max) return provenance;
-
-  const withBoth: Record<string, unknown> = {
-    ...rest,
-    _r2: { ...r2Base, ingest_run_source: source, server_default_at: stamp },
-  };
-  if (encoder.encode(JSON.stringify(withBoth)).byteLength <= max) return withBoth;
-  return withSource;
-}
-
 function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {
-  const providedRunId = envelope.ingest_run_id ?? null;
-  let ingestRunId: string;
-  let provenance = envelope.provenance;
-  if (providedRunId) {
-    ingestRunId = providedRunId;
-  } else {
-    const wave1Id = tryExtractWave1RunId(envelope);
-    if (wave1Id) {
-      ingestRunId = wave1Id;
-      provenance = withServerDefaultProvenance(envelope.provenance, 'wave1_payload');
-    } else {
-      ingestRunId = crypto.randomUUID();
-      provenance = withServerDefaultProvenance(envelope.provenance, 'server_default');
-    }
-  }
+  const { ingestRunId, provenance } = resolveIngestRunIdAndProvenance(envelope);
   return {
     contract_version: envelope.contract_version,
     source_system: envelope.source_system,

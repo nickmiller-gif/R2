@@ -22,12 +22,13 @@ import {
   verifySignalHmac,
 } from '../_shared/signal-utils.ts';
 import {
+  SIGNAL_BOUNDS,
   SIGNAL_CONTRACT_VERSION,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
 import { withLogger } from '../_shared/log.ts';
-import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
+import { isWave1SourceSystem, validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
 
 /**
  * Hard cap on the inbound signal envelope size. Keeps a malformed or
@@ -36,13 +37,6 @@ import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
  * fields (raw_payload, provenance, etc.) — this is the outer perimeter.
  */
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
-
-/**
- * Provenance JSON cap from the contract (8 KiB). Mirrors
- * SIGNAL_BOUNDS.provenanceMaxJsonBytes; duplicated here to avoid pulling the
- * full contract into the hot path of buildInsertRow.
- */
-const PROVENANCE_MAX_BYTES = 8 * 1024;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -63,8 +57,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * their ingest run id inside `raw_payload.ingest_run.id`. If the envelope
  * omitted the column-level `ingest_run_id`, prefer the payload's id so the
  * column joins back to the same run instead of getting a fresh per-row UUID.
+ * Non–Wave-1 sources never read payload run ids (avoids accidental reuse of
+ * arbitrary `raw_payload.ingest_run` shapes).
  */
 function tryExtractWave1RunId(envelope: R2SignalEnvelope): string | null {
+  if (!isWave1SourceSystem(envelope.source_system)) return null;
   const payload = envelope.raw_payload;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     return null;
@@ -80,20 +77,33 @@ function tryExtractWave1RunId(envelope: R2SignalEnvelope): string | null {
 /**
  * When the producer omits `ingest_run_id`, augment provenance with a marker
  * so backfilled rows are distinguishable from producer-supplied IDs in audit
- * joins. Falls back to original provenance if the augmentation would breach
- * the 8 KiB provenance cap (protects exotic producers near the limit).
+ * joins. Markers live under `_r2` so producer top-level provenance keys are
+ * not overwritten. If adding both `ingest_run_source` and `server_default_at`
+ * would breach the contract provenance byte cap, keeps only `ingest_run_source`;
+ * if even that does not fit, returns the original provenance unchanged.
  */
 function withServerDefaultProvenance(
   provenance: Record<string, unknown>,
   source: 'wave1_payload' | 'server_default',
 ): Record<string, unknown> {
-  const augmented = {
-    ...provenance,
-    ingest_run_source: source,
-    server_default_at: new Date().toISOString(),
+  const encoder = new TextEncoder();
+  const max = SIGNAL_BOUNDS.provenanceMaxJsonBytes;
+  const stamp = new Date().toISOString();
+  const { _r2: existingRaw, ...rest } = provenance;
+  const r2Base = isObject(existingRaw) ? { ...(existingRaw as Record<string, unknown>) } : {};
+
+  const withSource: Record<string, unknown> = {
+    ...rest,
+    _r2: { ...r2Base, ingest_run_source: source },
   };
-  const size = new TextEncoder().encode(JSON.stringify(augmented)).byteLength;
-  return size <= PROVENANCE_MAX_BYTES ? augmented : provenance;
+  if (encoder.encode(JSON.stringify(withSource)).byteLength > max) return provenance;
+
+  const withBoth: Record<string, unknown> = {
+    ...rest,
+    _r2: { ...r2Base, ingest_run_source: source, server_default_at: stamp },
+  };
+  if (encoder.encode(JSON.stringify(withBoth)).byteLength <= max) return withBoth;
+  return withSource;
 }
 
 function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {

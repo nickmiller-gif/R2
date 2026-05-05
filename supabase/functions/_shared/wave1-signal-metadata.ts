@@ -7,6 +7,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 const WAVE1_SOURCE_SYSTEMS = new Set(['rays_retreat', 'operator_workbench', 'oracle_operator']);
 const EVIDENCE_TIERS = new Set(['A', 'B', 'C', 'D', 'E']);
 
+/** RFC 4122 UUID string (case-insensitive) for `raw_payload.ingest_run.id`. */
+const WAVE1_INGEST_RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Max entries in `sources_queried` per Wave 1 envelope (abuse + payload bounds). */
 export const WAVE1_MAX_SOURCES_QUERIED = 64;
 /** Max UTF-16 code units per `sources_queried` entry. */
@@ -52,6 +55,13 @@ export function validateWave1Metadata(envelope: R2SignalEnvelope): Wave1Metadata
   }
   const runIdResult = ensureString(ingestRun.id, 'raw_payload.ingest_run.id');
   if (!runIdResult.ok) return runIdResult;
+  if (!WAVE1_INGEST_RUN_ID_RE.test(String(ingestRun.id).trim())) {
+    return {
+      ok: false,
+      code: 'wave1_metadata_invalid',
+      message: 'raw_payload.ingest_run.id must be a UUID',
+    };
+  }
   const sourceResult = ensureString(
     ingestRun.source_system,
     'raw_payload.ingest_run.source_system',

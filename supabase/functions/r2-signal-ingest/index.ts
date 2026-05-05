@@ -37,6 +37,13 @@ import { validateWave1Metadata } from '../_shared/wave1-signal-metadata.ts';
  */
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 
+/**
+ * Provenance JSON cap from the contract (8 KiB). Mirrors
+ * SIGNAL_BOUNDS.provenanceMaxJsonBytes; duplicated here to avoid pulling the
+ * full contract into the hot path of buildInsertRow.
+ */
+const PROVENANCE_MAX_BYTES = 8 * 1024;
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -49,7 +56,62 @@ function exceedsBodyLimit(req: Request): boolean {
   return parsed > MAX_REQUEST_BODY_BYTES;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Wave 1 producers (rays_retreat, operator_workbench, oracle_operator) carry
+ * their ingest run id inside `raw_payload.ingest_run.id`. If the envelope
+ * omitted the column-level `ingest_run_id`, prefer the payload's id so the
+ * column joins back to the same run instead of getting a fresh per-row UUID.
+ */
+function tryExtractWave1RunId(envelope: R2SignalEnvelope): string | null {
+  const payload = envelope.raw_payload;
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return null;
+  }
+  const ingestRun = (payload as Record<string, unknown>).ingest_run;
+  if (typeof ingestRun !== 'object' || ingestRun === null || Array.isArray(ingestRun)) {
+    return null;
+  }
+  const id = (ingestRun as Record<string, unknown>).id;
+  return typeof id === 'string' && UUID_RE.test(id) ? id : null;
+}
+
+/**
+ * When the producer omits `ingest_run_id`, augment provenance with a marker
+ * so backfilled rows are distinguishable from producer-supplied IDs in audit
+ * joins. Falls back to original provenance if the augmentation would breach
+ * the 8 KiB provenance cap (protects exotic producers near the limit).
+ */
+function withServerDefaultProvenance(
+  provenance: Record<string, unknown>,
+  source: 'wave1_payload' | 'server_default',
+): Record<string, unknown> {
+  const augmented = {
+    ...provenance,
+    ingest_run_source: source,
+    server_default_at: new Date().toISOString(),
+  };
+  const size = new TextEncoder().encode(JSON.stringify(augmented)).byteLength;
+  return size <= PROVENANCE_MAX_BYTES ? augmented : provenance;
+}
+
 function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {
+  const providedRunId = envelope.ingest_run_id ?? null;
+  let ingestRunId: string;
+  let provenance = envelope.provenance;
+  if (providedRunId) {
+    ingestRunId = providedRunId;
+  } else {
+    const wave1Id = tryExtractWave1RunId(envelope);
+    if (wave1Id) {
+      ingestRunId = wave1Id;
+      provenance = withServerDefaultProvenance(envelope.provenance, 'wave1_payload');
+    } else {
+      ingestRunId = crypto.randomUUID();
+      provenance = withServerDefaultProvenance(envelope.provenance, 'server_default');
+    }
+  }
   return {
     contract_version: envelope.contract_version,
     source_system: envelope.source_system,
@@ -63,9 +125,9 @@ function buildInsertRow(envelope: R2SignalEnvelope, sourceSignalKey: string) {
     payload: envelope.raw_payload,
     confidence: envelope.confidence,
     privacy_level: envelope.privacy_level,
-    provenance: envelope.provenance,
+    provenance,
     routing_targets: envelope.routing_targets,
-    ingest_run_id: envelope.ingest_run_id ?? null,
+    ingest_run_id: ingestRunId,
   };
 }
 

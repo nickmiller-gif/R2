@@ -52,6 +52,17 @@ describe('Wave 1 metadata validation', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('fails when ingest_run.id is not a UUID', () => {
+    const envelope = validWave1Envelope('rays_retreat');
+    (envelope.raw_payload as any).ingest_run.id = 'not-a-uuid';
+    const result = validateWave1Metadata(envelope);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe('wave1_metadata_invalid');
+      expect(result.message).toContain('UUID');
+    }
+  });
+
   it('fails when ingest_run is missing', () => {
     const envelope = validWave1Envelope('operator_workbench');
     delete (envelope.raw_payload as Record<string, unknown>).ingest_run;

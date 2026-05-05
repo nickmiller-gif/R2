@@ -2089,7 +2089,10 @@ export type Database = {
           governance_scope: string
           id: string
           industry: string | null
+          kind: string
           name: string
+          primary_site_id: string | null
+          seen_on_sites: Json
           workspace_id: string | null
         }
         Insert: {
@@ -2099,7 +2102,10 @@ export type Database = {
           governance_scope?: string
           id?: string
           industry?: string | null
+          kind?: string
           name: string
+          primary_site_id?: string | null
+          seen_on_sites?: Json
           workspace_id?: string | null
         }
         Update: {
@@ -2109,7 +2115,10 @@ export type Database = {
           governance_scope?: string
           id?: string
           industry?: string | null
+          kind?: string
           name?: string
+          primary_site_id?: string | null
+          seen_on_sites?: Json
           workspace_id?: string | null
         }
         Relationships: []
@@ -7881,6 +7890,7 @@ export type Database = {
           weight: number
         }[]
       }
+      has_charter_access: { Args: { _user_id: string }; Returns: boolean }
       has_platform_access: {
         Args: { _platform: string; _user_id: string }
         Returns: boolean

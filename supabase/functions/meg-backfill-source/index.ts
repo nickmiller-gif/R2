@@ -6,6 +6,9 @@ import { timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withLogger } from '../_shared/log.ts';
 import { MEG_RESOLVE_BOUNDS } from '../_shared/meg-resolve-signal.ts';
 
+/** Supported `source_system:source_table` keys — add a branch in the serve handler for each new backfill target. */
+const SUPPORTED_BACKFILL_KEYS = ['r2:oracle_theses'] as const;
+
 const CURSOR_MAX_LENGTH = 256;
 
 type BackfillArgs = {
@@ -223,7 +226,10 @@ Deno.serve(
         if (key === 'r2:oracle_theses') {
           rows = await fetchOracleThesesBatch(client, cursor, batch);
         } else {
-          log.warn('no adapter for source pair — no rows fetched', { key });
+          log.warn('no adapter for source pair — no rows fetched', {
+            key,
+            supported: [...SUPPORTED_BACKFILL_KEYS],
+          });
           break;
         }
       } catch (e) {

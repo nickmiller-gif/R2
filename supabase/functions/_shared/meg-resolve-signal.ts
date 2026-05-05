@@ -293,5 +293,78 @@ export function inferRelatedMegResolveArgsList(row: FeedRowForMeg): MegResolveRp
     });
   }
 
+  inferTypedAssetRelatedResolves(out, seen, row, p);
+
   return out;
+}
+
+/**
+ * Non-person nouns: property, IP, patents — keyed by stable external ids in raw_payload.
+ * Only runs when a string id is present (no mint-from-summary).
+ */
+function inferTypedAssetRelatedResolves(
+  out: MegResolveRpcArgs[],
+  seen: Set<string>,
+  row: FeedRowForMeg,
+  p: Record<string, unknown>,
+): void {
+  const propertyLabel = firstString(p.property_name, p.property_address, p.address);
+  const propertyCandidates: Array<{ suffix: string; ext: unknown; name: unknown }> = [
+    { suffix: 'property_external_id', ext: p.property_external_id, name: propertyLabel },
+    { suffix: 'property_id', ext: p.property_id, name: propertyLabel },
+    { suffix: 'parcel_apn', ext: p.parcel_apn, name: propertyLabel },
+    { suffix: 'apn', ext: p.apn, name: propertyLabel },
+    { suffix: 'legal_description_id', ext: p.legal_description_id, name: propertyLabel },
+  ];
+  for (const { suffix, ext, name } of propertyCandidates) {
+    if (out.length >= MAX_RELATED_INFER) return;
+    pushRelatedResolve(out, seen, row, `prop:${suffix}`, {
+      entityType: 'meg:property',
+      externalId: ext,
+      name,
+      payloadSlice: { asset_kind: 'property', field: suffix },
+    });
+  }
+
+  const ipCandidates: Array<{ suffix: string; ext: unknown; name: unknown; entityType: string }> = [
+    {
+      suffix: 'ip_matter_id',
+      ext: p.ip_matter_id,
+      name: p.ip_matter_title,
+      entityType: 'meg:ip_matter',
+    },
+    {
+      suffix: 'ip_matter_external_id',
+      ext: p.ip_matter_external_id,
+      name: p.ip_matter_title,
+      entityType: 'meg:ip_matter',
+    },
+    {
+      suffix: 'patent_number',
+      ext: p.patent_number,
+      name: p.patent_title,
+      entityType: 'meg:patent',
+    },
+    {
+      suffix: 'application_number',
+      ext: p.application_number,
+      name: p.patent_title,
+      entityType: 'meg:patent',
+    },
+    {
+      suffix: 'publication_number',
+      ext: p.publication_number,
+      name: p.patent_title,
+      entityType: 'meg:patent',
+    },
+  ];
+  for (const { suffix, ext, name, entityType } of ipCandidates) {
+    if (out.length >= MAX_RELATED_INFER) return;
+    pushRelatedResolve(out, seen, row, `ip:${suffix}`, {
+      entityType,
+      externalId: ext,
+      name,
+      payloadSlice: { asset_kind: 'ip', field: suffix },
+    });
+  }
 }

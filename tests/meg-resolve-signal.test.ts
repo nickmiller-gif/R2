@@ -98,6 +98,39 @@ describe('inferRelatedMegResolveArgsList', () => {
     });
     expect(list).toHaveLength(1);
   });
+
+  it('infers meg:property from parcel identifiers in payload', () => {
+    const list = inferRelatedMegResolveArgsList({
+      id: 's-prop',
+      source_system: 'centralr2',
+      source_event_type: 'property_lookup',
+      summary: 'Lookup',
+      payload: { apn: '12-345-67-89-0.12-34567', property_name: 'Sample parcel' },
+    });
+    const prop = list.find((x) => x.p_entity_type === 'meg:property');
+    expect(prop).toBeDefined();
+    expect(prop!.p_canonical_external_id).toBe('12-345-67-89-0.12-34567');
+    expect(prop!.p_canonical_name).toContain('Sample parcel');
+    expect(prop!.p_source_row_id).toContain('prop:apn');
+  });
+
+  it('infers meg:ip_matter and meg:patent from IP payload fields', () => {
+    const list = inferRelatedMegResolveArgsList({
+      id: 's-ip',
+      source_system: 'ip_insights_hub',
+      source_event_type: 'ip_matter_event',
+      summary: 'Matter update',
+      payload: {
+        ip_matter_id: 'matter-ext-1',
+        patent_number: 'US7123456',
+        patent_title: 'Widget assembly',
+      },
+    });
+    const matter = list.find((x) => x.p_entity_type === 'meg:ip_matter');
+    const patent = list.find((x) => x.p_entity_type === 'meg:patent');
+    expect(matter?.p_canonical_external_id).toBe('matter-ext-1');
+    expect(patent?.p_canonical_external_id).toBe('US7123456');
+  });
 });
 
 describe('coffee pairing helpers', () => {

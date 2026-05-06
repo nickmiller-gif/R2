@@ -71,6 +71,7 @@ export type Database = {
           content_hash: string
           generated_at: string
           id: string
+          meg_event_entity_id: string | null
           retreat_year_id: string
           theme_tags: string[]
           title: string
@@ -80,6 +81,7 @@ export type Database = {
           content_hash: string
           generated_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           retreat_year_id?: string
           theme_tags?: string[]
           title: string
@@ -89,6 +91,7 @@ export type Database = {
           content_hash?: string
           generated_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           retreat_year_id?: string
           theme_tags?: string[]
           title?: string
@@ -2125,6 +2128,7 @@ export type Database = {
       }
       coffee_matches: {
         Row: {
+          actor_meg_entity_id: string | null
           compatibility_score: number
           conversation_topics: string[]
           created_at: string
@@ -2132,10 +2136,12 @@ export type Database = {
           match_reason: string
           matched_attendee_id: string
           matched_attendee_name: string
+          matched_meg_entity_id: string | null
           status: string
           user_id: string
         }
         Insert: {
+          actor_meg_entity_id?: string | null
           compatibility_score?: number
           conversation_topics?: string[]
           created_at?: string
@@ -2143,10 +2149,12 @@ export type Database = {
           match_reason: string
           matched_attendee_id: string
           matched_attendee_name: string
+          matched_meg_entity_id?: string | null
           status?: string
           user_id: string
         }
         Update: {
+          actor_meg_entity_id?: string | null
           compatibility_score?: number
           conversation_topics?: string[]
           created_at?: string
@@ -2154,6 +2162,7 @@ export type Database = {
           match_reason?: string
           matched_attendee_id?: string
           matched_attendee_name?: string
+          matched_meg_entity_id?: string | null
           status?: string
           user_id?: string
         }
@@ -3720,6 +3729,7 @@ export type Database = {
           ends_at: string | null
           id: string
           is_active: boolean
+          meg_event_entity_id: string | null
           options: Json
           poll_type: string
           question: string
@@ -3731,6 +3741,7 @@ export type Database = {
           ends_at?: string | null
           id?: string
           is_active?: boolean
+          meg_event_entity_id?: string | null
           options?: Json
           poll_type?: string
           question: string
@@ -3742,6 +3753,7 @@ export type Database = {
           ends_at?: string | null
           id?: string
           is_active?: boolean
+          meg_event_entity_id?: string | null
           options?: Json
           poll_type?: string
           question?: string
@@ -6067,6 +6079,7 @@ export type Database = {
           caption: string | null
           created_at: string
           id: string
+          meg_event_entity_id: string | null
           photo_url: string
           retreat_year_id: string
           user_id: string
@@ -6075,6 +6088,7 @@ export type Database = {
           caption?: string | null
           created_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           photo_url: string
           retreat_year_id: string
           user_id: string
@@ -6083,6 +6097,7 @@ export type Database = {
           caption?: string | null
           created_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           photo_url?: string
           retreat_year_id?: string
           user_id?: string
@@ -6289,6 +6304,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          meg_entity_id: string | null
           preferences: Json | null
           updated_at: string
           user_id: string
@@ -6299,6 +6315,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          meg_entity_id?: string | null
           preferences?: Json | null
           updated_at?: string
           user_id: string
@@ -6309,6 +6326,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          meg_entity_id?: string | null
           preferences?: Json | null
           updated_at?: string
           user_id?: string
@@ -6441,6 +6459,7 @@ export type Database = {
           created_at: string
           id: string
           is_answered: boolean
+          meg_event_entity_id: string | null
           question: string
           retreat_year_id: string
           upvotes: number
@@ -6451,6 +6470,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_answered?: boolean
+          meg_event_entity_id?: string | null
           question: string
           retreat_year_id: string
           upvotes?: number
@@ -6461,6 +6481,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_answered?: boolean
+          meg_event_entity_id?: string | null
           question?: string
           retreat_year_id?: string
           upvotes?: number
@@ -6663,6 +6684,7 @@ export type Database = {
           end_time: string | null
           id: string
           location: string | null
+          meg_session_entity_id: string | null
           retreat_year_id: string
           session_type: string | null
           speaker_name: string | null
@@ -6677,6 +6699,7 @@ export type Database = {
           end_time?: string | null
           id?: string
           location?: string | null
+          meg_session_entity_id?: string | null
           retreat_year_id: string
           session_type?: string | null
           speaker_name?: string | null
@@ -6691,6 +6714,7 @@ export type Database = {
           end_time?: string | null
           id?: string
           location?: string | null
+          meg_session_entity_id?: string | null
           retreat_year_id?: string
           session_type?: string | null
           speaker_name?: string | null
@@ -6712,6 +6736,7 @@ export type Database = {
           id: string
           last_attended_year: number | null
           linkedin_url: string | null
+          meg_entity_id: string | null
           name: string
           title: string | null
           topics_of_interest: string | null
@@ -6728,6 +6753,7 @@ export type Database = {
           id?: string
           last_attended_year?: number | null
           linkedin_url?: string | null
+          meg_entity_id?: string | null
           name: string
           title?: string | null
           topics_of_interest?: string | null
@@ -6744,6 +6770,7 @@ export type Database = {
           id?: string
           last_attended_year?: number | null
           linkedin_url?: string | null
+          meg_entity_id?: string | null
           name?: string
           title?: string | null
           topics_of_interest?: string | null
@@ -6833,6 +6860,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          meg_event_entity_id: string | null
           message: string
           parent_id: string | null
           retreat_year_id: string
@@ -6841,6 +6869,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           message: string
           parent_id?: string | null
           retreat_year_id: string
@@ -6849,6 +6878,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          meg_event_entity_id?: string | null
           message?: string
           parent_id?: string | null
           retreat_year_id?: string
@@ -6874,6 +6904,7 @@ export type Database = {
           id: string
           key_themes: string[] | null
           media_type: string
+          meg_document_entity_id: string | null
           retreat_year_id: string | null
           speaker_id: string | null
           speaker_name: string | null
@@ -6890,6 +6921,7 @@ export type Database = {
           id?: string
           key_themes?: string[] | null
           media_type?: string
+          meg_document_entity_id?: string | null
           retreat_year_id?: string | null
           speaker_id?: string | null
           speaker_name?: string | null
@@ -6906,6 +6938,7 @@ export type Database = {
           id?: string
           key_themes?: string[] | null
           media_type?: string
+          meg_document_entity_id?: string | null
           retreat_year_id?: string | null
           speaker_id?: string | null
           speaker_name?: string | null
@@ -6996,6 +7029,7 @@ export type Database = {
           description: string | null
           id: string
           location: string | null
+          meg_event_entity_id: string | null
           title: string | null
           year: number
         }
@@ -7007,6 +7041,7 @@ export type Database = {
           description?: string | null
           id?: string
           location?: string | null
+          meg_event_entity_id?: string | null
           title?: string | null
           year: number
         }
@@ -7018,6 +7053,7 @@ export type Database = {
           description?: string | null
           id?: string
           location?: string | null
+          meg_event_entity_id?: string | null
           title?: string | null
           year?: number
         }
@@ -7113,6 +7149,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          meg_session_entity_id: string | null
           retreat_year_id: string
           session_id: string
           updated_at: string
@@ -7123,6 +7160,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          meg_session_entity_id?: string | null
           retreat_year_id: string
           session_id: string
           updated_at?: string
@@ -7133,6 +7171,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          meg_session_entity_id?: string | null
           retreat_year_id?: string
           session_id?: string
           updated_at?: string
@@ -7174,6 +7213,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          meg_event_entity_id: string | null
           retreat_year_id: string
           title: string
           upvotes: number
@@ -7183,6 +7223,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          meg_event_entity_id?: string | null
           retreat_year_id?: string
           title: string
           upvotes?: number
@@ -7192,6 +7233,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          meg_event_entity_id?: string | null
           retreat_year_id?: string
           title?: string
           upvotes?: number

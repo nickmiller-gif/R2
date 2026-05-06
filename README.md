@@ -97,7 +97,7 @@ export SUPABASE_PROJECT_REF=zudslxucibosjwefojtm   # or your preview ref
 ### R2 Signal pipeline (`platform_feed_items`)
 
 - Migration [`supabase/migrations/202604270002_schedule_r2_signal_process.sql`](./supabase/migrations/202604270002_schedule_r2_signal_process.sql) schedules `r2-signal-process` via **pg_cron** + **pg_net** when Vault contains a non-empty secret named **`r2_signal_process_token`** (value must match the bearer the `r2-signal-process` function expects). If `pg_cron` or the secret is absent, the migration skips scheduling so preview branches do not fail.
-- For ingest contract auth choices, see **ADR-0003** in the umbrella workspace (`docs/adr/ADR-0003-r2-signal-ingest-edge-auth.md` on `R2 Complete`).
+- For ingest contract auth choices, see **[ADR-0003](docs/ADR-0003-r2-signal-ingest-edge-auth.md)** (`verify_jwt = false` + `guardAuth`). When this repo lives inside **R2 Complete**, the same text is mirrored at `docs/adr/ADR-0003-r2-signal-ingest-edge-auth.md`.
 
 See [`plan.md`](./plan.md) for the full slice roadmap.
 

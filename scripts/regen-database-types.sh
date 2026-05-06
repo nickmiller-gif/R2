@@ -16,7 +16,8 @@ if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_PROJECT_REF:-}" ]; th
 fi
 
 OUT="database.types.ts"
-TMP="$(mktemp)"
+# Same directory as OUT so the final mv is a single-directory rename (atomic on POSIX).
+TMP="$(mktemp "${ROOT}/.database.types.ts.tmp.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT
 
 npx --yes "supabase@${SUPABASE_CLI_VERSION}" gen types typescript \

@@ -158,3 +158,6 @@ vite.config.ts.timestamp-*
 
 # Local agent scratch (not shipped)
 memory/
+
+# Cursor rules/agents synced from umbrella (see AGENTS.md sync script)
+.cursor/

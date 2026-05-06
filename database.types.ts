@@ -2203,6 +2203,732 @@ export type Database = {
           },
         ]
       }
+      continuity_agent_charters: {
+        Row: {
+          agent_name: string
+          agent_type: string | null
+          allowed_actions: Json
+          approval_thresholds: Json
+          contract_authority_limit: string | null
+          created_at: string
+          created_by: string | null
+          data_access_scope: Json
+          display_code: string
+          evidence_requirements: Json
+          expires_at: string | null
+          id: string
+          metadata: Json
+          owner_external_ref: string | null
+          owner_label: string | null
+          principal_external_ref: string | null
+          principal_label: string | null
+          prohibited_actions: Json
+          requires_human_approval: boolean
+          revoked_at: string | null
+          spending_limit: number | null
+          status: Database["public"]["Enums"]["continuity_agent_charter_status"]
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          agent_name: string
+          agent_type?: string | null
+          allowed_actions?: Json
+          approval_thresholds?: Json
+          contract_authority_limit?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_access_scope?: Json
+          display_code: string
+          evidence_requirements?: Json
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          owner_external_ref?: string | null
+          owner_label?: string | null
+          principal_external_ref?: string | null
+          principal_label?: string | null
+          prohibited_actions?: Json
+          requires_human_approval?: boolean
+          revoked_at?: string | null
+          spending_limit?: number | null
+          status?: Database["public"]["Enums"]["continuity_agent_charter_status"]
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          agent_name?: string
+          agent_type?: string | null
+          allowed_actions?: Json
+          approval_thresholds?: Json
+          contract_authority_limit?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_access_scope?: Json
+          display_code?: string
+          evidence_requirements?: Json
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          owner_external_ref?: string | null
+          owner_label?: string | null
+          principal_external_ref?: string | null
+          principal_label?: string | null
+          prohibited_actions?: Json
+          requires_human_approval?: boolean
+          revoked_at?: string | null
+          spending_limit?: number | null
+          status?: Database["public"]["Enums"]["continuity_agent_charter_status"]
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_agent_charters_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_charters_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_context_asset_entities: {
+        Row: {
+          confidence: number | null
+          context_asset_id: string
+          created_at: string
+          created_by: string | null
+          entity_label: string | null
+          entity_type: string
+          external_entity_id: string | null
+          external_system: string | null
+          future_meg_entity_id: string | null
+          id: string
+          metadata: Json
+          relationship_type: string
+          workspace_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          context_asset_id: string
+          created_at?: string
+          created_by?: string | null
+          entity_label?: string | null
+          entity_type?: string
+          external_entity_id?: string | null
+          external_system?: string | null
+          future_meg_entity_id?: string | null
+          id?: string
+          metadata?: Json
+          relationship_type?: string
+          workspace_id: string
+        }
+        Update: {
+          confidence?: number | null
+          context_asset_id?: string
+          created_at?: string
+          created_by?: string | null
+          entity_label?: string | null
+          entity_type?: string
+          external_entity_id?: string | null
+          external_system?: string | null
+          future_meg_entity_id?: string | null
+          id?: string
+          metadata?: Json
+          relationship_type?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_context_asset_entities_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_context_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_context_asset_entities_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_context_asset_entities_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_context_asset_entities_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_context_assets: {
+        Row: {
+          ai_access_policy: Database["public"]["Enums"]["continuity_ai_access_policy"]
+          confidence_band: Database["public"]["Enums"]["continuity_confidence_band"]
+          confidence_score: number | null
+          context_type: string
+          continuity_risk_level: string | null
+          contradiction_open_count: number
+          created_at: string
+          created_by: string | null
+          custodian_external_ref: string | null
+          custodian_label: string | null
+          description: string | null
+          display_code: string
+          economic_relevance_score: number | null
+          freshness_score: number | null
+          governance_status: Database["public"]["Enums"]["continuity_governance_status"]
+          id: string
+          metadata: Json
+          owner_external_ref: string | null
+          owner_label: string | null
+          sensitivity_level: string
+          source_record_id: string | null
+          source_system: string | null
+          title: string
+          uniqueness_score: number | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_access_policy?: Database["public"]["Enums"]["continuity_ai_access_policy"]
+          confidence_band?: Database["public"]["Enums"]["continuity_confidence_band"]
+          confidence_score?: number | null
+          context_type?: string
+          continuity_risk_level?: string | null
+          contradiction_open_count?: number
+          created_at?: string
+          created_by?: string | null
+          custodian_external_ref?: string | null
+          custodian_label?: string | null
+          description?: string | null
+          display_code: string
+          economic_relevance_score?: number | null
+          freshness_score?: number | null
+          governance_status?: Database["public"]["Enums"]["continuity_governance_status"]
+          id?: string
+          metadata?: Json
+          owner_external_ref?: string | null
+          owner_label?: string | null
+          sensitivity_level?: string
+          source_record_id?: string | null
+          source_system?: string | null
+          title: string
+          uniqueness_score?: number | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          ai_access_policy?: Database["public"]["Enums"]["continuity_ai_access_policy"]
+          confidence_band?: Database["public"]["Enums"]["continuity_confidence_band"]
+          confidence_score?: number | null
+          context_type?: string
+          continuity_risk_level?: string | null
+          contradiction_open_count?: number
+          created_at?: string
+          created_by?: string | null
+          custodian_external_ref?: string | null
+          custodian_label?: string | null
+          description?: string | null
+          display_code?: string
+          economic_relevance_score?: number | null
+          freshness_score?: number | null
+          governance_status?: Database["public"]["Enums"]["continuity_governance_status"]
+          id?: string
+          metadata?: Json
+          owner_external_ref?: string | null
+          owner_label?: string | null
+          sensitivity_level?: string
+          source_record_id?: string | null
+          source_system?: string | null
+          title?: string
+          uniqueness_score?: number | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_context_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_context_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_evidence_links: {
+        Row: {
+          claim_id: string | null
+          context_asset_id: string | null
+          contradiction_state: string
+          created_at: string
+          created_by: string | null
+          evidence_summary: string | null
+          evidence_type: string | null
+          freshness_band: string
+          id: string
+          metadata: Json
+          missing_proof_item: string | null
+          provenance_status: string
+          review_posture: string
+          source_authority: string
+          source_record_id: string | null
+          source_system: string | null
+          source_url: string | null
+          workspace_id: string
+        }
+        Insert: {
+          claim_id?: string | null
+          context_asset_id?: string | null
+          contradiction_state?: string
+          created_at?: string
+          created_by?: string | null
+          evidence_summary?: string | null
+          evidence_type?: string | null
+          freshness_band?: string
+          id?: string
+          metadata?: Json
+          missing_proof_item?: string | null
+          provenance_status?: string
+          review_posture?: string
+          source_authority?: string
+          source_record_id?: string | null
+          source_system?: string | null
+          source_url?: string | null
+          workspace_id: string
+        }
+        Update: {
+          claim_id?: string | null
+          context_asset_id?: string | null
+          contradiction_state?: string
+          created_at?: string
+          created_by?: string | null
+          evidence_summary?: string | null
+          evidence_type?: string | null
+          freshness_band?: string
+          id?: string
+          metadata?: Json
+          missing_proof_item?: string | null
+          provenance_status?: string
+          review_posture?: string
+          source_authority?: string
+          source_record_id?: string | null
+          source_system?: string | null
+          source_url?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_context_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_friction_surfaces: {
+        Row: {
+          agent_capability_required: string | null
+          agent_vector: string | null
+          compression_probability: number | null
+          created_at: string
+          created_by: string | null
+          current_agent_readiness: string | null
+          defensible_context_assets: Json
+          exposure_score: number
+          friction_dependency_score: number | null
+          human_friction_type: string | null
+          id: string
+          industry: string | null
+          metadata: Json
+          recommended_actions: Json
+          regulatory_brakes: string | null
+          revenue_pool: string | null
+          status: string
+          target_external_ref: string | null
+          target_label: string | null
+          time_horizon: string | null
+          trend: string
+          updated_at: string
+          workflow: string
+          workspace_id: string
+        }
+        Insert: {
+          agent_capability_required?: string | null
+          agent_vector?: string | null
+          compression_probability?: number | null
+          created_at?: string
+          created_by?: string | null
+          current_agent_readiness?: string | null
+          defensible_context_assets?: Json
+          exposure_score?: number
+          friction_dependency_score?: number | null
+          human_friction_type?: string | null
+          id?: string
+          industry?: string | null
+          metadata?: Json
+          recommended_actions?: Json
+          regulatory_brakes?: string | null
+          revenue_pool?: string | null
+          status?: string
+          target_external_ref?: string | null
+          target_label?: string | null
+          time_horizon?: string | null
+          trend?: string
+          updated_at?: string
+          workflow: string
+          workspace_id: string
+        }
+        Update: {
+          agent_capability_required?: string | null
+          agent_vector?: string | null
+          compression_probability?: number | null
+          created_at?: string
+          created_by?: string | null
+          current_agent_readiness?: string | null
+          defensible_context_assets?: Json
+          exposure_score?: number
+          friction_dependency_score?: number | null
+          human_friction_type?: string | null
+          id?: string
+          industry?: string | null
+          metadata?: Json
+          recommended_actions?: Json
+          regulatory_brakes?: string | null
+          revenue_pool?: string | null
+          status?: string
+          target_external_ref?: string | null
+          target_label?: string | null
+          time_horizon?: string | null
+          trend?: string
+          updated_at?: string
+          workflow?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_friction_surfaces_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_friction_surfaces_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_governance_events: {
+        Row: {
+          actor_agent_charter_id: string | null
+          actor_label: string | null
+          actor_type: string
+          actor_user_id: string | null
+          audit_hash: string
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          previous_hash: string | null
+          severity: string
+          subject_id: string | null
+          subject_type: string | null
+          summary: string
+          workspace_id: string
+        }
+        Insert: {
+          actor_agent_charter_id?: string | null
+          actor_label?: string | null
+          actor_type?: string
+          actor_user_id?: string | null
+          audit_hash: string
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+          previous_hash?: string | null
+          severity?: string
+          subject_id?: string | null
+          subject_type?: string | null
+          summary: string
+          workspace_id: string
+        }
+        Update: {
+          actor_agent_charter_id?: string | null
+          actor_label?: string | null
+          actor_type?: string
+          actor_user_id?: string | null
+          audit_hash?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          previous_hash?: string | null
+          severity?: string
+          subject_id?: string | null
+          subject_type?: string | null
+          summary?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_governance_events_actor_agent_charter_id_fkey"
+            columns: ["actor_agent_charter_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_agent_charters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_governance_events_actor_agent_charter_id_fkey"
+            columns: ["actor_agent_charter_id"]
+            isOneToOne: false
+            referencedRelation: "v_agent_authority_surface"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_governance_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_governance_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_signal_channels: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          destination_system: string
+          id: string
+          integrity_band: Database["public"]["Enums"]["continuity_confidence_band"]
+          integrity_score: number
+          last_handshake_at: string | null
+          last_ingest_run_id: string | null
+          metadata: Json
+          policy_scope: Json
+          signal_type: string
+          source_system: string
+          state: Database["public"]["Enums"]["continuity_signal_channel_state"]
+          throughput_score: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          destination_system?: string
+          id?: string
+          integrity_band?: Database["public"]["Enums"]["continuity_confidence_band"]
+          integrity_score?: number
+          last_handshake_at?: string | null
+          last_ingest_run_id?: string | null
+          metadata?: Json
+          policy_scope?: Json
+          signal_type?: string
+          source_system: string
+          state?: Database["public"]["Enums"]["continuity_signal_channel_state"]
+          throughput_score?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          destination_system?: string
+          id?: string
+          integrity_band?: Database["public"]["Enums"]["continuity_confidence_band"]
+          integrity_score?: number
+          last_handshake_at?: string | null
+          last_ingest_run_id?: string | null
+          metadata?: Json
+          policy_scope?: Json
+          signal_type?: string
+          source_system?: string
+          state?: Database["public"]["Enums"]["continuity_signal_channel_state"]
+          throughput_score?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_underwriting_runs: {
+        Row: {
+          agent_authority_risks: Json
+          completed_at: string | null
+          component_scores: Json
+          context_asset_recommendations: Json
+          created_at: string
+          created_by: string | null
+          evidence_gaps: Json
+          friction_risks: Json
+          id: string
+          oracle_opportunity_candidates: Json
+          recommended_actions: Json
+          risk_level: string | null
+          score: number | null
+          score_band: string | null
+          status: string
+          summary: string | null
+          target_external_ref: string | null
+          target_label: string | null
+          target_type: string
+          workspace_id: string
+        }
+        Insert: {
+          agent_authority_risks?: Json
+          completed_at?: string | null
+          component_scores?: Json
+          context_asset_recommendations?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence_gaps?: Json
+          friction_risks?: Json
+          id?: string
+          oracle_opportunity_candidates?: Json
+          recommended_actions?: Json
+          risk_level?: string | null
+          score?: number | null
+          score_band?: string | null
+          status?: string
+          summary?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          target_type?: string
+          workspace_id: string
+        }
+        Update: {
+          agent_authority_risks?: Json
+          completed_at?: string | null
+          component_scores?: Json
+          context_asset_recommendations?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence_gaps?: Json
+          friction_risks?: Json
+          id?: string
+          oracle_opportunity_candidates?: Json
+          recommended_actions?: Json
+          risk_level?: string | null
+          score?: number | null
+          score_band?: string | null
+          status?: string
+          summary?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          target_type?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_underwriting_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_underwriting_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_workspaces: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       conversation_turn: {
         Row: {
           answer: string
@@ -4942,6 +5668,110 @@ export type Database = {
           visibility?: Database["public"]["Enums"]["visibility_level"] | null
         }
         Relationships: []
+      }
+      operator_proposals: {
+        Row: {
+          actor_meg_entity_id: string | null
+          alternatives: Json
+          confidence: number | null
+          cross_brand_count: number
+          downstream_run_id: string | null
+          drafted_at: string
+          drafter: string
+          drafter_run_id: string | null
+          estimated_reversal_cost: string | null
+          evidence_chunk_ids: string[]
+          evidence_item_ids: string[]
+          executed_at: string | null
+          execution_error: string | null
+          execution_started_at: string | null
+          expires_at: string | null
+          id: string
+          modified_actions: Json | null
+          privacy_level: string
+          proposal_kind: string
+          proposed_actions: Json
+          rationale: string
+          related_entity_ids: string[]
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_systems: string[]
+          status: string
+          title: string
+          triggering_signal_ids: string[]
+        }
+        Insert: {
+          actor_meg_entity_id?: string | null
+          alternatives?: Json
+          confidence?: number | null
+          cross_brand_count?: number
+          downstream_run_id?: string | null
+          drafted_at?: string
+          drafter: string
+          drafter_run_id?: string | null
+          estimated_reversal_cost?: string | null
+          evidence_chunk_ids?: string[]
+          evidence_item_ids?: string[]
+          executed_at?: string | null
+          execution_error?: string | null
+          execution_started_at?: string | null
+          expires_at?: string | null
+          id?: string
+          modified_actions?: Json | null
+          privacy_level?: string
+          proposal_kind: string
+          proposed_actions: Json
+          rationale: string
+          related_entity_ids?: string[]
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_systems?: string[]
+          status?: string
+          title: string
+          triggering_signal_ids: string[]
+        }
+        Update: {
+          actor_meg_entity_id?: string | null
+          alternatives?: Json
+          confidence?: number | null
+          cross_brand_count?: number
+          downstream_run_id?: string | null
+          drafted_at?: string
+          drafter?: string
+          drafter_run_id?: string | null
+          estimated_reversal_cost?: string | null
+          evidence_chunk_ids?: string[]
+          evidence_item_ids?: string[]
+          executed_at?: string | null
+          execution_error?: string | null
+          execution_started_at?: string | null
+          expires_at?: string | null
+          id?: string
+          modified_actions?: Json | null
+          privacy_level?: string
+          proposal_kind?: string
+          proposed_actions?: Json
+          rationale?: string
+          related_entity_ids?: string[]
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_systems?: string[]
+          status?: string
+          title?: string
+          triggering_signal_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_proposals_actor_meg_entity_id_fkey"
+            columns: ["actor_meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       oracle_calibration_log: {
         Row: {
@@ -7854,6 +8684,541 @@ export type Database = {
         }
         Relationships: []
       }
+      v_agent_authority_surface: {
+        Row: {
+          agent_name: string | null
+          agent_type: string | null
+          allowed_actions: Json | null
+          authority_level: string | null
+          created_at: string | null
+          display_code: string | null
+          id: string | null
+          is_revoked: boolean | null
+          prohibited_actions: Json | null
+          requires_human_approval: boolean | null
+          revoked_at: string | null
+          scope_summary: string | null
+          status:
+            | Database["public"]["Enums"]["continuity_agent_charter_status"]
+            | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_name?: string | null
+          agent_type?: string | null
+          allowed_actions?: Json | null
+          authority_level?: never
+          created_at?: string | null
+          display_code?: string | null
+          id?: string | null
+          is_revoked?: never
+          prohibited_actions?: Json | null
+          requires_human_approval?: boolean | null
+          revoked_at?: string | null
+          scope_summary?: never
+          status?:
+            | Database["public"]["Enums"]["continuity_agent_charter_status"]
+            | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_name?: string | null
+          agent_type?: string | null
+          allowed_actions?: Json | null
+          authority_level?: never
+          created_at?: string | null
+          display_code?: string | null
+          id?: string | null
+          is_revoked?: never
+          prohibited_actions?: Json | null
+          requires_human_approval?: boolean | null
+          revoked_at?: string | null
+          scope_summary?: never
+          status?:
+            | Database["public"]["Enums"]["continuity_agent_charter_status"]
+            | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_agent_charters_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_charters_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_context_assets_registry: {
+        Row: {
+          ai_access_policy:
+            | Database["public"]["Enums"]["continuity_ai_access_policy"]
+            | null
+          confidence_band:
+            | Database["public"]["Enums"]["continuity_confidence_band"]
+            | null
+          confidence_score: number | null
+          context_type: string | null
+          continuity_risk_level: string | null
+          contradiction_link_count: number | null
+          contradiction_open_count: number | null
+          created_at: string | null
+          created_by: string | null
+          custodian_external_ref: string | null
+          custodian_label: string | null
+          description: string | null
+          display_code: string | null
+          economic_relevance_score: number | null
+          evidence_link_count: number | null
+          freshness_score: number | null
+          governance_status:
+            | Database["public"]["Enums"]["continuity_governance_status"]
+            | null
+          id: string | null
+          metadata: Json | null
+          owner_external_ref: string | null
+          owner_label: string | null
+          sensitivity_level: string | null
+          source_record_id: string | null
+          source_system: string | null
+          title: string | null
+          uniqueness_score: number | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_context_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_context_assets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_continuity_dashboard_summary: {
+        Row: {
+          active_charter_count: number | null
+          context_asset_count: number | null
+          evidence_link_count: number | null
+          friction_surface_count: number | null
+          governance_event_count: number | null
+          live_channel_count: number | null
+          workspace_id: string | null
+        }
+        Insert: {
+          active_charter_count?: never
+          context_asset_count?: never
+          evidence_link_count?: never
+          friction_surface_count?: never
+          governance_event_count?: never
+          live_channel_count?: never
+          workspace_id?: string | null
+        }
+        Update: {
+          active_charter_count?: never
+          context_asset_count?: never
+          evidence_link_count?: never
+          friction_surface_count?: never
+          governance_event_count?: never
+          live_channel_count?: never
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
+      v_evidence_integrity_rail: {
+        Row: {
+          asset_display_code: string | null
+          context_asset_id: string | null
+          contradiction_state: string | null
+          created_at: string | null
+          evidence_summary: string | null
+          freshness_band: string | null
+          id: string | null
+          missing_proof_item: string | null
+          provenance_status: string | null
+          review_posture: string | null
+          source_authority: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_context_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_friction_collapse_watchlist: {
+        Row: {
+          agent_capability_required: string | null
+          agent_vector: string | null
+          compression_probability: number | null
+          created_at: string | null
+          created_by: string | null
+          current_agent_readiness: string | null
+          defensible_context_assets: Json | null
+          exposure_score: number | null
+          friction_dependency_score: number | null
+          human_friction_type: string | null
+          id: string | null
+          industry: string | null
+          metadata: Json | null
+          recommended_actions: Json | null
+          regulatory_brakes: string | null
+          revenue_pool: string | null
+          status: string | null
+          target_external_ref: string | null
+          target_label: string | null
+          time_horizon: string | null
+          trend: string | null
+          updated_at: string | null
+          workflow: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_capability_required?: string | null
+          agent_vector?: string | null
+          compression_probability?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          current_agent_readiness?: string | null
+          defensible_context_assets?: Json | null
+          exposure_score?: number | null
+          friction_dependency_score?: number | null
+          human_friction_type?: string | null
+          id?: string | null
+          industry?: string | null
+          metadata?: Json | null
+          recommended_actions?: Json | null
+          regulatory_brakes?: string | null
+          revenue_pool?: string | null
+          status?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          time_horizon?: string | null
+          trend?: string | null
+          updated_at?: string | null
+          workflow?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_capability_required?: string | null
+          agent_vector?: string | null
+          compression_probability?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          current_agent_readiness?: string | null
+          defensible_context_assets?: Json | null
+          exposure_score?: number | null
+          friction_dependency_score?: number | null
+          human_friction_type?: string | null
+          id?: string | null
+          industry?: string | null
+          metadata?: Json | null
+          recommended_actions?: Json | null
+          regulatory_brakes?: string | null
+          revenue_pool?: string | null
+          status?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          time_horizon?: string | null
+          trend?: string | null
+          updated_at?: string | null
+          workflow?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_friction_surfaces_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_friction_surfaces_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_governance_timeline: {
+        Row: {
+          actor: string | null
+          audit_hash: string | null
+          band: string | null
+          detail: string | null
+          event_type: string | null
+          headline: string | null
+          id: string | null
+          previous_hash: string | null
+          severity: string | null
+          ts: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          actor?: never
+          audit_hash?: string | null
+          band?: never
+          detail?: never
+          event_type?: string | null
+          headline?: never
+          id?: string | null
+          previous_hash?: string | null
+          severity?: string | null
+          ts?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          actor?: never
+          audit_hash?: string | null
+          band?: never
+          detail?: never
+          event_type?: string | null
+          headline?: never
+          id?: string | null
+          previous_hash?: string | null
+          severity?: string | null
+          ts?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_governance_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_governance_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_signal_channel_map: {
+        Row: {
+          channel_label: string | null
+          created_at: string | null
+          created_by: string | null
+          destination_system: string | null
+          from_custodian: string | null
+          id: string | null
+          integrity_band:
+            | Database["public"]["Enums"]["continuity_confidence_band"]
+            | null
+          integrity_score: number | null
+          last_handshake_at: string | null
+          last_ingest_run_id: string | null
+          metadata: Json | null
+          policy_scope: Json | null
+          signal_type: string | null
+          source_system: string | null
+          state:
+            | Database["public"]["Enums"]["continuity_signal_channel_state"]
+            | null
+          throughput_score: number | null
+          to_custodian: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          channel_label?: never
+          created_at?: string | null
+          created_by?: string | null
+          destination_system?: string | null
+          from_custodian?: never
+          id?: string | null
+          integrity_band?:
+            | Database["public"]["Enums"]["continuity_confidence_band"]
+            | null
+          integrity_score?: number | null
+          last_handshake_at?: string | null
+          last_ingest_run_id?: string | null
+          metadata?: Json | null
+          policy_scope?: Json | null
+          signal_type?: string | null
+          source_system?: string | null
+          state?:
+            | Database["public"]["Enums"]["continuity_signal_channel_state"]
+            | null
+          throughput_score?: number | null
+          to_custodian?: never
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          channel_label?: never
+          created_at?: string | null
+          created_by?: string | null
+          destination_system?: string | null
+          from_custodian?: never
+          id?: string | null
+          integrity_band?:
+            | Database["public"]["Enums"]["continuity_confidence_band"]
+            | null
+          integrity_score?: number | null
+          last_handshake_at?: string | null
+          last_ingest_run_id?: string | null
+          metadata?: Json | null
+          policy_scope?: Json | null
+          signal_type?: string | null
+          source_system?: string | null
+          state?:
+            | Database["public"]["Enums"]["continuity_signal_channel_state"]
+            | null
+          throughput_score?: number | null
+          to_custodian?: never
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      v_underwriting_history: {
+        Row: {
+          agent_authority_risks: Json | null
+          completed_at: string | null
+          component_scores: Json | null
+          context_asset_recommendations: Json | null
+          created_at: string | null
+          created_by: string | null
+          evidence_gaps: Json | null
+          friction_risks: Json | null
+          id: string | null
+          oracle_opportunity_candidates: Json | null
+          recommended_actions: Json | null
+          risk_level: string | null
+          score: number | null
+          score_band: string | null
+          status: string | null
+          summary: string | null
+          target_external_ref: string | null
+          target_label: string | null
+          target_type: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_authority_risks?: Json | null
+          completed_at?: string | null
+          component_scores?: Json | null
+          context_asset_recommendations?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          evidence_gaps?: Json | null
+          friction_risks?: Json | null
+          id?: string | null
+          oracle_opportunity_candidates?: Json | null
+          recommended_actions?: Json | null
+          risk_level?: string | null
+          score?: number | null
+          score_band?: string | null
+          status?: string | null
+          summary?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          target_type?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_authority_risks?: Json | null
+          completed_at?: string | null
+          component_scores?: Json | null
+          context_asset_recommendations?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          evidence_gaps?: Json | null
+          friction_risks?: Json | null
+          id?: string | null
+          oracle_opportunity_candidates?: Json | null
+          recommended_actions?: Json | null
+          risk_level?: string | null
+          score?: number | null
+          score_band?: string | null
+          status?: string | null
+          summary?: string | null
+          target_external_ref?: string | null
+          target_label?: string | null
+          target_type?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_underwriting_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_underwriting_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
     }
     Functions: {
       algorithm_sign: {
@@ -7879,6 +9244,46 @@ export type Database = {
         Returns: boolean
       }
       can_read_centralr2: { Args: { _user_id: string }; Returns: boolean }
+      claim_operator_proposals_for_review: {
+        Args: { p_limit?: number }
+        Returns: {
+          actor_meg_entity_id: string | null
+          alternatives: Json
+          confidence: number | null
+          cross_brand_count: number
+          downstream_run_id: string | null
+          drafted_at: string
+          drafter: string
+          drafter_run_id: string | null
+          estimated_reversal_cost: string | null
+          evidence_chunk_ids: string[]
+          evidence_item_ids: string[]
+          executed_at: string | null
+          execution_error: string | null
+          execution_started_at: string | null
+          expires_at: string | null
+          id: string
+          modified_actions: Json | null
+          privacy_level: string
+          proposal_kind: string
+          proposed_actions: Json
+          rationale: string
+          related_entity_ids: string[]
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_systems: string[]
+          status: string
+          title: string
+          triggering_signal_ids: string[]
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "operator_proposals"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_platform_feed_items: {
         Args: { p_limit?: number }
         Returns: {
@@ -7914,6 +9319,53 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      continuity_is_admin: { Args: never; Returns: boolean }
+      decide_operator_proposal: {
+        Args: {
+          p_decision: string
+          p_modified_actions?: Json
+          p_notes?: string
+          p_proposal_id: string
+          p_reviewer_id: string
+        }
+        Returns: {
+          actor_meg_entity_id: string | null
+          alternatives: Json
+          confidence: number | null
+          cross_brand_count: number
+          downstream_run_id: string | null
+          drafted_at: string
+          drafter: string
+          drafter_run_id: string | null
+          estimated_reversal_cost: string | null
+          evidence_chunk_ids: string[]
+          evidence_item_ids: string[]
+          executed_at: string | null
+          execution_error: string | null
+          execution_started_at: string | null
+          expires_at: string | null
+          id: string
+          modified_actions: Json | null
+          privacy_level: string
+          proposal_kind: string
+          proposed_actions: Json
+          rationale: string
+          related_entity_ids: string[]
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_systems: string[]
+          status: string
+          title: string
+          triggering_signal_ids: string[]
+        }
+        SetofOptions: {
+          from: "*"
+          to: "operator_proposals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       dispatch_embedding_jobs: { Args: never; Returns: undefined }
       enqueue_platform_feed_processing: {
         Args: { signal_id: string }
@@ -7932,6 +9384,7 @@ export type Database = {
           weight: number
         }[]
       }
+      expire_stale_operator_proposals: { Args: never; Returns: number }
       has_charter_access: { Args: { _user_id: string }; Returns: boolean }
       has_platform_access: {
         Args: { _platform: string; _user_id: string }
@@ -8100,6 +9553,34 @@ export type Database = {
       charter_valuation_status: "draft" | "active" | "superseded"
       chunk_level: "document" | "section" | "paragraph" | "claim"
       confidence_band: "high" | "medium" | "low"
+      continuity_agent_charter_status:
+        | "draft"
+        | "active"
+        | "suspended"
+        | "revoked"
+        | "expired"
+        | "archived"
+      continuity_ai_access_policy:
+        | "no_ai_access"
+        | "summaries_only"
+        | "retrieval_allowed"
+        | "agent_action_allowed"
+        | "public_safe"
+        | "sealed"
+      continuity_confidence_band: "high" | "mid" | "low"
+      continuity_governance_status:
+        | "draft"
+        | "active"
+        | "under_review"
+        | "sealed"
+        | "revoked"
+        | "archived"
+      continuity_signal_channel_state:
+        | "planned"
+        | "live"
+        | "degraded"
+        | "sealed"
+        | "disabled"
       counterparty_type:
         | "broker"
         | "seller"
@@ -8517,6 +9998,38 @@ export const Constants = {
       charter_valuation_status: ["draft", "active", "superseded"],
       chunk_level: ["document", "section", "paragraph", "claim"],
       confidence_band: ["high", "medium", "low"],
+      continuity_agent_charter_status: [
+        "draft",
+        "active",
+        "suspended",
+        "revoked",
+        "expired",
+        "archived",
+      ],
+      continuity_ai_access_policy: [
+        "no_ai_access",
+        "summaries_only",
+        "retrieval_allowed",
+        "agent_action_allowed",
+        "public_safe",
+        "sealed",
+      ],
+      continuity_confidence_band: ["high", "mid", "low"],
+      continuity_governance_status: [
+        "draft",
+        "active",
+        "under_review",
+        "sealed",
+        "revoked",
+        "archived",
+      ],
+      continuity_signal_channel_state: [
+        "planned",
+        "live",
+        "degraded",
+        "sealed",
+        "disabled",
+      ],
       counterparty_type: [
         "broker",
         "seller",

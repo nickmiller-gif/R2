@@ -2749,6 +2749,89 @@ export type Database = {
           },
         ]
       }
+      continuity_ingest_runs: {
+        Row: {
+          completed_at: string | null
+          created_by: string | null
+          destination_system: string
+          error_summary: string | null
+          id: string
+          metadata: Json
+          rows_accepted: number
+          rows_rejected: number
+          signal_channel_id: string | null
+          source_system: string
+          started_at: string
+          status: Database["public"]["Enums"]["continuity_ingest_run_status"]
+          trigger_kind: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_by?: string | null
+          destination_system?: string
+          error_summary?: string | null
+          id?: string
+          metadata?: Json
+          rows_accepted?: number
+          rows_rejected?: number
+          signal_channel_id?: string | null
+          source_system: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["continuity_ingest_run_status"]
+          trigger_kind?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_by?: string | null
+          destination_system?: string
+          error_summary?: string | null
+          id?: string
+          metadata?: Json
+          rows_accepted?: number
+          rows_rejected?: number
+          signal_channel_id?: string | null
+          source_system?: string
+          started_at?: string
+          status?: Database["public"]["Enums"]["continuity_ingest_run_status"]
+          trigger_kind?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_ingest_runs_signal_channel_id_fkey"
+            columns: ["signal_channel_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_signal_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_ingest_runs_signal_channel_id_fkey"
+            columns: ["signal_channel_id"]
+            isOneToOne: false
+            referencedRelation: "v_signal_channel_map"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_ingest_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_ingest_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
       continuity_signal_channels: {
         Row: {
           created_at: string
@@ -2806,6 +2889,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "continuity_signal_channels_last_ingest_run_id_fkey"
+            columns: ["last_ingest_run_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_ingest_runs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -2814,6 +2904,97 @@ export type Database = {
           },
           {
             foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_signal_items: {
+        Row: {
+          actor_external_ref: string | null
+          confidence: number | null
+          created_at: string
+          id: string
+          idempotency_key: string
+          ingest_run_id: string | null
+          metadata: Json
+          processed_at: string | null
+          processing_status: Database["public"]["Enums"]["continuity_signal_processing_status"]
+          related_external_refs: Json
+          sensitivity_level: string
+          signal_type: string
+          source_event_type: string
+          source_payload: Json
+          source_record_id: string | null
+          source_system: string
+          source_url: string | null
+          subject_external_ref: string | null
+          summary: string
+          workspace_id: string
+        }
+        Insert: {
+          actor_external_ref?: string | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          ingest_run_id?: string | null
+          metadata?: Json
+          processed_at?: string | null
+          processing_status?: Database["public"]["Enums"]["continuity_signal_processing_status"]
+          related_external_refs?: Json
+          sensitivity_level?: string
+          signal_type?: string
+          source_event_type: string
+          source_payload?: Json
+          source_record_id?: string | null
+          source_system: string
+          source_url?: string | null
+          subject_external_ref?: string | null
+          summary: string
+          workspace_id: string
+        }
+        Update: {
+          actor_external_ref?: string | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          ingest_run_id?: string | null
+          metadata?: Json
+          processed_at?: string | null
+          processing_status?: Database["public"]["Enums"]["continuity_signal_processing_status"]
+          related_external_refs?: Json
+          sensitivity_level?: string
+          signal_type?: string
+          source_event_type?: string
+          source_payload?: Json
+          source_record_id?: string | null
+          source_system?: string
+          source_url?: string | null
+          subject_external_ref?: string | null
+          summary?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_signal_items_ingest_run_id_fkey"
+            columns: ["ingest_run_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_ingest_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_items_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "v_continuity_dashboard_summary"
@@ -8820,7 +9001,9 @@ export type Database = {
           evidence_link_count: number | null
           friction_surface_count: number | null
           governance_event_count: number | null
+          last_signal_item_at: string | null
           live_channel_count: number | null
+          signal_item_count: number | null
           workspace_id: string | null
         }
         Insert: {
@@ -8829,7 +9012,9 @@ export type Database = {
           evidence_link_count?: never
           friction_surface_count?: never
           governance_event_count?: never
+          last_signal_item_at?: never
           live_channel_count?: never
+          signal_item_count?: never
           workspace_id?: string | null
         }
         Update: {
@@ -8838,10 +9023,58 @@ export type Database = {
           evidence_link_count?: never
           friction_surface_count?: never
           governance_event_count?: never
+          last_signal_item_at?: never
           live_channel_count?: never
+          signal_item_count?: never
           workspace_id?: string | null
         }
         Relationships: []
+      }
+      v_continuity_signal_feed: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          id: string | null
+          ingest_run_id: string | null
+          ingest_run_status:
+            | Database["public"]["Enums"]["continuity_ingest_run_status"]
+            | null
+          ingest_started_at: string | null
+          processed_at: string | null
+          processing_status:
+            | Database["public"]["Enums"]["continuity_signal_processing_status"]
+            | null
+          sensitivity_level: string | null
+          signal_type: string | null
+          source_event_type: string | null
+          source_record_id: string | null
+          source_system: string | null
+          summary: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_signal_items_ingest_run_id_fkey"
+            columns: ["ingest_run_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_ingest_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_signal_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
       }
       v_evidence_integrity_rail: {
         Row: {
@@ -9055,7 +9288,13 @@ export type Database = {
             | null
           integrity_score: number | null
           last_handshake_at: string | null
+          last_ingest_completed_at: string | null
+          last_ingest_rows_accepted: number | null
+          last_ingest_rows_rejected: number | null
           last_ingest_run_id: string | null
+          last_ingest_status:
+            | Database["public"]["Enums"]["continuity_ingest_run_status"]
+            | null
           metadata: Json | null
           policy_scope: Json | null
           signal_type: string | null
@@ -9068,57 +9307,14 @@ export type Database = {
           updated_at: string | null
           workspace_id: string | null
         }
-        Insert: {
-          channel_label?: never
-          created_at?: string | null
-          created_by?: string | null
-          destination_system?: string | null
-          from_custodian?: never
-          id?: string | null
-          integrity_band?:
-            | Database["public"]["Enums"]["continuity_confidence_band"]
-            | null
-          integrity_score?: number | null
-          last_handshake_at?: string | null
-          last_ingest_run_id?: string | null
-          metadata?: Json | null
-          policy_scope?: Json | null
-          signal_type?: string | null
-          source_system?: string | null
-          state?:
-            | Database["public"]["Enums"]["continuity_signal_channel_state"]
-            | null
-          throughput_score?: number | null
-          to_custodian?: never
-          updated_at?: string | null
-          workspace_id?: string | null
-        }
-        Update: {
-          channel_label?: never
-          created_at?: string | null
-          created_by?: string | null
-          destination_system?: string | null
-          from_custodian?: never
-          id?: string | null
-          integrity_band?:
-            | Database["public"]["Enums"]["continuity_confidence_band"]
-            | null
-          integrity_score?: number | null
-          last_handshake_at?: string | null
-          last_ingest_run_id?: string | null
-          metadata?: Json | null
-          policy_scope?: Json | null
-          signal_type?: string | null
-          source_system?: string | null
-          state?:
-            | Database["public"]["Enums"]["continuity_signal_channel_state"]
-            | null
-          throughput_score?: number | null
-          to_custodian?: never
-          updated_at?: string | null
-          workspace_id?: string | null
-        }
         Relationships: [
+          {
+            foreignKeyName: "continuity_signal_channels_last_ingest_run_id_fkey"
+            columns: ["last_ingest_run_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_ingest_runs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "continuity_signal_channels_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -9575,12 +9771,24 @@ export type Database = {
         | "sealed"
         | "revoked"
         | "archived"
+      continuity_ingest_run_status:
+        | "pending"
+        | "running"
+        | "completed"
+        | "failed"
+        | "cancelled"
       continuity_signal_channel_state:
         | "planned"
         | "live"
         | "degraded"
         | "sealed"
         | "disabled"
+      continuity_signal_processing_status:
+        | "received"
+        | "normalized"
+        | "promoted"
+        | "rejected"
+        | "sealed"
       counterparty_type:
         | "broker"
         | "seller"
@@ -10023,12 +10231,26 @@ export const Constants = {
         "revoked",
         "archived",
       ],
+      continuity_ingest_run_status: [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
       continuity_signal_channel_state: [
         "planned",
         "live",
         "degraded",
         "sealed",
         "disabled",
+      ],
+      continuity_signal_processing_status: [
+        "received",
+        "normalized",
+        "promoted",
+        "rejected",
+        "sealed",
       ],
       counterparty_type: [
         "broker",

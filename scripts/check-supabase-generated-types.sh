@@ -34,7 +34,13 @@ SUPABASE_CLI_VERSION="$(bash "$SCRIPT_DIR/supabase-cli-version.sh")"
 GENERATED_FILE="$(mktemp)"
 trap 'rm -f "$GENERATED_FILE"' EXIT
 
-npx --yes "supabase@${SUPABASE_CLI_VERSION}" gen types typescript --project-id "$PROJECT_REF" --schema public > "$GENERATED_FILE"
+# Optional: set SUPABASE_GEN_TYPES_BIN to a pinned `supabase` executable when
+# `npx supabase@…` hangs locally (network/cache). CI leaves this unset.
+if [ -n "${SUPABASE_GEN_TYPES_BIN:-}" ] && [ -x "${SUPABASE_GEN_TYPES_BIN}" ]; then
+  "${SUPABASE_GEN_TYPES_BIN}" gen types typescript --project-id "$PROJECT_REF" --schema public > "$GENERATED_FILE"
+else
+  npx --yes "supabase@${SUPABASE_CLI_VERSION}" gen types typescript --project-id "$PROJECT_REF" --schema public > "$GENERATED_FILE"
+fi
 
 if ! cmp -s "$TYPES_FILE" "$GENERATED_FILE"; then
   echo "FAIL: $TYPES_FILE is out of date with Supabase schema."

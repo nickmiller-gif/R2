@@ -86,6 +86,14 @@ When both of these GitHub Actions repository secrets are set, `npm run check` al
 
 If either secret is missing (for example on a fork pull request), CI still runs typecheck, tests, and local guards, but **skips** remote drift and typegen the same way as a local machine without credentials.
 
+After applying migrations to the linked project, regenerate committed types from this directory:
+
+```bash
+export SUPABASE_ACCESS_TOKEN=…   # account token, not anon
+export SUPABASE_PROJECT_REF=zudslxucibosjwefojtm   # or your preview ref
+./scripts/regen-database-types.sh
+```
+
 ### R2 Signal pipeline (`platform_feed_items`)
 
 - Migration [`supabase/migrations/202604270002_schedule_r2_signal_process.sql`](./supabase/migrations/202604270002_schedule_r2_signal_process.sql) schedules `r2-signal-process` via **pg_cron** + **pg_net** when Vault contains a non-empty secret named **`r2_signal_process_token`** (value must match the bearer the `r2-signal-process` function expects). If `pg_cron` or the secret is absent, the migration skips scheduling so preview branches do not fail.

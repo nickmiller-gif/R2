@@ -20,10 +20,27 @@ Do not edit migration SQL after it has been applied to any shared environment (c
 After a migration that adds tables, columns, or RPCs is **applied** to the linked Supabase project, regenerate types so CI passes:
 
 ```bash
-npx supabase gen types typescript --project-id "<ref>" --schema public > database.types.ts
+export SUPABASE_ACCESS_TOKEN=…   # account token, not anon
+export SUPABASE_PROJECT_REF=zudslxucibosjwefojtm   # or your preview ref
+./scripts/regen-database-types.sh
 ```
 
-(Use the Supabase CLI version pinned in `scripts/supabase-cli-version.sh`.)
+That script uses the Supabase CLI version pinned in `scripts/supabase-cli-version.sh` (same as CI).
+
+To verify committed types match the linked project (same gate as CI when secrets are set):
+
+```bash
+export SUPABASE_ACCESS_TOKEN=…
+export SUPABASE_PROJECT_REF=…
+REQUIRE_SUPABASE_REMOTE_CHECKS=true npm run lint:supabase:types
+```
+
+If `npx supabase@…` hangs on your machine, download the matching release binary from [supabase/cli releases](https://github.com/supabase/cli/releases) and point the check at it:
+
+```bash
+export SUPABASE_GEN_TYPES_BIN=/path/to/supabase   # pinned binary, e.g. v2.89.0 darwin arm64 tarball
+REQUIRE_SUPABASE_REMOTE_CHECKS=true npm run lint:supabase:types
+```
 
 ### Verify locally
 

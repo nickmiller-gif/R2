@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS public.continuity_signal_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES public.continuity_workspaces (id) ON DELETE CASCADE,
   ingest_run_id uuid REFERENCES public.continuity_ingest_runs (id) ON DELETE SET NULL,
-  idempotency_key text,
+  -- Required for dedupe: callers send a stable key, or Edge derives `auto:<sha256(workspace|source|type|record|summary)>`.
+  idempotency_key text NOT NULL,
   source_system text NOT NULL,
   source_event_type text NOT NULL,
   source_record_id text,
@@ -85,8 +86,12 @@ CREATE TABLE IF NOT EXISTS public.continuity_signal_items (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Idempotency: duplicate (workspace_id, idempotency_key) rejected when key is set.
--- Multiple rows with NULL idempotency_key are allowed (PostgreSQL UNIQUE NULL semantics).
+-- Natural-key dedupe when producers reuse the same upstream record id (optional second guardrail).
+CREATE UNIQUE INDEX idx_continuity_signal_items_natural_key
+  ON public.continuity_signal_items (workspace_id, source_system, source_event_type, source_record_id)
+  WHERE source_record_id IS NOT NULL AND btrim(source_record_id) <> '';
+
+-- Primary idempotency: stable client- or Edge-supplied key (never NULL — avoids UNIQUE NULL holes).
 CREATE UNIQUE INDEX idx_continuity_signal_items_idempotency
   ON public.continuity_signal_items (workspace_id, idempotency_key);
 

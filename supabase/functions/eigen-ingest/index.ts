@@ -26,6 +26,18 @@ import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilit
 const INGESTION_RUNS_SELECT_COLUMNS =
   'chunk_count,chunking_mode,completed_at,created_at,document_id,embedding_model,id,metadata,source_ref,source_system,started_at,status';
 
+/**
+ * Validation errors for ingest payloads. The outer handler maps these to 400 so
+ * health-check probes (e.g. an empty body) return 400 like `r2-signal-ingest`,
+ * instead of being swallowed as 500 by the generic catch.
+ */
+class IngestValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IngestValidationError';
+  }
+}
+
 interface IngestDocumentPayload {
   title?: string;
   body?: string;
@@ -229,8 +241,8 @@ async function parseMultipartRequest(req: Request): Promise<{
   const form = await req.formData();
   const sourceSystem = cleanString(form.get('source_system'));
   const sourceRef = cleanString(form.get('source_ref'));
-  if (!sourceSystem) throw new Error('source_system is required');
-  if (!sourceRef) throw new Error('source_ref is required');
+  if (!sourceSystem) throw new IngestValidationError('source_system is required');
+  if (!sourceRef) throw new IngestValidationError('source_ref is required');
 
   const title = cleanString(form.get('title'));
   const rawBody = form.get('body');
@@ -264,10 +276,10 @@ async function parseMultipartRequest(req: Request): Promise<{
   }
 
   if (!docTitle || docTitle.trim().length === 0) {
-    throw new Error('title is required');
+    throw new IngestValidationError('title is required');
   }
   if (!docBody || docBody.trim().length === 0) {
-    throw new Error('document body is required');
+    throw new IngestValidationError('document body is required');
   }
 
   return {
@@ -293,16 +305,21 @@ async function parseJsonRequest(
   req: Request,
   client: ReturnType<typeof getServiceClient>,
 ): Promise<IngestRequestBody> {
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    throw new IngestValidationError('Request body must be a JSON object');
+  }
   if (!isObject(body)) {
-    throw new Error('Request body must be a JSON object');
+    throw new IngestValidationError('Request body must be a JSON object');
   }
 
   const sourceSystem = cleanString(body.source_system);
   const sourceRef = cleanString(body.source_ref);
-  if (!sourceSystem) throw new Error('source_system is required');
-  if (!sourceRef) throw new Error('source_ref is required');
-  if (!isObject(body.document)) throw new Error('document object is required');
+  if (!sourceSystem) throw new IngestValidationError('source_system is required');
+  if (!sourceRef) throw new IngestValidationError('source_ref is required');
+  if (!isObject(body.document)) throw new IngestValidationError('document object is required');
 
   const documentInput: IngestDocumentPayload = {
     title: cleanString(body.document.title),
@@ -740,6 +757,11 @@ Deno.serve(
         201,
       );
     } catch (err) {
+      // Map declared validation errors to 400 so health-check probes with a
+      // minimal body get a 400 (matching `r2-signal-ingest`) instead of 500.
+      if (err instanceof IngestValidationError) {
+        return errorResponse(err.message, 400);
+      }
       const message = err instanceof Error ? err.message : 'Unknown error';
       return errorResponse(message, 500);
     }

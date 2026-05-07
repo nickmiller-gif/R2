@@ -2203,6 +2203,128 @@ export type Database = {
           },
         ]
       }
+      continuity_agent_access_scopes: {
+        Row: {
+          charter_id: string
+          created_at: string
+          grants: Json
+          id: string
+          metadata: Json
+          scope_key: string
+          updated_at: string
+        }
+        Insert: {
+          charter_id: string
+          created_at?: string
+          grants?: Json
+          id?: string
+          metadata?: Json
+          scope_key: string
+          updated_at?: string
+        }
+        Update: {
+          charter_id?: string
+          created_at?: string
+          grants?: Json
+          id?: string
+          metadata?: Json
+          scope_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_agent_access_scopes_charter_id_fkey"
+            columns: ["charter_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_agent_charters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_access_scopes_charter_id_fkey"
+            columns: ["charter_id"]
+            isOneToOne: false
+            referencedRelation: "v_agent_authority_surface"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      continuity_agent_actions: {
+        Row: {
+          action_type: string
+          charter_id: string
+          created_at: string
+          decision: string
+          decision_reason: string
+          evidence_link_ids: string[]
+          id: string
+          metadata: Json
+          requested_by: string | null
+          target_id: string | null
+          target_kind: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          action_type: string
+          charter_id: string
+          created_at?: string
+          decision: string
+          decision_reason?: string
+          evidence_link_ids?: string[]
+          id?: string
+          metadata?: Json
+          requested_by?: string | null
+          target_id?: string | null
+          target_kind?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          action_type?: string
+          charter_id?: string
+          created_at?: string
+          decision?: string
+          decision_reason?: string
+          evidence_link_ids?: string[]
+          id?: string
+          metadata?: Json
+          requested_by?: string | null
+          target_id?: string | null
+          target_kind?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_agent_actions_charter_id_fkey"
+            columns: ["charter_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_agent_charters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_actions_charter_id_fkey"
+            columns: ["charter_id"]
+            isOneToOne: false
+            referencedRelation: "v_agent_authority_surface"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_actions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_agent_actions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
       continuity_agent_charters: {
         Row: {
           agent_name: string
@@ -2292,6 +2414,97 @@ export type Database = {
           },
           {
             foreignKeyName: "continuity_agent_charters_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_claims: {
+        Row: {
+          claim_type: string
+          confidence: number | null
+          context_asset_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json
+          sensitivity_level: string
+          signal_item_id: string | null
+          statement: string
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          claim_type?: string
+          confidence?: number | null
+          context_asset_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          sensitivity_level?: string
+          signal_item_id?: string | null
+          statement: string
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          claim_type?: string
+          confidence?: number | null
+          context_asset_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          sensitivity_level?: string
+          signal_item_id?: string | null
+          statement?: string
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_claims_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_context_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_signal_item_id_fkey"
+            columns: ["signal_item_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_signal_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_signal_item_id_fkey"
+            columns: ["signal_item_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_signal_feed"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "v_continuity_dashboard_summary"
@@ -2485,6 +2698,7 @@ export type Database = {
           contradiction_state: string
           created_at: string
           created_by: string | null
+          evidence_source_id: string | null
           evidence_summary: string | null
           evidence_type: string | null
           freshness_band: string
@@ -2505,6 +2719,7 @@ export type Database = {
           contradiction_state?: string
           created_at?: string
           created_by?: string | null
+          evidence_source_id?: string | null
           evidence_summary?: string | null
           evidence_type?: string | null
           freshness_band?: string
@@ -2525,6 +2740,7 @@ export type Database = {
           contradiction_state?: string
           created_at?: string
           created_by?: string | null
+          evidence_source_id?: string | null
           evidence_summary?: string | null
           evidence_type?: string | null
           freshness_band?: string
@@ -2541,6 +2757,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "continuity_evidence_links_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_claims_surface"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
             columns: ["context_asset_id"]
             isOneToOne: false
@@ -2555,6 +2785,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "continuity_evidence_links_evidence_source_id_fkey"
+            columns: ["evidence_source_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_evidence_sources"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -2563,6 +2800,63 @@ export type Database = {
           },
           {
             foreignKeyName: "continuity_evidence_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      continuity_evidence_sources: {
+        Row: {
+          authority_tier: string
+          base_uri: string | null
+          created_at: string
+          created_by: string | null
+          custodian_notes: string | null
+          display_label: string
+          id: string
+          metadata: Json
+          source_system: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          authority_tier?: string
+          base_uri?: string | null
+          created_at?: string
+          created_by?: string | null
+          custodian_notes?: string | null
+          display_label: string
+          id?: string
+          metadata?: Json
+          source_system: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          authority_tier?: string
+          base_uri?: string | null
+          created_at?: string
+          created_by?: string | null
+          custodian_notes?: string | null
+          display_label?: string
+          id?: string
+          metadata?: Json
+          source_system?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_evidence_sources_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_sources_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "v_continuity_dashboard_summary"
@@ -8945,6 +9239,7 @@ export type Database = {
           ai_access_policy:
             | Database["public"]["Enums"]["continuity_ai_access_policy"]
             | null
+          claim_count: number | null
           confidence_band:
             | Database["public"]["Enums"]["continuity_confidence_band"]
             | null
@@ -8994,11 +9289,78 @@ export type Database = {
           },
         ]
       }
+      v_continuity_claims_surface: {
+        Row: {
+          asset_display_code: string | null
+          claim_type: string | null
+          confidence: number | null
+          context_asset_id: string | null
+          created_at: string | null
+          evidence_link_count: number | null
+          id: string | null
+          metadata: Json | null
+          sensitivity_level: string | null
+          signal_idempotency_key: string | null
+          signal_item_id: string | null
+          signal_summary: string | null
+          statement: string | null
+          status: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "continuity_claims_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_context_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_context_asset_id_fkey"
+            columns: ["context_asset_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_signal_item_id_fkey"
+            columns: ["signal_item_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_signal_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_signal_item_id_fkey"
+            columns: ["signal_item_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_signal_feed"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_claims_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_dashboard_summary"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
       v_continuity_dashboard_summary: {
         Row: {
           active_charter_count: number | null
+          agent_action_count: number | null
+          claim_count: number | null
           context_asset_count: number | null
           evidence_link_count: number | null
+          evidence_source_count: number | null
           friction_surface_count: number | null
           governance_event_count: number | null
           last_signal_item_at: string | null
@@ -9008,8 +9370,11 @@ export type Database = {
         }
         Insert: {
           active_charter_count?: never
+          agent_action_count?: never
+          claim_count?: never
           context_asset_count?: never
           evidence_link_count?: never
+          evidence_source_count?: never
           friction_surface_count?: never
           governance_event_count?: never
           last_signal_item_at?: never
@@ -9019,8 +9384,11 @@ export type Database = {
         }
         Update: {
           active_charter_count?: never
+          agent_action_count?: never
+          claim_count?: never
           context_asset_count?: never
           evidence_link_count?: never
+          evidence_source_count?: never
           friction_surface_count?: never
           governance_event_count?: never
           last_signal_item_at?: never
@@ -9079,11 +9447,16 @@ export type Database = {
       v_evidence_integrity_rail: {
         Row: {
           asset_display_code: string | null
+          claim_id: string | null
           context_asset_id: string | null
           contradiction_state: string | null
           created_at: string | null
+          evidence_source_id: string | null
+          evidence_source_label: string | null
           evidence_summary: string | null
           freshness_band: string | null
+          governed_claim_statement: string | null
+          governed_claim_status: string | null
           id: string | null
           missing_proof_item: string | null
           provenance_status: string | null
@@ -9092,6 +9465,20 @@ export type Database = {
           workspace_id: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "continuity_evidence_links_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "v_continuity_claims_surface"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "continuity_evidence_links_context_asset_id_fkey"
             columns: ["context_asset_id"]
@@ -9104,6 +9491,13 @@ export type Database = {
             columns: ["context_asset_id"]
             isOneToOne: false
             referencedRelation: "v_context_assets_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "continuity_evidence_links_evidence_source_id_fkey"
+            columns: ["evidence_source_id"]
+            isOneToOne: false
+            referencedRelation: "continuity_evidence_sources"
             referencedColumns: ["id"]
           },
           {

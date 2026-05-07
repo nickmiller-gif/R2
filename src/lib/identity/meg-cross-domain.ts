@@ -9,7 +9,6 @@
  * every domain asks MEG the same way, through the same contract.
  */
 
-import type { MegEntityType, MegEntityStatus } from '../../types/meg/entity.js';
 import type { MegEdgeType } from '../../types/meg/entity-edge.js';
 import type { MegEntityLookup, MegEntityRef } from './meg-lookup.js';
 
@@ -48,7 +47,10 @@ export interface MegCrossDomainResolver {
 
 export interface MegCrossDomainResolverDeps {
   lookup: MegEntityLookup;
-  findEdgesByEntity(entityId: string, edgeType?: MegEdgeType): Promise<
+  findEdgesByEntity(
+    entityId: string,
+    edgeType?: MegEdgeType,
+  ): Promise<
     Array<{
       source_entity_id: string;
       target_entity_id: string;

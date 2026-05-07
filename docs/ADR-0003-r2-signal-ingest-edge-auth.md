@@ -1,10 +1,10 @@
 # ADR-0003 · R2 Signal Ingest — Edge function JWT verification
 
-| Field   | Value                                                                                                                                                                                                                  |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status  | Accepted                                                                                                                                                                                                               |
-| Date    | 2026-04-30                                                                                                                                                                                                             |
-| Related | [`supabase/functions/r2-signal-ingest`](../supabase/functions/r2-signal-ingest), [`supabase/config.toml`](../supabase/config.toml), [`ADR-005-service-role-ingest-bypass.md`](./ADR-005-service-role-ingest-bypass.md) |
+| Field   | Value                                                                                                                                                                                                                                                                                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status  | Accepted                                                                                                                                                                                                                                                                                            |
+| Date    | 2026-04-30                                                                                                                                                                                                                                                                                          |
+| Related | [`ADR-0003-signal-contract.md`](./ADR-0003-signal-contract.md) (short name), [`supabase/functions/r2-signal-ingest`](../supabase/functions/r2-signal-ingest), [`supabase/config.toml`](../supabase/config.toml), [`ADR-005-service-role-ingest-bypass.md`](./ADR-005-service-role-ingest-bypass.md) |
 
 This ADR is the **canonical copy inside the `R2` repository**. The same decision text is mirrored under the umbrella workspace path `docs/adr/ADR-0003-r2-signal-ingest-edge-auth.md` when this repo is nested in **R2 Complete**; treat this file as the source of truth for R2-only checkouts and PRs.
 

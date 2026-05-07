@@ -58,8 +58,8 @@ interface IngestIdentity {
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
-  const ingestTokenHeader = req.headers.get('x-eigen-ingest-token') ?? '';
-  const configuredIngestToken = Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '';
+  const ingestTokenHeader = (req.headers.get('x-eigen-ingest-token') ?? '').trim();
+  const configuredIngestToken = (Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '').trim();
   if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }

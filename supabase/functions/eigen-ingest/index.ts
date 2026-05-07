@@ -176,7 +176,7 @@ async function resolveDocumentPayload(
   const metadata = isObject(payload.metadata) ? payload.metadata : {};
   if (typeof payload.body === 'string' && payload.body.trim().length > 0) {
     if (!payload.title || payload.title.trim().length === 0) {
-      throw new Error('document.title is required when document.body is provided');
+      throw new IngestValidationError('document.title is required when document.body is provided');
     }
     return {
       title: payload.title.trim(),
@@ -189,23 +189,29 @@ async function resolveDocumentPayload(
   const bucket = cleanString(payload.storage_bucket);
   const path = cleanString(payload.storage_path);
   if (!bucket || !path) {
-    throw new Error(
+    throw new IngestValidationError(
       'Either document.body or both document.storage_bucket and document.storage_path are required',
     );
   }
 
   const download = await client.storage.from(bucket).download(path);
   if (download.error || !download.data) {
-    throw new Error(download.error?.message ?? 'Failed to download storage object');
+    throw new IngestValidationError(download.error?.message ?? 'Failed to download storage object');
   }
 
   const bytes = new Uint8Array(await download.data.arrayBuffer());
-  const extracted = await extractDocumentText({
-    bytes,
-    contentType: payload.content_type,
-    fileName: payload.file_name ?? path.split('/').pop(),
-    titleHint: payload.title,
-  });
+  let extracted;
+  try {
+    extracted = await extractDocumentText({
+      bytes,
+      contentType: payload.content_type,
+      fileName: payload.file_name ?? path.split('/').pop(),
+      titleHint: payload.title,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Document extraction failed';
+    throw new IngestValidationError(msg);
+  }
 
   return {
     title: extracted.title,

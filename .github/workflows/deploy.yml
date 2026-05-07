@@ -142,8 +142,13 @@ jobs:
           # `oracle-whitespace-runs` remains skipped until the Deno bundling blocker
           # called out in docs/production-deploy-checklist.md is resolved.
           SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
-          # Widget/public-facing functions accept unauthenticated requests
-          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-public-sources)$"
+          # Functions that bypass gateway JWT verification — either widget
+          # surfaces that accept unauthenticated requests, or callers that
+          # authenticate via a custom header the gateway can't see
+          # (r2-signal-process: pg_cron dispatcher uses
+          # `x-r2-signal-process-token`, validated inside the function by
+          # `resolveTrustedProcessCaller`).
+          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-public-sources|r2-signal-process)$"
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
             # skip shared and known non-deployable legacy function

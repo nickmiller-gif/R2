@@ -2,7 +2,7 @@
 
 Use this list with **audit (S1)**, **external retreat**, and **platform** owners before executing [R2-MEG-Conversion-Runbook.md](../../R2-MEG-Conversion-Runbook.md) end-to-end. Deep detail stays in the runbook; this is the **go / no-go** surface.
 
-**Related:** [ADR-0004](../../docs/adr/ADR-0004-meg-phase3-preflight.md) · [centralr2 resolver research](./meg-phase3-centralr2-resolver-research.md) · `@r2/meg-catalog` in `R2/packages/meg-catalog/`
+**Related:** [ADR-0007 — MEG Phase 3 pre-flight](./adr/ADR-0007-meg-phase3-preflight.md) · [centralr2 resolver research](./meg-phase3-centralr2-resolver-research.md) · `@r2/meg-catalog` in `R2/packages/meg-catalog/`
 
 ---
 
@@ -26,21 +26,23 @@ supabase db query --linked "select to_regclass('public.entities'), to_regclass('
 
 ## 2. Pre-flight locks (must be explicit before migrations)
 
-| #   | Topic                 | Owner question                                                                                                                                | ADR-0004 § |
-| --- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1   | **Resolver**          | Confirm R2-hosted `meg_resolve_or_create` + consolidate legacy centralr2 dedups (not a repo-local `meg-engine`).                              | §2.1       |
-| 2   | **Cross-project JWT** | Approve **new scoped** service key for external retreat; confirm **no reuse** of `EXTERNAL_SERVICE_ROLE_KEY`.                                 | §2.2       |
-| 3   | **Catalog**           | Any objection to **v1.0.0** literals in `@r2/meg-catalog`?                                                                                    | §2.3       |
-| 4   | **Batch size**        | What is `count(*)` on `ci_clients`? If ≥1M, confirm **5k** batches + low-traffic windows.                                                     | §2.4       |
-| 5   | **Staging**           | Choose preview branch / second project / **direct-to-prod** with extra validation; check the box in ADR-0004 §3.                              | §3         |
-| 6   | **S1 gate**           | When does **JWT validation in `upload-retreat-content`** ship? Until then, **defer Playbooks L–O** and migration **2.3d** (external retreat). | §2.2       |
+**Status (2026-05-08):** All six locks **resolved** and recorded in [ADR-0007 — MEG Phase 3 pre-flight](./adr/ADR-0007-meg-phase3-preflight.md) (Accepted).
+
+| #   | Topic                 | Resolution                                                                                                                     | ADR-0007 |
+| --- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| 1   | **Resolver**          | R2-hosted `meg_resolve_or_create` on Eigen; centralr2 dedups port incrementally into RPC/worker (no monolithic `meg-engine`).  | §2.1     |
+| 2   | **Cross-project JWT** | Dedicated scoped service JWT for retreat; **no** reuse of `EXTERNAL_SERVICE_ROLE_KEY`; Playbooks L–O + 2.3d deferred until S1. | §2.2     |
+| 3   | **Catalog**           | **`@r2/meg-catalog@1.0.0`** locked; changes require semver + ADR.                                                              | §2.3     |
+| 4   | **Batch size**        | Default **500** / optional **5k** for ≥1M-row tables in low-traffic windows.                                                   | §2.4     |
+| 5   | **Staging**           | **Direct-to-prod** with `dry_run` + checklist gates ([production-deploy-checklist.md](./production-deploy-checklist.md)).      | §3       |
+| 6   | **S1 gate**           | External retreat playbooks and migration 2.3d **deferred** until S1 ships.                                                     | §2.2     |
 
 ---
 
 ## 3. Sequencing reminder
 
-1. Stakeholder answers for §2 above.
-2. Land ADR-0004 as **Accepted** after posture is chosen.
+1. ~~Stakeholder answers for §2 above.~~ Done — see ADR-0007.
+2. Land ADR-0007 as **Accepted** (done 2026-05-08).
 3. Apply R2 migrations (runbook §2.1–2.2, 2.4–2.6) per your staging decision.
 4. Link-column migrations on other Supabase projects (Lovable / per-repo process).
 5. Deploy backfill function (§3); run playbooks **A–H**, then **I** (first cross-system spine).
@@ -64,6 +66,7 @@ supabase db query --linked "select to_regclass('public.entities'), to_regclass('
 | Review hardening | [`supabase/migrations/202605030001_meg_phase3_review_hardening.sql`](../supabase/migrations/202605030001_meg_phase3_review_hardening.sql) (RLS, resolver, edges)                                       |
 | Backfill edge    | [`supabase/functions/meg-backfill-source/index.ts`](../supabase/functions/meg-backfill-source/index.ts) — secret **`MEG_BACKFILL_BEARER`** ([`.env.wave1.local.example`](../.env.wave1.local.example)) |
 | First adapter    | `r2:oracle_theses` — fills `oracle_theses.meg_entity_id` where null (target project must have the table)                                                                                               |
+| Second adapter   | `r2:platform_feed_items` — backfills `platform_feed_items.actor_meg_entity_id` where null using `inferActorMegResolveArgs` from `_shared/meg-resolve-signal.ts` (same keys as `r2-signal-process`)     |
 | Signal worker    | [`supabase/functions/r2-signal-process/index.ts`](../supabase/functions/r2-signal-process/index.ts) — see bullets below                                                                                |
 
 **`r2-signal-process` behavior:** resolves `meg_resolve_or_create` when `actor_meg_entity_id` is null but the payload has a stable **email** or **actor/user id**; updates `platform_feed_items` and threads the actor into `knowledge_chunks.entity_ids`.

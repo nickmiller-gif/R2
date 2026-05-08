@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-05-08T17:34:07.379Z",
+  "project_ref": "zudslxucibosjwefojtm",
+  "migrations_verified": {
+    "expected_meg_related_versions": [
+      "202604030010",
+      "202604080012",
+      "202604090001",
+      "202604090002",
+      "202605010001",
+      "202605020001",
+      "202605030001",
+      "202605040002"
+    ],
+    "all_present_on_remote": true,
+    "source": "Supabase MCP list_migrations (user-supabase-eigen)"
+  },
+  "metrics": {
+    "platform_feed_items_actor_meg_null": 2289,
+    "platform_feed_items_actor_meg_set": 0,
+    "meg_entity_source_refs_row_count": 0,
+    "meg_entities_active_by_type": {},
+    "meg_entity_edges_count": 0,
+    "cross_system_entities": 0,
+    "oracle_theses_meg_entity_id_null": 0,
+    "meg_backfill_runs_last5": []
+  },
+  "notes": "Baseline before r2:platform_feed_items actor backfill (ADR-0007). meg_entity_source_refs empty until resolver/backfill populate rows."
+}

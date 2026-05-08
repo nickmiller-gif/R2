@@ -4,10 +4,16 @@ import { extractBearerToken } from '../_shared/auth.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withLogger } from '../_shared/log.ts';
-import { MEG_RESOLVE_BOUNDS } from '../_shared/meg-resolve-signal.ts';
+import {
+  MEG_RESOLVE_BOUNDS,
+  inferActorMegResolveArgs,
+  type FeedRowForMeg,
+} from '../_shared/meg-resolve-signal.ts';
 
 /** Supported `source_system:source_table` keys — add a branch in the serve handler for each new backfill target. */
-const SUPPORTED_BACKFILL_KEYS = ['r2:oracle_theses'] as const;
+const SUPPORTED_BACKFILL_KEYS = ['r2:oracle_theses', 'r2:platform_feed_items'] as const;
+
+const SUPPORTED_BACKFILL_KEY_SET = new Set<string>(SUPPORTED_BACKFILL_KEYS);
 
 const CURSOR_MAX_LENGTH = 256;
 
@@ -32,7 +38,7 @@ function parseBackfillArgs(
     return { ok: false, response: errorResponse('Invalid JSON', 400) };
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, response: errorResponse('Request body must be a JSON object', 400) };
+    return { ok: false, response: errorResponse('Body must be a JSON object', 400) };
   }
   const o = parsed as Record<string, unknown>;
   const sys = o.source_system;
@@ -119,6 +125,38 @@ async function thesisEntityExists(
   );
 }
 
+/** True if an active meg_entity would match meg_resolve_or_create dedup for this actor fingerprint. */
+async function actorMegEntityMatchExists(
+  client: ReturnType<typeof getServiceClient>,
+  entityType: string,
+  email: string | null,
+  externalId: string | null,
+): Promise<boolean> {
+  if (email) {
+    const { data } = await client
+      .from('meg_entities')
+      .select('id')
+      .eq('status', 'active')
+      .filter('external_ids->>primary_email', 'eq', email)
+      .maybeSingle();
+    if (data?.id) return true;
+  }
+  if (externalId) {
+    const { data: hits } = await client
+      .from('meg_entities')
+      .select('id,metadata')
+      .eq('status', 'active')
+      .contains('external_ids', { canonical_external_id: externalId });
+    return Boolean(
+      (hits ?? []).find(
+        (r) =>
+          (r.metadata as Record<string, string> | null)?.meg_catalog_entity_type === entityType,
+      ),
+    );
+  }
+  return false;
+}
+
 function requireBackfillAuth(req: Request): Response | null {
   const expected = Deno.env.get('MEG_BACKFILL_BEARER')?.trim();
   if (!expected) {
@@ -131,13 +169,13 @@ function requireBackfillAuth(req: Request): Response | null {
   return null;
 }
 
-type SourceRow = { id: string; title: string | null; meg_entity_id: string | null };
+type OracleThesisRow = { id: string; title: string | null; meg_entity_id: string | null };
 
 async function fetchOracleThesesBatch(
   client: ReturnType<typeof getServiceClient>,
   cursor: string | null,
   batch: number,
-): Promise<SourceRow[]> {
+): Promise<OracleThesisRow[]> {
   let q = client
     .from('oracle_theses')
     .select('id,title,meg_entity_id')
@@ -149,10 +187,10 @@ async function fetchOracleThesesBatch(
   }
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data ?? []) as SourceRow[];
+  return (data ?? []) as OracleThesisRow[];
 }
 
-function mapOracleThesisRow(row: SourceRow) {
+function mapOracleThesisRow(row: OracleThesisRow) {
   const trimmedTitle = row.title?.trim() ?? '';
   const boundedTitle = trimmedTitle.slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength);
   return {
@@ -168,6 +206,46 @@ function mapOracleThesisRow(row: SourceRow) {
     external_id: row.id.slice(0, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength),
     source_row_id: row.id.slice(0, MEG_RESOLVE_BOUNDS.sourceRowIdMaxLength),
     canonical_name: boundedTitle || `thesis ${row.id}`,
+  };
+}
+
+type PlatformFeedRow = {
+  id: string;
+  source_system: string;
+  source_event_type: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  actor_meg_entity_id: string | null;
+};
+
+async function fetchPlatformFeedItemsBatch(
+  client: ReturnType<typeof getServiceClient>,
+  cursor: string | null,
+  batch: number,
+): Promise<PlatformFeedRow[]> {
+  let q = client
+    .from('platform_feed_items')
+    .select('id,source_system,source_event_type,summary,payload,actor_meg_entity_id')
+    .is('actor_meg_entity_id', null)
+    .order('id', { ascending: true })
+    .limit(batch);
+  if (cursor) {
+    q = q.gt('id', cursor);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PlatformFeedRow[];
+}
+
+/** `platform_feed_items.payload` is the v1 envelope `raw_payload` written by `r2-signal-ingest`. */
+function toFeedRowForMeg(row: PlatformFeedRow): FeedRowForMeg {
+  return {
+    id: row.id,
+    source_system: row.source_system,
+    source_event_type: row.source_event_type,
+    summary: row.summary,
+    payload: row.payload ?? {},
+    actor_meg_entity_id: row.actor_meg_entity_id,
   };
 }
 
@@ -187,6 +265,14 @@ Deno.serve(
     const parsedArgs = parseBackfillArgs(raw);
     if (!parsedArgs.ok) return parsedArgs.response;
     const args = parsedArgs.data;
+
+    const key = `${args.source_system}:${args.source_table}`;
+    if (!SUPPORTED_BACKFILL_KEY_SET.has(key)) {
+      return errorResponse(
+        `Unsupported source pair "${key}". Supported: ${SUPPORTED_BACKFILL_KEYS.join(', ')}`,
+        400,
+      );
+    }
 
     const batch = Math.min(Math.max(args.batch_size ?? 500, 1), 5000);
     const maxBatches = Math.min(Math.max(args.max_batches ?? 1, 1), 500);
@@ -218,13 +304,14 @@ Deno.serve(
     let errors = 0;
     const noteLines: string[] = [];
 
-    const key = `${args.source_system}:${args.source_table}`;
-
     for (let b = 0; b < maxBatches; b += 1) {
-      let rows: SourceRow[] = [];
+      let oracleRows: OracleThesisRow[] = [];
+      let platformRows: PlatformFeedRow[] = [];
       try {
         if (key === 'r2:oracle_theses') {
-          rows = await fetchOracleThesesBatch(client, cursor, batch);
+          oracleRows = await fetchOracleThesesBatch(client, cursor, batch);
+        } else if (key === 'r2:platform_feed_items') {
+          platformRows = await fetchPlatformFeedItemsBatch(client, cursor, batch);
         } else {
           log.warn('no adapter for source pair — no rows fetched', {
             key,
@@ -239,65 +326,131 @@ Deno.serve(
         break;
       }
 
-      if (rows.length === 0) break;
-      cursor = rows[rows.length - 1]!.id;
+      if (key === 'r2:oracle_theses') {
+        if (oracleRows.length === 0) break;
+        cursor = oracleRows[oracleRows.length - 1]!.id;
 
-      for (const row of rows) {
-        scanned += 1;
-        try {
-          const mapped = mapOracleThesisRow(row);
+        for (const row of oracleRows) {
+          scanned += 1;
+          try {
+            const mapped = mapOracleThesisRow(row);
 
-          if (dry) {
-            const ext = mapped.external_id;
-            if (ext) {
-              const existed = await thesisEntityExists(client, mapped.entity_type, ext);
+            if (dry) {
+              const ext = mapped.external_id;
+              if (ext) {
+                const existed = await thesisEntityExists(client, mapped.entity_type, ext);
+                if (existed) matched += 1;
+                else inserted += 1;
+              } else {
+                inserted += 1;
+              }
+              continue;
+            }
+
+            const entityExisted = mapped.external_id
+              ? await thesisEntityExists(client, mapped.entity_type, mapped.external_id)
+              : false;
+
+            const { data: megId, error: rpcErr } = await client.rpc('meg_resolve_or_create', {
+              p_entity_type: mapped.entity_type,
+              p_canonical_name: mapped.canonical_name,
+              p_canonical_email: mapped.dedup_email,
+              p_canonical_external_id: mapped.external_id,
+              p_source_system: args.source_system,
+              p_source_table: args.source_table,
+              p_source_row_id: mapped.source_row_id,
+              p_payload: mapped.payload,
+            });
+
+            if (rpcErr || !megId) {
+              throw new Error(rpcErr?.message ?? 'meg_resolve_or_create returned empty');
+            }
+
+            const { error: sideErr } = await client.rpc('meg_upsert_thesis_sidecar', {
+              p_entity_id: megId,
+              p_source_system: args.source_system,
+              p_payload: mapped.payload,
+            });
+            if (sideErr) throw new Error(sideErr.message);
+
+            const { error: updErr } = await client
+              .from('oracle_theses')
+              .update({ meg_entity_id: megId })
+              .eq('id', row.id);
+            if (updErr) throw new Error(updErr.message);
+
+            if (entityExisted) matched += 1;
+            else inserted += 1;
+          } catch (e) {
+            errors += 1;
+            const msg = String(e).slice(0, 500);
+            noteLines.push(`row ${row.id}: ${msg}`);
+            log.error('row backfill error', { row_id: row.id, err: String(e) });
+          }
+        }
+      } else if (key === 'r2:platform_feed_items') {
+        if (platformRows.length === 0) break;
+        cursor = platformRows[platformRows.length - 1]!.id;
+
+        for (const row of platformRows) {
+          scanned += 1;
+          try {
+            const feedRow = toFeedRowForMeg(row);
+            const rpcArgs = inferActorMegResolveArgs(feedRow);
+            if (!rpcArgs) {
+              continue;
+            }
+
+            const email = rpcArgs.p_canonical_email;
+            const ext = rpcArgs.p_canonical_external_id;
+            const et = rpcArgs.p_entity_type;
+
+            if (dry) {
+              const existed = await actorMegEntityMatchExists(client, et, email, ext);
               if (existed) matched += 1;
               else inserted += 1;
-            } else {
-              inserted += 1;
+              continue;
             }
-            continue;
+
+            const existedBefore = await actorMegEntityMatchExists(client, et, email, ext);
+
+            const { data: megId, error: rpcErr } = await client.rpc('meg_resolve_or_create', {
+              p_entity_type: rpcArgs.p_entity_type,
+              p_canonical_name: rpcArgs.p_canonical_name,
+              p_canonical_email: rpcArgs.p_canonical_email,
+              p_canonical_external_id: rpcArgs.p_canonical_external_id,
+              p_source_system: rpcArgs.p_source_system,
+              p_source_table: rpcArgs.p_source_table,
+              p_source_row_id: rpcArgs.p_source_row_id,
+              p_payload: rpcArgs.p_payload,
+            });
+
+            if (rpcErr || !megId) {
+              throw new Error(rpcErr?.message ?? 'meg_resolve_or_create returned empty');
+            }
+
+            const { data: updData, error: updErr } = await client
+              .from('platform_feed_items')
+              .update({ actor_meg_entity_id: megId as string })
+              .eq('id', row.id)
+              .is('actor_meg_entity_id', null)
+              .select('id')
+              .maybeSingle();
+
+            if (updErr) throw new Error(updErr.message);
+            if (!updData) {
+              matched += 1;
+              continue;
+            }
+
+            if (existedBefore) matched += 1;
+            else inserted += 1;
+          } catch (e) {
+            errors += 1;
+            const msg = String(e).slice(0, 500);
+            noteLines.push(`row ${row.id}: ${msg}`);
+            log.error('row backfill error', { row_id: row.id, err: String(e) });
           }
-
-          const entityExisted = mapped.external_id
-            ? await thesisEntityExists(client, mapped.entity_type, mapped.external_id)
-            : false;
-
-          const { data: megId, error: rpcErr } = await client.rpc('meg_resolve_or_create', {
-            p_entity_type: mapped.entity_type,
-            p_canonical_name: mapped.canonical_name,
-            p_canonical_email: mapped.dedup_email,
-            p_canonical_external_id: mapped.external_id,
-            p_source_system: args.source_system,
-            p_source_table: args.source_table,
-            p_source_row_id: mapped.source_row_id,
-            p_payload: mapped.payload,
-          });
-
-          if (rpcErr || !megId) {
-            throw new Error(rpcErr?.message ?? 'meg_resolve_or_create returned empty');
-          }
-
-          const { error: sideErr } = await client.rpc('meg_upsert_thesis_sidecar', {
-            p_entity_id: megId,
-            p_source_system: args.source_system,
-            p_payload: mapped.payload,
-          });
-          if (sideErr) throw new Error(sideErr.message);
-
-          const { error: updErr } = await client
-            .from('oracle_theses')
-            .update({ meg_entity_id: megId })
-            .eq('id', row.id);
-          if (updErr) throw new Error(updErr.message);
-
-          if (entityExisted) matched += 1;
-          else inserted += 1;
-        } catch (e) {
-          errors += 1;
-          const msg = String(e).slice(0, 500);
-          noteLines.push(`row ${row.id}: ${msg}`);
-          log.error('row backfill error', { row_id: row.id, err: String(e) });
         }
       }
     }

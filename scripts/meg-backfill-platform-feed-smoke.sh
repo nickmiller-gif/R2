@@ -5,6 +5,23 @@
 #   export MEG_BACKFILL_BEARER='…'   # from Supabase Dashboard → Edge secrets
 #   bash scripts/meg-backfill-platform-feed-smoke.sh
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+R2_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Optional: read only MEG_BACKFILL_BEARER from gitignored `.env.wave1.local` (do not `source` the whole file).
+WAVE1="$R2_ROOT/.env.wave1.local"
+if [[ -z "${MEG_BACKFILL_BEARER:-}" && -f "$WAVE1" ]]; then
+  line="$(grep -E '^[[:space:]]*MEG_BACKFILL_BEARER=' "$WAVE1" | tail -n1 || true)"
+  if [[ -n "$line" ]]; then
+    val="${line#*=}"
+    val="${val%$'\r'}"
+    val="${val#\"}"
+    val="${val%\"}"
+    val="${val#\'}"
+    val="${val%\'}"
+    export MEG_BACKFILL_BEARER="$val"
+  fi
+fi
+
 REF="${SUPABASE_EIGEN_PROJECT_REF:-zudslxucibosjwefojtm}"
 URL="https://${REF}.supabase.co/functions/v1/meg-backfill-source"
 

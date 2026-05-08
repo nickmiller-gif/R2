@@ -232,6 +232,7 @@ async function fetchPlatformFeedItemsBatch(
   return (data ?? []) as PlatformFeedRow[];
 }
 
+/** `platform_feed_items.payload` is the v1 envelope `raw_payload` written by `r2-signal-ingest`. */
 function toFeedRowForMeg(row: PlatformFeedRow): FeedRowForMeg {
   return {
     id: row.id,

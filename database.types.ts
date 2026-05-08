@@ -774,6 +774,81 @@ export type Database = {
           },
         ]
       }
+      botos_bot_tasks: {
+        Row: {
+          action: string
+          agent_id: string
+          attempts: number
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          payload: Json
+          policy_scope: string
+          status: string
+        }
+        Insert: {
+          action?: string
+          agent_id: string
+          attempts?: number
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          policy_scope?: string
+          status?: string
+        }
+        Update: {
+          action?: string
+          agent_id?: string
+          attempts?: number
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          policy_scope?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      botos_capability_grants: {
+        Row: {
+          agent_id: string
+          allowed_actions: string[]
+          allowed_policy_scope: string[]
+          capability_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          signed_by: string | null
+        }
+        Insert: {
+          agent_id: string
+          allowed_actions?: string[]
+          allowed_policy_scope: string[]
+          capability_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          signed_by?: string | null
+        }
+        Update: {
+          agent_id?: string
+          allowed_actions?: string[]
+          allowed_policy_scope?: string[]
+          capability_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          signed_by?: string | null
+        }
+        Relationships: []
+      }
       botos_content_gaps: {
         Row: {
           created_at: string
@@ -9825,6 +9900,37 @@ export type Database = {
         }[]
       }
       bootstrap_admin_role: { Args: { p_user_id: string }; Returns: string }
+      botos_assert_capability: {
+        Args: {
+          p_action: string
+          p_agent_id: string
+          p_capability_id: string
+          p_policy_scope: string
+        }
+        Returns: boolean
+      }
+      botos_claim_next_bot_task: {
+        Args: { p_worker_id: string }
+        Returns: {
+          action: string
+          agent_id: string
+          attempts: number
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          payload: Json
+          policy_scope: string
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "botos_bot_tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       bump_eigen_public_rate: {
         Args: { p_bucket_key: string; p_window_start?: string }
         Returns: number

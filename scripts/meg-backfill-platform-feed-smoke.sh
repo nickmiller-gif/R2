@@ -18,6 +18,8 @@ if [[ -z "${MEG_BACKFILL_BEARER:-}" && -f "$WAVE1" ]]; then
     val="${val%\"}"
     val="${val#\'}"
     val="${val%\'}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
     export MEG_BACKFILL_BEARER="$val"
   fi
 fi
@@ -31,14 +33,14 @@ if [[ -z "${MEG_BACKFILL_BEARER:-}" ]]; then
 fi
 
 echo "== dry_run: true, max_batches: 1 =="
-curl -sS -X POST "$URL" \
+curl -fsS -X POST "$URL" \
   -H "Authorization: Bearer ${MEG_BACKFILL_BEARER}" \
   -H "Content-Type: application/json" \
   -d '{"source_system":"r2","source_table":"platform_feed_items","dry_run":true,"max_batches":1}'
 echo ""
 
 echo "== live: dry_run false, batch_size 500, max_batches 1 =="
-curl -sS -X POST "$URL" \
+curl -fsS -X POST "$URL" \
   -H "Authorization: Bearer ${MEG_BACKFILL_BEARER}" \
   -H "Content-Type: application/json" \
   -d '{"source_system":"r2","source_table":"platform_feed_items","dry_run":false,"batch_size":500,"max_batches":1}'

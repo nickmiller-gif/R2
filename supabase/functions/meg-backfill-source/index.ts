@@ -4,11 +4,16 @@ import { extractBearerToken } from '../_shared/auth.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withLogger } from '../_shared/log.ts';
-import { MEG_RESOLVE_BOUNDS } from '../_shared/meg-resolve-signal.ts';
-import { inferActorMegResolveArgs, type FeedRowForMeg } from '../_shared/meg-resolve-signal.ts';
+import {
+  MEG_RESOLVE_BOUNDS,
+  inferActorMegResolveArgs,
+  type FeedRowForMeg,
+} from '../_shared/meg-resolve-signal.ts';
 
 /** Supported `source_system:source_table` keys — add a branch in the serve handler for each new backfill target. */
 const SUPPORTED_BACKFILL_KEYS = ['r2:oracle_theses', 'r2:platform_feed_items'] as const;
+
+const SUPPORTED_BACKFILL_KEY_SET = new Set<string>(SUPPORTED_BACKFILL_KEYS);
 
 const CURSOR_MAX_LENGTH = 256;
 
@@ -261,6 +266,14 @@ Deno.serve(
     if (!parsedArgs.ok) return parsedArgs.response;
     const args = parsedArgs.data;
 
+    const key = `${args.source_system}:${args.source_table}`;
+    if (!SUPPORTED_BACKFILL_KEY_SET.has(key)) {
+      return errorResponse(
+        `Unsupported source pair "${key}". Supported: ${SUPPORTED_BACKFILL_KEYS.join(', ')}`,
+        400,
+      );
+    }
+
     const batch = Math.min(Math.max(args.batch_size ?? 500, 1), 5000);
     const maxBatches = Math.min(Math.max(args.max_batches ?? 1, 1), 500);
     const dry = Boolean(args.dry_run);
@@ -290,8 +303,6 @@ Deno.serve(
     let inserted = 0;
     let errors = 0;
     const noteLines: string[] = [];
-
-    const key = `${args.source_system}:${args.source_table}`;
 
     for (let b = 0; b < maxBatches; b += 1) {
       let oracleRows: OracleThesisRow[] = [];

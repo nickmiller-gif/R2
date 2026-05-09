@@ -19,4 +19,4 @@ credibility-critical synthesis behind sustained pass-rate trends.
 
 ## Status
 
-`0.0.0` scaffold only; expand corpus and wire CI after Stream A / Meta-B exits are stable.
+`0.0.1` — initial **10-prompt** JSON corpus (`prompts/corpus-initial.json`) + Vitest schema guard (`tests/r2-eval/corpus-schema.test.ts`). Runners/scorers/CI threshold still to wire.

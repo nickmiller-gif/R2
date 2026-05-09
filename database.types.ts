@@ -10177,6 +10177,15 @@ export type Database = {
         Args: { msg_id: number; queue_name: string }
         Returns: boolean
       }
+      provenance_chain: {
+        Args: {
+          p_max_depth?: number
+          p_max_nodes?: number
+          p_target_id: string
+          p_target_kind: string
+        }
+        Returns: Json
+      }
       replay_platform_feed_item: {
         Args: { p_feed_item_id: string }
         Returns: undefined
@@ -11021,3 +11030,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.98.2 (currently installed v2.89.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

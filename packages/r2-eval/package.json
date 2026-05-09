@@ -1,6 +1,6 @@
 {
   "name": "@r2/eval",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Op#5 offline AI eval harness (scaffold). Corpus, runners, scorers, and CI thresholds per whitespace audit."

@@ -10177,6 +10177,15 @@ export type Database = {
         Args: { msg_id: number; queue_name: string }
         Returns: boolean
       }
+      provenance_chain: {
+        Args: {
+          p_max_depth?: number
+          p_max_nodes?: number
+          p_target_id: string
+          p_target_kind: string
+        }
+        Returns: Json
+      }
       replay_platform_feed_item: {
         Args: { p_feed_item_id: string }
         Returns: undefined

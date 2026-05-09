@@ -3,6 +3,10 @@ export type EvalCorpusEntry = {
   prompt: string;
   domain: string;
   tags?: string[];
+  /** When set, deterministic harness requires these substrings (case-insensitive) in the model response. */
+  expect_substrings?: string[];
+  /** When set, model response must not contain any of these literal substrings. */
+  forbid_substrings?: string[];
 };
 
 export type EvalCorpusFile = {
@@ -40,6 +44,22 @@ export function assertEvalCorpusFile(raw: unknown): asserts raw is EvalCorpusFil
     if (e.tags !== undefined) {
       if (!Array.isArray(e.tags) || !e.tags.every((t) => typeof t === 'string')) {
         throw new Error(`corpus: entry ${e.id} tags must be string[]`);
+      }
+    }
+    if (e.expect_substrings !== undefined) {
+      if (
+        !Array.isArray(e.expect_substrings) ||
+        !e.expect_substrings.every((t) => typeof t === 'string')
+      ) {
+        throw new Error(`corpus: entry ${e.id} expect_substrings must be string[]`);
+      }
+    }
+    if (e.forbid_substrings !== undefined) {
+      if (
+        !Array.isArray(e.forbid_substrings) ||
+        !e.forbid_substrings.every((t) => typeof t === 'string')
+      ) {
+        throw new Error(`corpus: entry ${e.id} forbid_substrings must be string[]`);
       }
     }
   }

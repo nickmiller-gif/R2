@@ -69,9 +69,21 @@ interface IngestIdentity {
 
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
+/** Match CentralR2 `_shared/normalizeEigenIngestToken.ts` — trim + strip BOM / zero-width paste junk. */
+function normalizeEigenIngestToken(raw: string): string {
+  let s = raw.trim();
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  s = s.replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+  return s.trim();
+}
+
 function resolveIngestIdentity(req: Request): IngestIdentity | null {
-  const ingestTokenHeader = (req.headers.get('x-eigen-ingest-token') ?? '').trim();
-  const configuredIngestToken = (Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '').trim();
+  const ingestTokenHeader = normalizeEigenIngestToken(
+    req.headers.get('x-eigen-ingest-token') ?? '',
+  );
+  const configuredIngestToken = normalizeEigenIngestToken(
+    Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '',
+  );
   if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }

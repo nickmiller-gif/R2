@@ -7,8 +7,8 @@ credibility-critical synthesis behind sustained pass-rate trends.
 ## Layout (target)
 
 - `prompts/` — YAML corpus (hard prompts across domains)
-- `runners/` — Vitest suites hitting chatbot `/api/chat` or synthesis directly
-- `scorers/` — exact-match + optional LLM-judge for adversarial pass
+- `runners/` — Vitest + `runDeterministicHarness` (expand to HTTP chatbot runners)
+- `scorers/` — `scoreKeywordConstraints` (substring allow/deny) + future LLM-judge
 - `cli/` — future `r2-eval run` entrypoint
 
 ## References
@@ -19,4 +19,4 @@ credibility-critical synthesis behind sustained pass-rate trends.
 
 ## Status
 
-`0.0.1` — initial **10-prompt** JSON corpus (`prompts/corpus-initial.json`) + Vitest schema guard (`tests/r2-eval/corpus-schema.test.ts`). Runners/scorers/CI threshold still to wire.
+`0.0.2` — corpus includes **keyword constraints** on adversarial prompts; **`scoreKeywordConstraints`**, **`runDeterministicHarness`**, Vitest **`runner-deterministic`**. GitHub Actions **`.github/workflows/r2-eval-harness.yml`** runs `tests/r2-eval/` on a weekly cron + path filters.

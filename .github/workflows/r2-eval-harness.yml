@@ -1,0 +1,46 @@
+# Op#5 — scheduled + path-filtered deterministic harness (corpus + substring scorers).
+# Extends later with HTTP runners against staging chatbot when secrets + URL are wired.
+name: R2 eval harness
+
+on:
+  schedule:
+    - cron: '25 7 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/r2-eval/**'
+      - 'tests/r2-eval/**'
+      - '.github/workflows/r2-eval-harness.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/r2-eval/**'
+      - 'tests/r2-eval/**'
+      - '.github/workflows/r2-eval-harness.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic:
+    name: Op#5 deterministic harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run r2-eval Vitest slice
+        run: npm run test -- tests/r2-eval/

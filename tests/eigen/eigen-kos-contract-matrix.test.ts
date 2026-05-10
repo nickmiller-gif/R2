@@ -140,13 +140,38 @@ const SEEDED_RULES: SeedRule[] = [
 ];
 
 function makeStubClient(rules: SeedRule[]): SupabaseClient {
+  function buildBuilder(filtered: SeedRule[]): {
+    eq: (col: string, val: unknown) => unknown;
+    then: <T>(
+      onF: (v: { data: SeedRule[]; error: null }) => T,
+      onR?: (e: unknown) => T,
+    ) => Promise<T>;
+  } {
+    const result = { data: filtered, error: null as null };
+    return {
+      eq(column: string, value: unknown) {
+        const next = filtered.filter((r) => {
+          const cell = (r as unknown as Record<string, unknown>)[column];
+          // Seeded fixture predates the `is_active` column. Treat missing
+          // cells as active so the canonical seed still passes the
+          // hot-path `eq('is_active', true)` filter.
+          if (column === 'is_active' && cell === undefined) return value === true;
+          return cell === value;
+        });
+        return buildBuilder(next);
+      },
+      then(onF, onR) {
+        return Promise.resolve(result).then(onF, onR);
+      },
+    };
+  }
   const fake = {
     from(table: string) {
       if (table !== 'eigen_policy_rules') {
         throw new Error(`Unexpected table in KOS contract stub: ${table}`);
       }
       return {
-        select: () => Promise.resolve({ data: rules, error: null }),
+        select: () => buildBuilder(rules),
       };
     },
   };

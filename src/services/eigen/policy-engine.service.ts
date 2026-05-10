@@ -128,6 +128,12 @@ export interface DbEigenPolicyRuleRow {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /**
+   * Optional in this transport struct so existing fixtures (created before
+   * the versioning migration) keep type-checking; the live DB column is
+   * NOT NULL DEFAULT true, so production rows always carry it.
+   */
+  is_active?: boolean | null;
 }
 
 export interface DbEigenPolicyDecisionRow {
@@ -261,7 +267,11 @@ export function createEigenPolicyEngineService(
     async evaluate(input) {
       assertEvaluateInputBounds(input);
       const startedAt = Date.now();
-      const rules = await this.listRules();
+      // Active-only: superseded rule rows persist in the registry for audit
+      // (versioning migration 202604240006) but must not influence runtime
+      // decisions. Mirrors the `eq('is_active', true)` guard in the edge
+      // function helper at supabase/functions/_shared/eigen-policy-engine.ts.
+      const rules = await this.listRules({ isActive: true });
       const result = evaluateEigenPolicyRules(rules, input);
       const evaluationMs = Date.now() - startedAt;
 

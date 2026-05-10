@@ -15,6 +15,7 @@ interface DbEigenPolicyRuleRow {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  is_active: boolean;
 }
 
 export interface ResolveEigenCapabilityAccessInput {
@@ -49,11 +50,17 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
 }
 
 async function loadPolicyRules(client: SupabaseClient): Promise<EigenPolicyRule[]> {
+  // Hot-path enforcement must only see currently-active rules. The supersede
+  // flow (migration 202604240006) keeps superseded rows in the table for
+  // audit/history with `is_active=false`; including them here would let a
+  // superseded allow/deny continue to gate retrieve/chat/widget surfaces
+  // after operators rolled it forward.
   const query = await client
     .from('eigen_policy_rules')
     .select(
-      'id,policy_tag,capability_tag_pattern,effect,required_role,rationale,metadata,created_at,updated_at',
-    );
+      'id,policy_tag,capability_tag_pattern,effect,required_role,rationale,metadata,created_at,updated_at,is_active',
+    )
+    .eq('is_active', true);
   if (query.error) throw new Error(query.error.message);
   const rows = (query.data ?? []) as DbEigenPolicyRuleRow[];
   return rows.map(rowToRule);

@@ -21,6 +21,8 @@ function makeMockDb(): EigenPolicyEngineDb & { rows: DbEigenPolicyRuleRow[] } {
         if (!filter) return true;
         if (filter.policyTag && r.policy_tag !== filter.policyTag) return false;
         if (filter.effect && r.effect !== filter.effect) return false;
+        if (filter.isActive === true && r.is_active === false) return false;
+        if (filter.isActive === false && r.is_active !== false) return false;
         return true;
       });
     },
@@ -120,4 +122,3 @@ describe('EigenPolicyEngineService', () => {
     expect(updated.metadata).toEqual({ source: 'runtime', rollout: 'phase-c3' });
   });
 });
-

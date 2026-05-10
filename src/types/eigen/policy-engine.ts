@@ -28,6 +28,13 @@ export interface CreateEigenPolicyRuleInput {
 export interface EigenPolicyRuleFilter {
   policyTag?: string;
   effect?: EigenPolicyEffect;
+  /**
+   * When `true`, restrict the result to rules whose `is_active` column is
+   * `true` (or absent — treated as active for backward-compat with fixtures
+   * predating the versioning migration). Used by `evaluate()` so superseded
+   * rule rows do not influence runtime decisions.
+   */
+  isActive?: boolean;
 }
 
 export interface EvaluateEigenPolicyInput {

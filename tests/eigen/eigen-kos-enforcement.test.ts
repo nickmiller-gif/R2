@@ -46,22 +46,46 @@ function makeRuleRow(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
 
 /**
  * Minimal Supabase client stub that answers the one query the helper runs:
- * `client.from('eigen_policy_rules').select(...)` returns the rule set.
+ * `client.from('eigen_policy_rules').select(...).eq('is_active', true)`. The
+ * builder is both `.eq()`-chainable and thenable so the helper can `await`
+ * it directly. Rows missing `is_active` are treated as active (the live DB
+ * column is NOT NULL DEFAULT true; older fixtures pre-date the column).
  */
 function makeFakeClient(rules: FakeRuleRow[]): SupabaseClient {
-  const selectResult = { data: rules, error: null };
+  function buildBuilder(filtered: FakeRuleRow[]): {
+    eq: (col: string, val: unknown) => unknown;
+    then: <T>(
+      onF: (v: { data: FakeRuleRow[]; error: null }) => T,
+      onR?: (e: unknown) => T,
+    ) => Promise<T>;
+  } {
+    const result = { data: filtered, error: null as null };
+    return {
+      eq(column: string, value: unknown) {
+        const next = filtered.filter((r) => {
+          const cell = (r as unknown as Record<string, unknown>)[column];
+          if (column === 'is_active' && cell === undefined) return value === true;
+          return cell === value;
+        });
+        return buildBuilder(next);
+      },
+      then(onF, onR) {
+        return Promise.resolve(result).then(onF, onR);
+      },
+    };
+  }
   const fake = {
     from(table: string) {
       if (table !== 'eigen_policy_rules') {
         throw new Error(`Unexpected table in KOS enforcement stub: ${table}`);
       }
       return {
-        select: () => Promise.resolve(selectResult),
+        select: () => buildBuilder(rules),
       };
     },
   };
-  // The helper only touches `.from().select()`, so casting through `unknown` is safe
-  // for a contract-level stub.
+  // The helper only touches `.from().select().eq()`, so casting through `unknown`
+  // is safe for a contract-level stub.
   return fake as unknown as SupabaseClient;
 }
 

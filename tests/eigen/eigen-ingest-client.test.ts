@@ -118,8 +118,8 @@ describe('Eigen ingest client', () => {
     const form = capturedInit?.body as FormData;
 
     expect(headers.Authorization).toBe('Bearer token-xyz');
-    expect(headers['x-idempotency-key']).toBe(buildIdempotencyKey('centralr2-core', 'src-77'));
-    expect(form.get('source_system')).toBe('centralr2-core');
+    expect(headers['x-idempotency-key']).toBe(buildIdempotencyKey('centralr2', 'src-77'));
+    expect(form.get('source_system')).toBe('centralr2');
     expect(form.get('source_ref')).toBe('src-77');
     expect(form.get('chunking_mode')).toBe('hierarchical');
     expect(form.get('metadata')).toBe(JSON.stringify({ tags: ['alpha'] }));

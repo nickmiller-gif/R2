@@ -19,7 +19,7 @@ describe('Raysretreat thought piece Eigen adapter', () => {
   it('defaults to public corpus with raysretreat tags', () => {
     const payload = mapThoughtPieceToEigen(baseEvent);
 
-    expect(payload.source_system).toBe('raysretreat');
+    expect(payload.source_system).toBe('rays_retreat');
     expect(payload.source_ref).toBe('agenda_thought_pieces:tp-001');
     expect(payload.document.title).toBe('Governance in the age of AI');
     expect(payload.document.body).toBe('Full essay body here.');
@@ -71,7 +71,7 @@ describe('Raysretreat thought piece Eigen adapter', () => {
       body: 'Notes body',
     });
 
-    expect(payload.source_system).toBe('raysretreat');
+    expect(payload.source_system).toBe('rays_retreat');
     expect(payload.source_ref).toBe('content-1');
     expect(payload.document.content_type).toBe('text/plain');
     expect(payload.document.metadata?.site_id).toBe('raysretreat');

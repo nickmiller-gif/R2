@@ -183,7 +183,7 @@ async function gatherEvidence(
         source_system: 'knowledge_chunks',
         ingest_run: {
           id: runId,
-          source_system: 'oracle-ws-pipeline',
+          source_system: 'oracle_operator',
           started_at: new Date().toISOString(),
           trigger: 'pipeline_execute',
         },
@@ -223,7 +223,7 @@ async function gatherEvidence(
           source_system: 'oracle_signals',
           ingest_run: {
             id: runId,
-            source_system: 'oracle-ws-pipeline',
+            source_system: 'oracle_operator',
             started_at: new Date().toISOString(),
             trigger: 'pipeline_execute',
           },
@@ -265,7 +265,7 @@ async function gatherEvidence(
         source_system: 'oracle_theses',
         ingest_run: {
           id: runId,
-          source_system: 'oracle-ws-pipeline',
+          source_system: 'oracle_operator',
           started_at: new Date().toISOString(),
           trigger: 'pipeline_execute',
         },

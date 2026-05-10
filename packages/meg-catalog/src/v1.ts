@@ -59,7 +59,7 @@ export type MegSourceSystem =
   | 'health_supplement_tr'
   | 'smartplrx'
   | 'smartplrx_trend_tracker'
-  | 'ip_insights_hub'
+  | 'ip_pulse_point'
   | 'hpseller'
   | 'open_intel_commons'
   | 'insr'

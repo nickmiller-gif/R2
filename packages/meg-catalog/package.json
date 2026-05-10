@@ -9,7 +9,10 @@
     "./v1": "./src/v1.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:json": "node scripts/build-catalog-json.mjs",
+    "check:json": "node scripts/build-catalog-json.mjs --check-only",
+    "build": "npm run typecheck && npm run build:json"
   },
   "devDependencies": {
     "typescript": "^6.0.2"

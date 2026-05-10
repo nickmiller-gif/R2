@@ -24,8 +24,11 @@
     "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}": [
+    "*.{ts,tsx,js,mjs,cjs}": [
       "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
       "prettier --write"
     ],
     "database.types.ts": []

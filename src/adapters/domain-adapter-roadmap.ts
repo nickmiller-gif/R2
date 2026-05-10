@@ -24,7 +24,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
   {
     repo: 'ip-insights-hub',
     priority: 'p0',
-    target_source_system: 'ip-insights-hub',
+    target_source_system: 'ip_pulse_point',
     corpus_tier: 'eigenx',
     status: 'completed',
     notes:
@@ -33,7 +33,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
   {
     repo: 'oracle-operator',
     priority: 'p1',
-    target_source_system: 'oracle-operator',
+    target_source_system: 'oracle_operator',
     corpus_tier: 'eigenx',
     status: 'completed',
     notes:
@@ -51,7 +51,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
   {
     repo: 'health-supplement-tr',
     priority: 'p1',
-    target_source_system: 'health-supplement-tr',
+    target_source_system: 'health_supplement_tr',
     corpus_tier: 'mixed',
     status: 'in_progress',
     notes:
@@ -69,7 +69,7 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
   {
     repo: 'centralr2-core',
     priority: 'p0',
-    target_source_system: 'centralr2-core',
+    target_source_system: 'centralr2',
     corpus_tier: 'eigenx',
     status: 'completed',
     notes:

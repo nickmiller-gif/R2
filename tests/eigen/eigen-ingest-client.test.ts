@@ -104,7 +104,7 @@ describe('Eigen ingest client', () => {
     const file = new File(['hello'], 'note.txt', { type: 'text/plain' });
 
     await client.ingestMultipart({
-      source_system: 'centralr2-core',
+      source_system: 'centralr2',
       source_ref: 'src-77',
       file,
       metadata: { tags: ['alpha'] },
@@ -129,7 +129,9 @@ describe('Eigen ingest client', () => {
   });
 
   it('throws when multipart ingest fails', async () => {
-    const fetchMock = vi.fn(async () => new Response('bad multipart', { status: 502 })) as typeof fetch;
+    const fetchMock = vi.fn(
+      async () => new Response('bad multipart', { status: 502 }),
+    ) as typeof fetch;
     globalThis.fetch = fetchMock;
 
     const client = createEigenIngestClient({
@@ -139,7 +141,7 @@ describe('Eigen ingest client', () => {
 
     await expect(
       client.ingestMultipart({
-        source_system: 'centralr2-core',
+        source_system: 'centralr2',
         source_ref: 'oops',
         file: new File(['oops'], 'oops.txt'),
       }),

@@ -2,11 +2,8 @@ import {
   createEigenIngestClient,
   type EigenIngestClientConfig,
   type EigenIngestRequest,
-} from "../eigen-ingest-client.js";
-import {
-  visibilityPolicyTags,
-  type AdapterVisibility,
-} from "../shared/adapter-metadata.js";
+} from '../eigen-ingest-client.js';
+import { visibilityPolicyTags, type AdapterVisibility } from '../shared/adapter-metadata.js';
 
 export interface HealthSupplementTrendEvent {
   trend_id: string;
@@ -25,32 +22,30 @@ export function mapHealthSupplementTrendToEigen(
   event: HealthSupplementTrendEvent,
 ): EigenIngestRequest {
   // Default public: TrendPulse / HST surface is visitor-facing; pass visibility: 'eigenx' for operator-only exports.
-  const visibility = event.visibility ?? "public";
+  const visibility = event.visibility ?? 'public';
   return {
-    source_system: "health-supplement-tr",
+    source_system: 'health_supplement_tr',
     source_ref: event.trend_id,
     document: {
       title: event.title,
       body: event.body,
-      content_type: event.content_type ?? "trend_report",
+      content_type: event.content_type ?? 'trend_report',
       metadata: {
-        site_id: event.site_id ?? "health-supplement-tr",
-        source_system: "health-supplement-tr",
+        site_id: event.site_id ?? 'health-supplement-tr',
+        source_system: 'health_supplement_tr',
         source_ref: event.trend_id,
         source_table: event.source_table ?? null,
         visibility,
         captured_at: event.captured_at ?? null,
       },
     },
-    chunking_mode: "hierarchical",
+    chunking_mode: 'hierarchical',
     policy_tags: visibilityPolicyTags(visibility, event.tags ?? []),
     entity_ids: event.entity_ids ?? [],
   };
 }
 
-export function createHealthSupplementEigenAdapter(
-  config: EigenIngestClientConfig,
-) {
+export function createHealthSupplementEigenAdapter(config: EigenIngestClientConfig) {
   const ingestClient = createEigenIngestClient(config);
   return {
     async onTrendExported(event: HealthSupplementTrendEvent) {

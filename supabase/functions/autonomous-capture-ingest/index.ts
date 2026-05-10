@@ -121,7 +121,7 @@ Deno.serve(
             'x-idempotency-key': crypto.randomUUID(),
           },
           body: JSON.stringify({
-            source_system: 'autonomous_os_extension',
+            source_system: 'autonomous_bot_os',
             source_ref: `capture:${capture.id}`,
             policy_tags: ['eigenx', 'user_upload', 'autonomous_capture'],
             document: {

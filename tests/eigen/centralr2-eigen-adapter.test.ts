@@ -12,7 +12,7 @@ describe('CentralR2 Eigen adapter', () => {
       narrative: 'Narrative body',
     });
 
-    expect(payload.source_system).toBe('centralr2-core');
+    expect(payload.source_system).toBe('centralr2');
     expect(payload.source_ref).toBe('asset-1');
     expect(payload.document.content_type).toBe('asset_narrative');
     expect(payload.document.metadata?.site_id).toBe('centralr2-core');

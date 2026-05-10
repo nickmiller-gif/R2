@@ -161,3 +161,6 @@ memory/
 
 # Cursor rules/agents synced from umbrella (see AGENTS.md sync script)
 .cursor/
+
+# Backup files from sed -i operations
+*.bak

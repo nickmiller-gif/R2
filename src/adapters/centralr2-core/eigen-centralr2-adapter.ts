@@ -17,7 +17,7 @@ export interface CentralR2KnowledgeEvent {
 
 export function mapCentralR2EventToEigen(event: CentralR2KnowledgeEvent): EigenIngestRequest {
   return {
-    source_system: 'centralr2-core',
+    source_system: 'centralr2',
     source_ref: event.asset_id,
     document: {
       title: event.title,
@@ -25,7 +25,7 @@ export function mapCentralR2EventToEigen(event: CentralR2KnowledgeEvent): EigenI
       content_type: 'asset_narrative',
       metadata: {
         site_id: event.site_id ?? 'centralr2-core',
-        source_system: 'centralr2-core',
+        source_system: 'centralr2',
         source_ref: event.asset_id,
         visibility: 'eigenx',
         generated_at: event.generated_at ?? null,

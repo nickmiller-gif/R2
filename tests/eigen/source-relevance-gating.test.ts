@@ -14,10 +14,30 @@ type Candidate = {
 
 function sampleCandidates(): Candidate[] {
   return [
-    { chunk_id: 'retreat-1', source_system: 'raysretreat', similarity_score: 0.82, composite_score: 0.8 },
-    { chunk_id: 'retreat-2', source_system: 'raysretreat', similarity_score: 0.66, composite_score: 0.7 },
-    { chunk_id: 'supp-1', source_system: 'health-supplement-tr', similarity_score: 0.63, composite_score: 0.69 },
-    { chunk_id: 'supp-2', source_system: 'health-supplement-tr', similarity_score: 0.61, composite_score: 0.65 },
+    {
+      chunk_id: 'retreat-1',
+      source_system: 'raysretreat',
+      similarity_score: 0.82,
+      composite_score: 0.8,
+    },
+    {
+      chunk_id: 'retreat-2',
+      source_system: 'raysretreat',
+      similarity_score: 0.66,
+      composite_score: 0.7,
+    },
+    {
+      chunk_id: 'supp-1',
+      source_system: 'health_supplement_tr',
+      similarity_score: 0.63,
+      composite_score: 0.69,
+    },
+    {
+      chunk_id: 'supp-2',
+      source_system: 'health_supplement_tr',
+      similarity_score: 0.61,
+      composite_score: 0.65,
+    },
   ];
 }
 
@@ -37,8 +57,18 @@ describe('applySiteRelevanceGate', () => {
 
   it('allows fallback when site evidence is weak', () => {
     const weakCandidates: Candidate[] = [
-      { chunk_id: 'retreat-weak', source_system: 'raysretreat', similarity_score: 0.12, composite_score: 0.12 },
-      { chunk_id: 'supp-strong', source_system: 'health-supplement-tr', similarity_score: 0.54, composite_score: 0.53 },
+      {
+        chunk_id: 'retreat-weak',
+        source_system: 'raysretreat',
+        similarity_score: 0.12,
+        composite_score: 0.12,
+      },
+      {
+        chunk_id: 'supp-strong',
+        source_system: 'health_supplement_tr',
+        similarity_score: 0.54,
+        composite_score: 0.53,
+      },
     ];
 
     const gated = applySiteRelevanceGate(weakCandidates, {
@@ -68,10 +98,30 @@ describe('applySiteRelevanceGate', () => {
 describe('limitCrossSourceRatio', () => {
   it('caps cross-source share in ranked candidates', () => {
     const ranked: Candidate[] = [
-      { chunk_id: 'retreat-1', source_system: 'raysretreat', similarity_score: 0.8, composite_score: 0.82 },
-      { chunk_id: 'supp-1', source_system: 'health-supplement-tr', similarity_score: 0.77, composite_score: 0.8 },
-      { chunk_id: 'retreat-2', source_system: 'raysretreat', similarity_score: 0.75, composite_score: 0.78 },
-      { chunk_id: 'supp-2', source_system: 'health-supplement-tr', similarity_score: 0.74, composite_score: 0.77 },
+      {
+        chunk_id: 'retreat-1',
+        source_system: 'raysretreat',
+        similarity_score: 0.8,
+        composite_score: 0.82,
+      },
+      {
+        chunk_id: 'supp-1',
+        source_system: 'health_supplement_tr',
+        similarity_score: 0.77,
+        composite_score: 0.8,
+      },
+      {
+        chunk_id: 'retreat-2',
+        source_system: 'raysretreat',
+        similarity_score: 0.75,
+        composite_score: 0.78,
+      },
+      {
+        chunk_id: 'supp-2',
+        source_system: 'health_supplement_tr',
+        similarity_score: 0.74,
+        composite_score: 0.77,
+      },
     ];
 
     const limited = limitCrossSourceRatio(ranked, {
@@ -80,7 +130,11 @@ describe('limitCrossSourceRatio', () => {
       maxChunks: 4,
     });
 
-    expect(limited.candidates.map((item) => item.chunk_id)).toEqual(['retreat-1', 'supp-1', 'retreat-2']);
+    expect(limited.candidates.map((item) => item.chunk_id)).toEqual([
+      'retreat-1',
+      'supp-1',
+      'retreat-2',
+    ]);
     expect(limited.droppedCrossSourceCount).toBe(1);
   });
 });

@@ -20,7 +20,7 @@ export interface RaysRetreatContentEvent {
 export function mapRaysRetreatEventToEigen(event: RaysRetreatContentEvent): EigenIngestRequest {
   const visibility = event.visibility ?? 'public';
   return {
-    source_system: 'raysretreat',
+    source_system: 'rays_retreat',
     source_ref: event.record_id,
     document: {
       title: event.title,
@@ -28,7 +28,7 @@ export function mapRaysRetreatEventToEigen(event: RaysRetreatContentEvent): Eige
       content_type: event.content_type ?? 'text/plain',
       metadata: {
         site_id: event.site_id ?? 'raysretreat',
-        source_system: 'raysretreat',
+        source_system: 'rays_retreat',
         source_ref: event.record_id,
         visibility,
         updated_at: event.updated_at ?? null,
@@ -55,7 +55,7 @@ export function mapThoughtPieceToEigen(event: ThoughtPieceEvent): EigenIngestReq
   const visibility = event.visibility ?? 'public';
   const extraTags = ['raysretreat', 'retreat-thought-piece', ...event.theme_tags.filter(Boolean)];
   return {
-    source_system: 'raysretreat',
+    source_system: 'rays_retreat',
     source_ref: `agenda_thought_pieces:${event.id}`,
     document: {
       title: event.title,

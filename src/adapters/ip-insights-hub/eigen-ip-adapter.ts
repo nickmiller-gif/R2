@@ -18,7 +18,7 @@ export interface IpAdapterConfig extends EigenIngestClientConfig {
 
 export function mapIpEventToEigenDocument(event: IpAnalysisCompletedEvent): EigenIngestRequest {
   return {
-    source_system: 'ip-insights-hub',
+    source_system: 'ip_pulse_point',
     source_ref: event.analysis_run_id,
     document: {
       title: event.analysis_title,
@@ -43,7 +43,9 @@ export function createIpInsightsHubEigenAdapter(config: IpAdapterConfig) {
     async onAnalysisCompleted(event: IpAnalysisCompletedEvent) {
       const payload = mapIpEventToEigenDocument(event);
       if (config.defaultPolicyTags && config.defaultPolicyTags.length > 0) {
-        payload.policy_tags = Array.from(new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]));
+        payload.policy_tags = Array.from(
+          new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]),
+        );
       }
       return ingestClient.ingest(payload);
     },

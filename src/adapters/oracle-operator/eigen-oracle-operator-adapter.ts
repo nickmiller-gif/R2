@@ -22,7 +22,7 @@ export function mapOracleOperatorEventToEigenDocument(
   event: OracleOperatorGroundingEvent,
 ): EigenIngestRequest {
   return {
-    source_system: 'oracle-operator',
+    source_system: 'oracle_operator',
     source_ref: event.decision_id,
     document: {
       title: event.title,
@@ -47,7 +47,9 @@ export function createOracleOperatorEigenAdapter(config: OracleOperatorAdapterCo
     async ingestOperatorGrounding(event: OracleOperatorGroundingEvent) {
       const payload = mapOracleOperatorEventToEigenDocument(event);
       if (config.defaultPolicyTags && config.defaultPolicyTags.length > 0) {
-        payload.policy_tags = Array.from(new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]));
+        payload.policy_tags = Array.from(
+          new Set([...(payload.policy_tags ?? []), ...config.defaultPolicyTags]),
+        );
       }
       return ingestClient.ingest(payload);
     },

@@ -10,7 +10,7 @@ describe('Health Supplement Eigen adapter', () => {
       tags: ['trend-intelligence'],
     });
 
-    expect(payload.source_system).toBe('health-supplement-tr');
+    expect(payload.source_system).toBe('health_supplement_tr');
     expect(payload.source_ref).toBe('trend-1');
     expect(payload.document.metadata?.visibility).toBe('public');
     expect(payload.policy_tags).toContain('eigen_public');

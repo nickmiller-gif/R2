@@ -14,7 +14,7 @@ describe('IP Insights Hub Eigen adapter', () => {
       generated_at: '2026-04-07T00:00:00.000Z',
     });
 
-    expect(payload.source_system).toBe('ip-insights-hub');
+    expect(payload.source_system).toBe('ip_pulse_point');
     expect(payload.source_ref).toBe('run-123');
     expect(payload.document.title).toBe('LNP Patent Map');
     expect(payload.document.content_type).toBe('analysis_report');

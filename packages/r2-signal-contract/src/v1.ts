@@ -15,6 +15,7 @@ export type R2SignalSourceSystem =
   | 'hpseller'
   | 'open_intel_commons'
   | 'insr'
+  | 'r2app'
   | 'r2_widget'
   | 'plrx_external';
 
@@ -69,6 +70,7 @@ export const R2_SIGNAL_SOURCE_SYSTEMS: readonly R2SignalSourceSystem[] = [
   'hpseller',
   'open_intel_commons',
   'insr',
+  'r2app',
   'r2_widget',
   'plrx_external',
 ];

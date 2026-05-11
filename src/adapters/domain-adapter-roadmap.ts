@@ -44,9 +44,9 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     priority: 'p1',
     target_source_system: 'smartplrx',
     corpus_tier: 'mixed',
-    status: 'in_progress',
+    status: 'completed',
     notes:
-      'Export `scripts/export-trends-to-r2.mjs` + daily `eigen-export.yml`; R2 adapter `eigen-smartplrx-adapter.ts`. Use SPLX_EIGEN_VISIBILITY=eigenx for operator-only.',
+      'Shared envelope `supabase/functions/_shared/smartplrx-envelope.mjs` powers Edge `eigen-ingest.ts` + `scripts/export-trends-to-r2.mjs` (canonical `source_system: smartplrx`, `meg_entity_hint`, derived `evidence_tier`, `smartplrx_eigen_ingest_log`). Export + `eigen-export.yml`; R2 adapter `eigen-smartplrx-adapter.ts`. SPLX_EIGEN_VISIBILITY=eigenx for operator-only.',
   },
   {
     repo: 'health-supplement-tr',
@@ -92,6 +92,15 @@ export const DOMAIN_ADAPTER_ROADMAP: AdapterRoadmapItem[] = [
     status: 'deferred',
     notes:
       'Deferred for current production wave: runtime chat already uses shared Eigen widget path; conversation-capture ingest will be wired in a dedicated follow-up release.',
+  },
+  {
+    repo: 'insr',
+    priority: 'p0',
+    target_source_system: 'insr',
+    corpus_tier: 'eigenx',
+    status: 'completed',
+    notes:
+      'R2 adapter `src/adapters/insr/eigen-insr-adapter.ts` maps validation-complete payloads to eigen-ingest. Edge path emits `r2-signal-ingest` envelopes from `run-research-agent` when batches complete.',
   },
   {
     repo: 'chartr2-assets',

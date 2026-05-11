@@ -40,6 +40,7 @@
         "hpseller",
         "open_intel_commons",
         "insr",
+        "r2app",
         "r2_widget",
         "plrx_external"
       ]
@@ -53,10 +54,7 @@
       "minLength": 1
     },
     "actor_meg_entity_id": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     },
     "related_entity_ids": {
       "type": "array",
@@ -84,12 +82,7 @@
     },
     "privacy_level": {
       "type": "string",
-      "enum": [
-        "public",
-        "members",
-        "operator",
-        "private"
-      ]
+      "enum": ["public", "members", "operator", "private"]
     },
     "provenance": {
       "type": "object",
@@ -110,14 +103,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": [
-          "oracle",
-          "eigen",
-          "charter",
-          "operator_workbench",
-          "meg",
-          "commons_publish"
-        ]
+        "enum": ["oracle", "eigen", "charter", "operator_workbench", "meg", "commons_publish"]
       }
     },
     "ingest_run_id": {

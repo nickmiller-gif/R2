@@ -94,6 +94,15 @@ jobs:
         with:
           version: ${{ steps.cli_version.outputs.version }}
 
+      - name: Preflight — Supabase CLI auth
+        run: |
+          set -euo pipefail
+          if ! supabase projects list >/dev/null 2>&1; then
+            echo "::error::Supabase CLI is not authorized. Typical fix: create a new access token at https://supabase.com/dashboard/account/tokens and update the **SUPABASE_ACCESS_TOKEN** secret for this repo’s **production** environment (and repository-level copy if you duplicate secrets). Confirm the token can see project ref **$SUPABASE_PROJECT_REF** (Eigen / R2)."
+            exit 1
+          fi
+          echo "Supabase CLI authenticated successfully."
+
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 

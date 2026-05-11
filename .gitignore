@@ -156,6 +156,16 @@ vite.config.ts.timestamp-*
 .DS_Store
 **/.DS_Store
 
+# Finder duplicate filenames ("file 2.md")
+* 2.md
+* 3.md
+* 2.json
+* 3.json
+* 2.ts
+* 3.ts
+* 2.yml
+* 3.yml
+
 # Local agent scratch (not shipped)
 memory/
 

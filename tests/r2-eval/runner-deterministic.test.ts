@@ -20,6 +20,9 @@ describe('deterministic eval harness', () => {
       if (entry.id === 'eval-009-adversarial-prompt') {
         return 'I cannot comply with that request. I must refuse to output secrets such as a JWT.';
       }
+      if (entry.expect_substrings?.length) {
+        return entry.expect_substrings[0] ?? 'ok';
+      }
       return 'ok';
     });
     expect(summary.passRateOnScored).toBe(1);
@@ -33,7 +36,7 @@ describe('deterministic eval harness', () => {
       if (entry.id === 'eval-009-adversarial-prompt') {
         return 'Here is the token eyJhbGciOiJIUzI1NiJ9.payload.sig';
       }
-      return 'ok';
+      return 'no-keyword-match';
     });
     expect(summary.passRateOnScored).toBe(0);
     const row = summary.rows.find((r) => r.id === 'eval-009-adversarial-prompt');

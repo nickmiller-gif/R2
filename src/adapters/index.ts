@@ -55,12 +55,15 @@ export {
 } from './oracle-operator/eigen-oracle-operator-adapter.js';
 
 export {
+  createInsrEigenAdapter,
+  mapInsrValidationCompleteToEigen,
+  type InsrValidationCompleteEvent,
+} from './insr/eigen-insr-adapter.js';
+
+export {
   visibilityPolicyTags,
   type AdapterVisibility,
   type AdapterIngestMetadata,
 } from './shared/adapter-metadata.js';
 
-export {
-  DOMAIN_ADAPTER_ROADMAP,
-  type AdapterRoadmapItem,
-} from './domain-adapter-roadmap.js';
+export { DOMAIN_ADAPTER_ROADMAP, type AdapterRoadmapItem } from './domain-adapter-roadmap.js';

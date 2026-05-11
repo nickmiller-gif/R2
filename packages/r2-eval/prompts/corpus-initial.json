@@ -62,6 +62,62 @@
       "domain": "platform_core",
       "prompt": "In two sentences, contrast Foundation editorial work with R2 Commercial licensing under IRC § 482.",
       "tags": ["governance", "charter", "licensing"]
+    },
+    {
+      "id": "eval-011-lane-token-rays-retreat",
+      "domain": "retreat_commerce",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for Ray's Retreat producers (underscore form, lowercase). Reply with that token only, no prose.",
+      "tags": ["nine_lane", "rays_retreat", "retrieval"],
+      "expect_substrings": ["rays_retreat"]
+    },
+    {
+      "id": "eval-012-lane-token-operator-workbench",
+      "domain": "autonomous_ops",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for Operator Workbench envelopes. Reply with that token only.",
+      "tags": ["nine_lane", "operator_workbench", "retrieval"],
+      "expect_substrings": ["operator_workbench"]
+    },
+    {
+      "id": "eval-013-lane-token-oracle-operator",
+      "domain": "autonomous_ops",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for Oracle Operator grounding signals. Reply with that token only.",
+      "tags": ["nine_lane", "oracle_operator", "retrieval"],
+      "expect_substrings": ["oracle_operator"]
+    },
+    {
+      "id": "eval-014-lane-token-r2app",
+      "domain": "platform_core",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for the r2app / Retreat coffee match lane. Reply with that token only.",
+      "tags": ["nine_lane", "r2app", "retrieval"],
+      "expect_substrings": ["r2app"]
+    },
+    {
+      "id": "eval-015-lane-token-hpseller",
+      "domain": "retreat_commerce",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for HP Seller ingest. Reply with that token only.",
+      "tags": ["nine_lane", "hpseller", "retrieval"],
+      "expect_substrings": ["hpseller"]
+    },
+    {
+      "id": "eval-016-lane-token-insr",
+      "domain": "platform_core",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for INSR validation-complete signals. Reply with that token only.",
+      "tags": ["nine_lane", "insr", "retrieval"],
+      "expect_substrings": ["insr"]
+    },
+    {
+      "id": "eval-017-lane-token-open-intel-commons",
+      "domain": "productivity_memory",
+      "prompt": "For retrieval verification: name the canonical R2 signal-contract source_system token for Open Intel Commons / R2 Community surfaces. Reply with that token only.",
+      "tags": ["nine_lane", "open_intel_commons", "retrieval"],
+      "expect_substrings": ["open_intel_commons"]
+    },
+    {
+      "id": "eval-018-lane-token-smartplrx",
+      "domain": "health_wellness",
+      "prompt": "For retrieval verification: name either canonical smartplrx-related source_system token accepted in the v1 contract (smartplrx or smartplrx_trend_tracker). Reply with one token only.",
+      "tags": ["nine_lane", "smartplrx", "retrieval"],
+      "expect_substrings": ["smartplrx"]
     }
   ]
 }

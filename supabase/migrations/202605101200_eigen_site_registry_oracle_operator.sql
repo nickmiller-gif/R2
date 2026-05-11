@@ -13,8 +13,10 @@
 -- Source-system literal already in catalog: 'oracle_operator' (v1.0.0).
 -- Site_id chosen: 'oracle-operator' (matches Lovable host slug pattern,
 --   matches the existing repo directory name).
--- Mode: mixed (operator console — public scope by default, eigenx upgrade
---   on bearer token, same pattern as hpseller / centralr2-core / r2app).
+-- Mode: mixed (operator console — public scope by default; bearer upgrades
+--   are handled by session policy, not by listing eigenx in default_policy_scope).
+-- Constraint eigen_site_registry_scope_mode_consistency: mixed rows must not
+-- include eigenx in default_policy_scope (see 202604200001).
 --
 -- Idempotent: ON CONFLICT (site_id) DO UPDATE.
 
@@ -34,7 +36,7 @@ VALUES (
   'mixed',
   '["https://oracle-operator.lovable.app", "http://localhost:5173", "http://localhost:8080"]'::jsonb,
   '["oracle_operator"]'::jsonb,
-  '["eigen_public", "eigenx"]'::jsonb,
+  '["eigen_public"]'::jsonb,
   'active',
   '{"description":"Operator console for the R2 Oracle white-space intelligence pipeline. Replaces the Lovable scaffold boilerplate that was in place 2026-04 → 2026-05.","domains":[]}'::jsonb
 )

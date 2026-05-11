@@ -91,10 +91,20 @@ function firstString(...candidates: unknown[]): string | null {
   return null;
 }
 
+function emailFromScalar(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  if (!t) return null;
+  return t.includes('@') ? t.toLowerCase() : null;
+}
+
+/** First string among candidates that looks like an email (scans all, not only first string). */
 function firstEmail(...candidates: unknown[]): string | null {
-  const s = firstString(...candidates);
-  if (!s) return null;
-  return s.includes('@') ? s.toLowerCase() : null;
+  for (const c of candidates) {
+    const e = emailFromScalar(c);
+    if (e) return e;
+  }
+  return null;
 }
 
 /** Stable string id from primitives (e.g. parcel numbers). */
@@ -172,6 +182,8 @@ export function inferActorMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs 
     p.user_id,
     p.userId,
     p.sub,
+    p.client_id,
+    p.clientId,
     p.external_actor_id,
     m.actor_id,
     m.actorId,
@@ -423,6 +435,22 @@ export function inferRelatedMegResolveArgsList(row: FeedRowForMeg): MegResolveRp
   inferTypedAssetRelatedResolves(out, seen, row, p, m);
 
   return out;
+}
+
+const COFFEE_COUNTERPARTY_ROW_SUFFIX = ':coffee_counterparty';
+
+/**
+ * meg_resolve_or_create args for the coffee counterparty (attendee B / matched
+ * stable id), when present in the payload — avoids treating unrelated UUIDs in
+ * related_entity_ids as the match target.
+ */
+export function findCoffeeCounterpartyMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs | null {
+  for (const args of inferRelatedMegResolveArgsList(row)) {
+    if (args.p_source_row_id.endsWith(COFFEE_COUNTERPARTY_ROW_SUFFIX)) {
+      return args;
+    }
+  }
+  return null;
 }
 
 function centralr2PropertyDedupeKey(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MEG_RESOLVE_BOUNDS,
+  findCoffeeCounterpartyMegResolveArgs,
   inferActorMegResolveArgs,
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
@@ -122,6 +123,33 @@ describe('inferActorMegResolveArgs', () => {
     expect(r).not.toBeNull();
     expect(r!.p_canonical_external_id).toBe('client-ext-42');
     expect(r!.p_canonical_name).toBe('Acme LLC');
+  });
+
+  it('infers actor external id from top-level client_id / clientId', () => {
+    const r = inferActorMegResolveArgs({
+      id: 'sig-top-client',
+      source_system: 'centralr2',
+      source_event_type: 'client_enriched',
+      summary: 'Client snapshot',
+      payload: { clientId: 'top-client-77' },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_canonical_external_id).toBe('top-client-77');
+  });
+
+  it('uses metadata user_email when payload user_email is not a valid email', () => {
+    const r = inferActorMegResolveArgs({
+      id: 'sig-email-pm',
+      source_system: 'centralr2',
+      source_event_type: 'x',
+      summary: 's',
+      payload: {
+        user_email: 'not-an-email',
+        metadata: { user_email: 'real@example.com' },
+      },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.p_canonical_email).toBe('real@example.com');
   });
 });
 
@@ -269,6 +297,27 @@ describe('inferRelatedMegResolveArgsList', () => {
     expect(counterparty).toBeDefined();
     expect(counterparty!.p_canonical_external_id).toBe(b);
     expect(counterparty!.p_canonical_name).toBe('Pat Lee');
+  });
+});
+
+describe('findCoffeeCounterpartyMegResolveArgs', () => {
+  it('returns the coffee_counterparty meg_resolve slot', () => {
+    const a = 'aaaaaaaa-bbbb-4ccc-8eee-111111111111';
+    const b = 'bbbbbbbb-bbbb-4ccc-8eee-222222222222';
+    const cp = findCoffeeCounterpartyMegResolveArgs({
+      id: 's-cp-find',
+      source_system: 'rays_retreat',
+      source_event_type: 'coffee_match_created',
+      summary: 'm',
+      payload: {
+        attendee_a_external_id: a,
+        attendee_b_external_id: b,
+        matched_name: 'Pat',
+      },
+    });
+    expect(cp).not.toBeNull();
+    expect(cp!.p_canonical_external_id).toBe(b);
+    expect(cp!.p_source_row_id).toBe('s-cp-find:coffee_counterparty');
   });
 });
 

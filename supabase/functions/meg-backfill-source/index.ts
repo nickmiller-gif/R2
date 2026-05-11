@@ -6,16 +6,20 @@ import { timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withLogger } from '../_shared/log.ts';
 import {
   MEG_RESOLVE_BOUNDS,
+  findCoffeeCounterpartyMegResolveArgs,
   inferActorMegResolveArgs,
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
   isUuid,
-  pickCoffeeMatchTargetMegEntityId,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
 
 /** Supported `source_system:source_table` keys — add a branch in the serve handler for each new backfill target. */
-const SUPPORTED_BACKFILL_KEYS = ['r2:oracle_theses', 'r2:platform_feed_items'] as const;
+const SUPPORTED_BACKFILL_KEYS = [
+  'r2:oracle_theses',
+  'r2:platform_feed_items',
+  'r2:platform_feed_items_related',
+] as const;
 
 const SUPPORTED_BACKFILL_KEY_SET = new Set<string>(SUPPORTED_BACKFILL_KEYS);
 
@@ -244,6 +248,43 @@ async function fetchPlatformFeedItemsBatch(
   return (data ?? []) as PlatformFeedRow[];
 }
 
+/** Rows with actor already linked but empty related list — picks up related/coffee backfill. */
+async function fetchPlatformFeedRelatedGapBatch(
+  client: ReturnType<typeof getServiceClient>,
+  cursor: string | null,
+  batch: number,
+): Promise<PlatformFeedRow[]> {
+  let q = client
+    .from('platform_feed_items')
+    .select(
+      'id,source_system,source_event_type,summary,payload,actor_meg_entity_id,related_entity_ids',
+    )
+    .not('actor_meg_entity_id', 'is', null)
+    .eq('related_entity_ids', '{}')
+    .order('id', { ascending: true })
+    .limit(batch);
+  if (cursor) {
+    q = q.gt('id', cursor);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PlatformFeedRow[];
+}
+
+async function resolveCoffeeCounterpartyMegEntityId(
+  client: ReturnType<typeof getServiceClient>,
+  feed: FeedRowForMeg,
+): Promise<string | null> {
+  const args = findCoffeeCounterpartyMegResolveArgs(feed);
+  if (!args) return null;
+  const { data, error } = await client.rpc('meg_resolve_or_create', args);
+  if (error) {
+    throw new Error(`meg_resolve_or_create coffee counterparty: ${error.message}`);
+  }
+  if (data && isUuid(String(data))) return String(data);
+  return null;
+}
+
 /** `platform_feed_items.payload` is the v1 envelope `raw_payload` written by `r2-signal-ingest`. */
 function toFeedRowForMeg(row: PlatformFeedRow): FeedRowForMeg {
   return {
@@ -293,12 +334,16 @@ async function backfillRelatedAndCoffeeForFeedRow(
   }
 
   const nextRelated = [...merged];
-  const { error: relUpdErr } = await client
-    .from('platform_feed_items')
-    .update({ related_entity_ids: nextRelated })
-    .eq('id', row.id);
-  if (relUpdErr) {
-    throw new Error(relUpdErr.message);
+  const prevNorm = [...existingRel].sort().join(',');
+  const nextNorm = [...nextRelated].sort().join(',');
+  if (prevNorm !== nextNorm) {
+    const { error: relUpdErr } = await client
+      .from('platform_feed_items')
+      .update({ related_entity_ids: nextRelated })
+      .eq('id', row.id);
+    if (relUpdErr) {
+      throw new Error(relUpdErr.message);
+    }
   }
 
   const feedLike = {
@@ -312,7 +357,7 @@ async function backfillRelatedAndCoffeeForFeedRow(
   };
 
   if (isCoffeePairingSignal(feedLike)) {
-    const target = pickCoffeeMatchTargetMegEntityId(actorMegId, nextRelated);
+    const target = await resolveCoffeeCounterpartyMegEntityId(client, feedForInfer);
     if (target && isUuid(target)) {
       const { error: edgeErr } = await client.rpc('meg_link_entities', {
         p_source_entity_id: actorMegId,
@@ -333,16 +378,24 @@ async function backfillRelatedAndCoffeeForFeedRow(
     const matchId =
       typeof p.coffee_match_id === 'string' && isUuid(p.coffee_match_id) ? p.coffee_match_id : null;
     if (matchId) {
-      const matchTarget = pickCoffeeMatchTargetMegEntityId(actorMegId, nextRelated);
+      const matchTarget = await resolveCoffeeCounterpartyMegEntityId(client, feedForInfer);
       const upd: { actor_meg_entity_id: string; matched_meg_entity_id?: string | null } = {
         actor_meg_entity_id: actorMegId,
       };
       if (matchTarget && isUuid(matchTarget)) {
         upd.matched_meg_entity_id = matchTarget;
       }
-      const { error: cmErr } = await client.from('coffee_matches').update(upd).eq('id', matchId);
+      const { data: cmRow, error: cmErr } = await client
+        .from('coffee_matches')
+        .update(upd)
+        .eq('id', matchId)
+        .select('id')
+        .maybeSingle();
       if (cmErr) {
         throw new Error(cmErr.message);
+      }
+      if (!cmRow?.id) {
+        throw new Error(`coffee_matches backfill: no row updated for id ${matchId}`);
       }
     }
   }
@@ -411,6 +464,8 @@ Deno.serve(
           oracleRows = await fetchOracleThesesBatch(client, cursor, batch);
         } else if (key === 'r2:platform_feed_items') {
           platformRows = await fetchPlatformFeedItemsBatch(client, cursor, batch);
+        } else if (key === 'r2:platform_feed_items_related') {
+          platformRows = await fetchPlatformFeedRelatedGapBatch(client, cursor, batch);
         } else {
           log.warn('no adapter for source pair — no rows fetched', {
             key,
@@ -487,13 +542,27 @@ Deno.serve(
             log.error('row backfill error', { row_id: row.id, err: String(e) });
           }
         }
-      } else if (key === 'r2:platform_feed_items') {
+      } else if (key === 'r2:platform_feed_items' || key === 'r2:platform_feed_items_related') {
         if (platformRows.length === 0) break;
         cursor = platformRows[platformRows.length - 1]!.id;
 
         for (const row of platformRows) {
           scanned += 1;
           try {
+            if (key === 'r2:platform_feed_items_related') {
+              const actorMegId = row.actor_meg_entity_id;
+              if (!actorMegId || !isUuid(actorMegId)) {
+                continue;
+              }
+              if (dry) {
+                inserted += 1;
+                continue;
+              }
+              await backfillRelatedAndCoffeeForFeedRow(client, row, actorMegId, dry);
+              inserted += 1;
+              continue;
+            }
+
             const feedRow = toFeedRowForMeg(row);
             const rpcArgs = inferActorMegResolveArgs(feedRow);
             if (!rpcArgs) {

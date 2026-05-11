@@ -7,6 +7,10 @@ import { withLogger } from '../_shared/log.ts';
 import {
   MEG_RESOLVE_BOUNDS,
   inferActorMegResolveArgs,
+  inferRelatedMegResolveArgsList,
+  isCoffeePairingSignal,
+  isUuid,
+  pickCoffeeMatchTargetMegEntityId,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
 
@@ -216,6 +220,7 @@ type PlatformFeedRow = {
   summary: string;
   payload: Record<string, unknown>;
   actor_meg_entity_id: string | null;
+  related_entity_ids: string[] | null;
 };
 
 async function fetchPlatformFeedItemsBatch(
@@ -225,7 +230,9 @@ async function fetchPlatformFeedItemsBatch(
 ): Promise<PlatformFeedRow[]> {
   let q = client
     .from('platform_feed_items')
-    .select('id,source_system,source_event_type,summary,payload,actor_meg_entity_id')
+    .select(
+      'id,source_system,source_event_type,summary,payload,actor_meg_entity_id,related_entity_ids',
+    )
     .is('actor_meg_entity_id', null)
     .order('id', { ascending: true })
     .limit(batch);
@@ -246,7 +253,99 @@ function toFeedRowForMeg(row: PlatformFeedRow): FeedRowForMeg {
     summary: row.summary,
     payload: row.payload ?? {},
     actor_meg_entity_id: row.actor_meg_entity_id,
+    related_entity_ids: row.related_entity_ids,
   };
+}
+
+async function backfillRelatedAndCoffeeForFeedRow(
+  client: ReturnType<typeof getServiceClient>,
+  row: PlatformFeedRow,
+  actorMegId: string,
+  dry: boolean,
+): Promise<void> {
+  if (dry) return;
+
+  const feedForInfer: FeedRowForMeg = {
+    ...toFeedRowForMeg(row),
+    actor_meg_entity_id: actorMegId,
+  };
+
+  const existingRel = (row.related_entity_ids ?? []).filter((id) => isUuid(id));
+  const merged = new Set<string>(existingRel);
+
+  for (const rArgs of inferRelatedMegResolveArgsList(feedForInfer)) {
+    const { data: rid, error: relErr } = await client.rpc('meg_resolve_or_create', {
+      p_entity_type: rArgs.p_entity_type,
+      p_canonical_name: rArgs.p_canonical_name,
+      p_canonical_email: rArgs.p_canonical_email,
+      p_canonical_external_id: rArgs.p_canonical_external_id,
+      p_source_system: rArgs.p_source_system,
+      p_source_table: rArgs.p_source_table,
+      p_source_row_id: rArgs.p_source_row_id,
+      p_payload: rArgs.p_payload,
+    });
+    if (relErr) {
+      throw new Error(relErr.message);
+    }
+    if (rid && isUuid(String(rid))) {
+      merged.add(String(rid));
+    }
+  }
+
+  const nextRelated = [...merged];
+  const { error: relUpdErr } = await client
+    .from('platform_feed_items')
+    .update({ related_entity_ids: nextRelated })
+    .eq('id', row.id);
+  if (relUpdErr) {
+    throw new Error(relUpdErr.message);
+  }
+
+  const feedLike = {
+    id: row.id,
+    source_system: row.source_system,
+    source_event_type: row.source_event_type,
+    summary: row.summary,
+    payload: row.payload ?? {},
+    actor_meg_entity_id: actorMegId,
+    related_entity_ids: nextRelated,
+  };
+
+  if (isCoffeePairingSignal(feedLike)) {
+    const target = pickCoffeeMatchTargetMegEntityId(actorMegId, nextRelated);
+    if (target && isUuid(target)) {
+      const { error: edgeErr } = await client.rpc('meg_link_entities', {
+        p_source_entity_id: actorMegId,
+        p_target_entity_id: target,
+        p_edge_type: 'coffee_pairing',
+        p_metadata: {
+          platform_feed_item_id: row.id,
+          source_event_type: row.source_event_type,
+          backfill: true,
+        },
+      });
+      if (edgeErr) {
+        throw new Error(edgeErr.message);
+      }
+    }
+
+    const p = row.payload ?? {};
+    const matchId =
+      typeof p.coffee_match_id === 'string' && isUuid(p.coffee_match_id) ? p.coffee_match_id : null;
+    if (matchId) {
+      const matchTarget = pickCoffeeMatchTargetMegEntityId(actorMegId, nextRelated);
+      const upd: { actor_meg_entity_id: string; matched_meg_entity_id?: string | null } = {
+        actor_meg_entity_id: actorMegId,
+      };
+      if (matchTarget && isUuid(matchTarget)) {
+        upd.matched_meg_entity_id = matchTarget;
+      }
+      const { error: cmErr } = await client.from('coffee_matches').update(upd).eq('id', matchId);
+      if (cmErr) {
+        throw new Error(cmErr.message);
+      }
+    }
+  }
 }
 
 Deno.serve(
@@ -445,6 +544,8 @@ Deno.serve(
 
             if (existedBefore) matched += 1;
             else inserted += 1;
+
+            await backfillRelatedAndCoffeeForFeedRow(client, row, megId as string, dry);
           } catch (e) {
             errors += 1;
             const msg = String(e).slice(0, 500);

@@ -163,6 +163,37 @@ async function maybeRecordCoffeePairingEdge(
   }
 }
 
+/**
+ * Writes resolved MEG UUIDs onto `coffee_matches` when the signal payload
+ * carries `coffee_match_id` (r2app `coffee_match_created` contract).
+ */
+async function syncCoffeeMatchesMegIds(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<void> {
+  if (!isCoffeePairingSignal(row)) return;
+  const p = row.payload ?? {};
+  const matchId =
+    typeof p.coffee_match_id === 'string' && isUuid(p.coffee_match_id) ? p.coffee_match_id : null;
+  if (!matchId) return;
+
+  const actorId = row.actor_meg_entity_id;
+  if (!actorId || !isUuid(actorId)) return;
+
+  const target = pickCoffeeMatchTargetMegEntityId(actorId, row.related_entity_ids ?? []);
+  const upd: { actor_meg_entity_id: string; matched_meg_entity_id?: string | null } = {
+    actor_meg_entity_id: actorId,
+  };
+  if (target && isUuid(target)) {
+    upd.matched_meg_entity_id = target;
+  }
+
+  const { error } = await client.from('coffee_matches').update(upd).eq('id', matchId);
+  if (error) {
+    throw new Error(`coffee_matches MEG sync: ${error.message}`);
+  }
+}
+
 /** Marks a feed item failed (retryable) or deadletter (terminal after attempt budget). */
 async function markSignalFailed(signalId: string, message: string): Promise<void> {
   const client = getServiceClient();
@@ -448,6 +479,7 @@ Deno.serve(
         let rowReady = await ensureActorMegEntityLinked(client, row);
         rowReady = await ensureRelatedMegEntitiesLinked(client, rowReady);
         await maybeRecordCoffeePairingEdge(client, rowReady);
+        await syncCoffeeMatchesMegIds(client, rowReady);
         await processOneSignal(rowReady, evidenceProfileId);
         processed += 1;
       } catch (error) {

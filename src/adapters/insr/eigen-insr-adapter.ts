@@ -19,7 +19,7 @@ export interface InsrValidationCompleteEvent {
 export function mapInsrValidationCompleteToEigen(
   event: InsrValidationCompleteEvent,
 ): EigenIngestRequest {
-  const visibility = event.visibility ?? 'operator';
+  const visibility: AdapterVisibility = event.visibility ?? 'eigenx';
   return {
     source_system: 'insr',
     source_ref: `validation_batch:${event.batch_id}`,

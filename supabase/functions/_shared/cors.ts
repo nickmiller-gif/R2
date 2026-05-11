@@ -1,7 +1,7 @@
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-correlation-id, x-idempotency-key, x-eigen-ingest-token',
+    'authorization, x-client-info, apikey, content-type, x-correlation-id, x-idempotency-key, x-eigen-ingest-token, x-r2-signature',
 };
 
 export function corsResponse() {
@@ -41,7 +41,7 @@ export function errorResponse(message: string, status = 400) {
 // ---------------------------------------------------------------------------
 
 const ACA_HEADERS_VALUE =
-  'authorization, x-client-info, apikey, content-type, x-correlation-id, x-idempotency-key';
+  'authorization, x-client-info, apikey, content-type, x-correlation-id, x-idempotency-key, x-r2-signature';
 
 export function reflectedCorsHeaders(origin: string | null | undefined): Record<string, string> {
   const trimmed = typeof origin === 'string' ? origin.trim() : '';

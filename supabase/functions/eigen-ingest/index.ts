@@ -19,6 +19,7 @@ import {
   enforceEigenKosCapabilityBundle,
 } from '../_shared/eigen-kos-enforcement.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
+import { timingSafeEqual } from '../_shared/signal-utils.ts';
 
 // Explicit `ingestion_runs` projection so schema additions don't leak through
 // `select('*')` (advisor lint 0022). All three eigen-ingest call sites share
@@ -84,7 +85,11 @@ function resolveIngestIdentity(req: Request): IngestIdentity | null {
   const configuredIngestToken = normalizeEigenIngestToken(
     Deno.env.get('EIGEN_INGEST_BACKFILL_TOKEN') ?? '',
   );
-  if (configuredIngestToken && ingestTokenHeader && ingestTokenHeader === configuredIngestToken) {
+  if (
+    configuredIngestToken &&
+    ingestTokenHeader &&
+    timingSafeEqual(ingestTokenHeader, configuredIngestToken)
+  ) {
     return { userId: SERVICE_ROLE_OWNER_ID };
   }
   return null;
@@ -95,6 +100,14 @@ function readMaxBodyChars(): number {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 5000) return 2_000_000;
   return Math.min(parsed, 10_000_000);
+}
+
+/** Cap multipart uploads and storage downloads so a single request cannot OOM the isolate. */
+function readMaxBinaryBytes(): number {
+  const raw = Deno.env.get('EIGEN_INGEST_MAX_BINARY_BYTES') ?? String(40 * 1024 * 1024);
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 64 * 1024) return 40 * 1024 * 1024;
+  return Math.min(parsed, 100 * 1024 * 1024);
 }
 
 /** Stable domain for document rows so eigen-oracle-outbox-drain can anchor signals on public ingest. */
@@ -212,6 +225,12 @@ async function resolveDocumentPayload(
   }
 
   const bytes = new Uint8Array(await download.data.arrayBuffer());
+  const maxBinary = readMaxBinaryBytes();
+  if (bytes.byteLength > maxBinary) {
+    throw new IngestValidationError(
+      `downloaded document exceeds ${maxBinary} bytes; split the file or raise EIGEN_INGEST_MAX_BINARY_BYTES`,
+    );
+  }
   let extracted;
   try {
     extracted = await extractDocumentText({
@@ -275,6 +294,12 @@ async function parseMultipartRequest(req: Request): Promise<{
 
   const fileValue = form.get('file');
   if (fileValue instanceof File) {
+    const maxBinary = readMaxBinaryBytes();
+    if (fileValue.size > maxBinary) {
+      throw new IngestValidationError(
+        `upload exceeds ${maxBinary} bytes; split the file or raise EIGEN_INGEST_MAX_BINARY_BYTES`,
+      );
+    }
     const bytes = new Uint8Array(await fileValue.arrayBuffer());
     const extracted = await extractDocumentText({
       bytes,

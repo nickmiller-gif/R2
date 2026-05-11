@@ -8,11 +8,12 @@ import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
 import { computeNextRetryAt, inferSignalPolicyTags } from '../_shared/signal-utils.ts';
 import {
+  findCoffeeCounterpartyMegResolveArgs,
   inferActorMegResolveArgs,
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
   isUuid,
-  pickCoffeeMatchTargetMegEntityId,
+  type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
 
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
@@ -55,6 +56,18 @@ type FeedRow = {
   routing_targets: string[];
   actor_meg_entity_id?: string | null;
 };
+
+function toFeedRowForMeg(row: FeedRow): FeedRowForMeg {
+  return {
+    id: row.id,
+    source_system: row.source_system,
+    source_event_type: row.source_event_type,
+    summary: row.summary,
+    payload: row.payload ?? {},
+    actor_meg_entity_id: row.actor_meg_entity_id,
+    related_entity_ids: row.related_entity_ids,
+  };
+}
 
 /**
  * When ingest left actor_meg_entity_id null but the payload carries a stable
@@ -123,8 +136,8 @@ async function ensureRelatedMegEntitiesLinked(
   const next = [...merged];
   const sameSize = next.length === existing.length;
   const sameMembers = sameSize && existing.every((id) => merged.has(id));
-  if (sameMembers && inferred.length === 0) {
-    return row;
+  if (sameMembers) {
+    return { ...row, related_entity_ids: next };
   }
 
   const upd = await client
@@ -138,6 +151,20 @@ async function ensureRelatedMegEntitiesLinked(
   return { ...row, related_entity_ids: next };
 }
 
+async function resolveCoffeeCounterpartyMegEntityId(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<string | null> {
+  const args = findCoffeeCounterpartyMegResolveArgs(toFeedRowForMeg(row));
+  if (!args) return null;
+  const { data, error } = await client.rpc('meg_resolve_or_create', args);
+  if (error) {
+    throw new Error(`meg_resolve_or_create coffee counterparty: ${error.message}`);
+  }
+  if (data && isUuid(String(data))) return String(data);
+  return null;
+}
+
 /** Records a `coffee_pairing` MEG edge when the signal is a coffee-match pairing. */
 async function maybeRecordCoffeePairingEdge(
   client: ReturnType<typeof getServiceClient>,
@@ -146,8 +173,8 @@ async function maybeRecordCoffeePairingEdge(
   if (!isCoffeePairingSignal(row)) return;
   const actorId = row.actor_meg_entity_id;
   if (!actorId || !isUuid(actorId)) return;
-  const target = pickCoffeeMatchTargetMegEntityId(actorId, row.related_entity_ids ?? []);
-  if (!target) return;
+  const target = await resolveCoffeeCounterpartyMegEntityId(client, row);
+  if (!target || !isUuid(target)) return;
 
   const { error } = await client.rpc('meg_link_entities', {
     p_source_entity_id: actorId,
@@ -160,6 +187,45 @@ async function maybeRecordCoffeePairingEdge(
   });
   if (error) {
     throw new Error(`meg_link_entities: ${error.message}`);
+  }
+}
+
+/**
+ * Writes resolved MEG UUIDs onto `coffee_matches` when the signal payload
+ * carries `coffee_match_id` (r2app `coffee_match_created` contract).
+ */
+async function syncCoffeeMatchesMegIds(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+): Promise<void> {
+  if (!isCoffeePairingSignal(row)) return;
+  const p = row.payload ?? {};
+  const matchId =
+    typeof p.coffee_match_id === 'string' && isUuid(p.coffee_match_id) ? p.coffee_match_id : null;
+  if (!matchId) return;
+
+  const actorId = row.actor_meg_entity_id;
+  if (!actorId || !isUuid(actorId)) return;
+
+  const target = await resolveCoffeeCounterpartyMegEntityId(client, row);
+  const upd: { actor_meg_entity_id: string; matched_meg_entity_id?: string | null } = {
+    actor_meg_entity_id: actorId,
+  };
+  if (target && isUuid(target)) {
+    upd.matched_meg_entity_id = target;
+  }
+
+  const { data, error } = await client
+    .from('coffee_matches')
+    .update(upd)
+    .eq('id', matchId)
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    throw new Error(`coffee_matches MEG sync: ${error.message}`);
+  }
+  if (!data?.id) {
+    throw new Error(`coffee_matches MEG sync: no row updated for id ${matchId}`);
   }
 }
 
@@ -448,6 +514,7 @@ Deno.serve(
         let rowReady = await ensureActorMegEntityLinked(client, row);
         rowReady = await ensureRelatedMegEntitiesLinked(client, rowReady);
         await maybeRecordCoffeePairingEdge(client, rowReady);
+        await syncCoffeeMatchesMegIds(client, rowReady);
         await processOneSignal(rowReady, evidenceProfileId);
         processed += 1;
       } catch (error) {

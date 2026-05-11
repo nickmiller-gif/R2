@@ -91,10 +91,65 @@ function firstString(...candidates: unknown[]): string | null {
   return null;
 }
 
+function emailFromScalar(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  if (!t) return null;
+  return t.includes('@') ? t.toLowerCase() : null;
+}
+
+/** First string among candidates that looks like an email (scans all, not only first string). */
 function firstEmail(...candidates: unknown[]): string | null {
-  const s = firstString(...candidates);
-  if (!s) return null;
-  return s.includes('@') ? s.toLowerCase() : null;
+  for (const c of candidates) {
+    const e = emailFromScalar(c);
+    if (e) return e;
+  }
+  return null;
+}
+
+/** Stable string id from primitives (e.g. parcel numbers). */
+function stableId(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const t = value.trim();
+    return t.length > 0 ? t : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+/** CentralR2 stores most identity fields under `raw_payload.metadata`. */
+function payloadAndMetadata(payload: Record<string, unknown>): {
+  p: Record<string, unknown>;
+  m: Record<string, unknown>;
+} {
+  const m = asRecord(payload.metadata) ?? {};
+  return { p: payload, m };
+}
+
+function pickPm(
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  for (const k of keys) {
+    const v = firstString(p[k], m[k]);
+    if (v) return v;
+  }
+  return null;
+}
+
+function pickEmailPm(
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  for (const k of keys) {
+    const v = firstEmail(p[k], m[k]);
+    if (v) return v;
+  }
+  return null;
 }
 
 /**
@@ -106,9 +161,20 @@ export function inferActorMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs 
   if (row.actor_meg_entity_id) return null;
 
   const p = asRecord(row.payload) ?? {};
+  const { m } = payloadAndMetadata(p);
   const prov = asRecord(p.provenance);
 
-  const email = firstEmail(p.actor_email, p.email, p.user_email, p.actorEmail, p.userEmail);
+  const email = pickEmailPm(
+    p,
+    m,
+    'actor_email',
+    'email',
+    'user_email',
+    'actorEmail',
+    'userEmail',
+    'inquirer_email',
+    'contact_email',
+  );
 
   const externalId = firstString(
     p.actor_id,
@@ -116,29 +182,52 @@ export function inferActorMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs 
     p.user_id,
     p.userId,
     p.sub,
+    p.client_id,
+    p.clientId,
     p.external_actor_id,
+    m.actor_id,
+    m.actorId,
+    m.user_id,
+    m.userId,
+    m.sub,
+    m.external_actor_id,
+    m.client_id,
+    /** r2app coffee_match_created — initiator (JWT sub) */
+    p.attendee_a_external_id,
+    m.attendee_a_external_id,
+    /** Generic retreat / producer stable user keys */
+    p.attendee_external_id,
+    m.attendee_external_id,
+    p.initiator_user_id,
+    m.initiator_user_id,
+    p.initiator_external_id,
+    m.initiator_external_id,
     prov?.row_id != null ? String(prov.row_id) : null,
   );
 
   if (!email && !externalId) return null;
 
-  const nameFromPayload = firstString(
-    p.actor_name,
-    p.actorName,
-    p.display_name,
-    p.displayName,
-    p.name,
-    p.user_name,
-    p.userName,
+  const nameFromPayload = pickPm(
+    p,
+    m,
+    'actor_name',
+    'actorName',
+    'display_name',
+    'displayName',
+    'name',
+    'user_name',
+    'userName',
+    'inquirer_name',
   );
 
+  const rawEntityTypePick = pickPm(p, m, 'actor_entity_type', 'actorEntityType');
   const canonicalName =
     (nameFromPayload ?? row.summary).trim().slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) ||
     'unknown actor';
 
   const rawEntityType =
-    typeof p.actor_entity_type === 'string' && p.actor_entity_type.startsWith('meg:')
-      ? p.actor_entity_type
+    typeof rawEntityTypePick === 'string' && rawEntityTypePick.startsWith('meg:')
+      ? rawEntityTypePick
       : 'meg:person';
   const entityType = clamp(rawEntityType, MEG_RESOLVE_BOUNDS.entityTypeMaxLength) ?? 'meg:person';
 
@@ -199,7 +288,7 @@ function pushRelatedResolve(
   const email = fields.emailCandidates?.length
     ? firstEmail(...fields.emailCandidates)
     : firstEmail(fields.email);
-  const externalId = firstString(fields.externalId);
+  const externalId = firstString(fields.externalId) ?? stableId(fields.externalId);
   if (!email && !externalId) return;
 
   const dedupeKey = `${externalId ?? ''}\u0000${email ?? ''}`;
@@ -270,32 +359,166 @@ function ingestExternalIdList(
  */
 export function inferRelatedMegResolveArgsList(row: FeedRowForMeg): MegResolveRpcArgs[] {
   const p = asRecord(row.payload) ?? {};
+  const { m } = payloadAndMetadata(p);
   const out: MegResolveRpcArgs[] = [];
   const seen = new Set<string>();
 
   ingestExternalIdList(out, seen, row, p.related_external_ids, 'rext');
+  ingestExternalIdList(out, seen, row, m.related_external_ids, 'mrext');
   ingestExternalIdList(out, seen, row, p.related_entity_external_ids, 'rexid');
+  ingestExternalIdList(out, seen, row, m.related_entity_external_ids, 'mrexid');
   ingestExternalIdList(out, seen, row, p.related_entities, 'robj');
+  ingestExternalIdList(out, seen, row, m.related_entities, 'mrobj');
 
   if (isCoffeePairingSignal(row)) {
+    /** r2app / retreat coffee_match_created — matched attendee (stable id) */
+    const counterpartyExt = pickPm(
+      p,
+      m,
+      'attendee_b_external_id',
+      'matched_external_id',
+      'matched_user_id',
+      'matched_actor_id',
+      'pair_user_id',
+      'counterparty_user_id',
+      'counterparty_id',
+    );
+    if (counterpartyExt) {
+      pushRelatedResolve(out, seen, row, 'coffee_counterparty', {
+        externalId: counterpartyExt,
+        name: firstString(
+          p.matched_name,
+          p.matched_attendee_name,
+          p.matched_display_name,
+          p.counterparty_name,
+          m.matched_name,
+          m.matched_attendee_name,
+        ),
+        emailCandidates: [
+          p.matched_email,
+          p.counterparty_email,
+          m.matched_email,
+          m.counterparty_email,
+        ],
+        payloadSlice: { coffee_counterparty: true },
+      });
+    }
     pushRelatedResolve(out, seen, row, 'matched', {
-      emailCandidates: [p.matched_email, p.counterparty_email],
-      externalId: firstString(
-        p.matched_external_id,
-        p.matched_user_id,
-        p.matched_actor_id,
-        p.pair_user_id,
-        p.counterparty_user_id,
-        p.counterparty_id,
+      emailCandidates: [
+        p.matched_email,
+        p.counterparty_email,
+        m.matched_email,
+        m.counterparty_email,
+      ],
+      externalId: pickPm(
+        p,
+        m,
+        'matched_external_id',
+        'matched_user_id',
+        'matched_actor_id',
+        'pair_user_id',
+        'counterparty_user_id',
+        'counterparty_id',
       ),
-      name: firstString(p.matched_name, p.matched_display_name, p.counterparty_name),
+      name: firstString(
+        p.matched_name,
+        p.matched_display_name,
+        p.counterparty_name,
+        m.matched_name,
+        m.matched_display_name,
+      ),
       payloadSlice: { coffee_matched: true },
     });
   }
 
-  inferTypedAssetRelatedResolves(out, seen, row, p);
+  inferCentralr2StructuredResolves(out, seen, row, p, m);
+  inferTypedAssetRelatedResolves(out, seen, row, p, m);
 
   return out;
+}
+
+const COFFEE_COUNTERPARTY_ROW_SUFFIX = ':coffee_counterparty';
+
+/**
+ * meg_resolve_or_create args for the coffee counterparty (attendee B / matched
+ * stable id), when present in the payload — avoids treating unrelated UUIDs in
+ * related_entity_ids as the match target.
+ */
+export function findCoffeeCounterpartyMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs | null {
+  for (const args of inferRelatedMegResolveArgsList(row)) {
+    if (args.p_source_row_id.endsWith(COFFEE_COUNTERPARTY_ROW_SUFFIX)) {
+      return args;
+    }
+  }
+  return null;
+}
+
+function centralr2PropertyDedupeKey(
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+): string | null {
+  const parcel = asRecord(p.parcel) ?? asRecord(m.parcel);
+  const pn = stableId(parcel?.parcelNumber);
+  if (pn) {
+    return pn.length <= MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength
+      ? pn
+      : pn.slice(0, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength);
+  }
+  const state = pickPm(p, m, 'state');
+  const zip = pickPm(p, m, 'zip');
+  const county = pickPm(p, m, 'county');
+  const addr = pickPm(p, m, 'address');
+  const parts = [state, zip, county, addr].filter(Boolean);
+  if (parts.length === 0) return null;
+  const key = parts.join('|').slice(0, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength);
+  return key || null;
+}
+
+/** CentralR2 market + valuation scenarios (metadata-heavy producers). */
+function inferCentralr2StructuredResolves(
+  out: MegResolveRpcArgs[],
+  seen: Set<string>,
+  row: FeedRowForMeg,
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+): void {
+  if (row.source_system !== 'centralr2') return;
+
+  const fn = pickPm(p, m, 'function_name');
+  if (fn === 'property-lookup' || fn === 'rental-analysis') {
+    const ext = centralr2PropertyDedupeKey(p, m);
+    if (ext) {
+      const label = pickPm(p, m, 'address') ?? row.summary;
+      pushRelatedResolve(out, seen, row, 'centralr2:property', {
+        entityType: 'meg:property',
+        externalId: ext,
+        name: label,
+        payloadSlice: { centralr2_property: true, function_name: fn ?? '' },
+      });
+    }
+  }
+
+  const kind = pickPm(p, m, 'kind');
+  if (kind === 'valuation_scenario' || pickPm(p, m, 'scenarioId', 'scenario_id')) {
+    const towerId = pickPm(p, m, 'towerAssetId', 'tower_asset_id');
+    if (towerId) {
+      pushRelatedResolve(out, seen, row, 'centralr2:tower_asset', {
+        entityType: 'meg:property',
+        externalId: towerId,
+        name: firstString(row.summary, pickPm(p, m, 'leaseType', 'lease_type')),
+        payloadSlice: { centralr2_valuation: true, field: 'tower_asset' },
+      });
+    }
+    const scenarioId = pickPm(p, m, 'scenarioId', 'scenario_id');
+    if (scenarioId) {
+      pushRelatedResolve(out, seen, row, 'centralr2:valuation_scenario', {
+        entityType: 'meg:event',
+        externalId: scenarioId,
+        name: row.summary,
+        payloadSlice: { centralr2_valuation: true, field: 'scenario' },
+      });
+    }
+  }
 }
 
 /**
@@ -307,62 +530,87 @@ function inferTypedAssetRelatedResolves(
   seen: Set<string>,
   row: FeedRowForMeg,
   p: Record<string, unknown>,
+  m: Record<string, unknown>,
 ): void {
-  const propertyLabel = firstString(p.property_name, p.property_address, p.address);
+  const propertyLabel = firstString(
+    pickPm(p, m, 'property_name'),
+    pickPm(p, m, 'property_address'),
+    pickPm(p, m, 'address'),
+  );
+  const parcel = asRecord(p.parcel) ?? asRecord(m.parcel);
+  const parcelNum = stableId(parcel?.parcelNumber);
+
   const propertyCandidates: Array<{ suffix: string; ext: unknown; name: unknown }> = [
-    { suffix: 'property_external_id', ext: p.property_external_id, name: propertyLabel },
-    { suffix: 'property_id', ext: p.property_id, name: propertyLabel },
-    { suffix: 'parcel_apn', ext: p.parcel_apn, name: propertyLabel },
-    { suffix: 'apn', ext: p.apn, name: propertyLabel },
-    { suffix: 'legal_description_id', ext: p.legal_description_id, name: propertyLabel },
+    {
+      suffix: 'property_external_id',
+      ext: pickPm(p, m, 'property_external_id'),
+      name: propertyLabel,
+    },
+    { suffix: 'property_id', ext: pickPm(p, m, 'property_id'), name: propertyLabel },
+    {
+      suffix: 'parcel_apn',
+      ext: firstString(pickPm(p, m, 'parcel_apn'), parcelNum ?? undefined),
+      name: propertyLabel,
+    },
+    { suffix: 'apn', ext: pickPm(p, m, 'apn'), name: propertyLabel },
+    {
+      suffix: 'legal_description_id',
+      ext: pickPm(p, m, 'legal_description_id'),
+      name: propertyLabel,
+    },
   ];
   for (const { suffix, ext, name } of propertyCandidates) {
     if (out.length >= MAX_RELATED_INFER) return;
+    const id = firstString(typeof ext === 'string' ? ext : null) ?? stableId(ext);
+    if (!id) continue;
     pushRelatedResolve(out, seen, row, `prop:${suffix}`, {
       entityType: 'meg:property',
-      externalId: ext,
+      externalId: id,
       name,
       payloadSlice: { asset_kind: 'property', field: suffix },
     });
   }
 
+  const matterTitle = pickPm(p, m, 'ip_matter_title', 'matter_title', 'patent_title', 'title');
   const ipCandidates: Array<{ suffix: string; ext: unknown; name: unknown; entityType: string }> = [
     {
       suffix: 'ip_matter_id',
-      ext: p.ip_matter_id,
-      name: p.ip_matter_title,
+      ext: pickPm(p, m, 'ip_matter_id', 'matter_id', 'matter_uuid', 'ipMatterId', 'docket_id'),
+      name: matterTitle,
       entityType: 'meg:ip_matter',
     },
     {
       suffix: 'ip_matter_external_id',
-      ext: p.ip_matter_external_id,
-      name: p.ip_matter_title,
+      ext: pickPm(p, m, 'ip_matter_external_id', 'matter_external_id', 'external_matter_id'),
+      name: matterTitle,
       entityType: 'meg:ip_matter',
     },
     {
       suffix: 'patent_number',
-      ext: p.patent_number,
-      name: p.patent_title,
+      ext: pickPm(p, m, 'patent_number', 'patent_num', 'publication_num'),
+      name: pickPm(p, m, 'patent_title', 'title'),
       entityType: 'meg:patent',
     },
     {
       suffix: 'application_number',
-      ext: p.application_number,
-      name: p.patent_title,
+      ext: pickPm(p, m, 'application_number', 'app_number', 'application_no'),
+      name: pickPm(p, m, 'patent_title', 'title'),
       entityType: 'meg:patent',
     },
     {
       suffix: 'publication_number',
-      ext: p.publication_number,
-      name: p.patent_title,
+      ext: pickPm(p, m, 'publication_number', 'pub_number'),
+      name: pickPm(p, m, 'patent_title', 'title'),
       entityType: 'meg:patent',
     },
   ];
   for (const { suffix, ext, name, entityType } of ipCandidates) {
     if (out.length >= MAX_RELATED_INFER) return;
+    const id = firstString(typeof ext === 'string' ? ext : null) ?? stableId(ext);
+    if (!id) continue;
     pushRelatedResolve(out, seen, row, `ip:${suffix}`, {
       entityType,
-      externalId: ext,
+      externalId: id,
       name,
       payloadSlice: { asset_kind: 'ip', field: suffix },
     });

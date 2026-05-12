@@ -10,6 +10,10 @@ import {
   parseOracleRetrievalBoostCap,
 } from '../../../src/lib/eigen/oracle-retrieval-boost.ts';
 import { applySiteRelevanceGate, limitCrossSourceRatio } from './source-relevance-gating.ts';
+import {
+  computeRetrievalAnnLimitBase,
+  computeRetrievalAnnLimitWithDocumentTagScope,
+} from '../../../src/lib/eigen/eigen-retrieve-ann.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
@@ -17,6 +21,8 @@ export interface EigenRetrieveRequest {
   policy_scope?: string[];
   /** When non-empty, chunks whose document has no overlapping `documents.tags` entry are dropped (hard filter on ANN pool). */
   document_tag_scope?: string[];
+  /** `any`: at least one requested tag on document; `all`: every requested tag must appear on `documents.tags`. */
+  document_tag_match?: 'any' | 'all';
   site_id?: string;
   site_source_systems?: string[];
   site_boost?: number;
@@ -110,6 +116,20 @@ let _defaultSiteBoost: number | undefined;
 let _defaultGlobalPenalty: number | undefined;
 let _oracleBoostCap: number | undefined;
 let _uploadSourceBoost: number | undefined;
+let _tagFilterFallbackEnabled: boolean | undefined;
+
+function readTagFilterFallbackEnabled(): boolean {
+  if (_tagFilterFallbackEnabled === undefined) {
+    const raw = (Deno.env.get('EIGEN_RETRIEVE_TAG_FILTER_FALLBACK') ?? 'true').toLowerCase();
+    _tagFilterFallbackEnabled = raw !== 'false' && raw !== '0';
+  }
+  return _tagFilterFallbackEnabled;
+}
+
+function parseDocumentTagMatch(value: unknown): 'any' | 'all' {
+  if (value === 'all' || value === 'ALL') return 'all';
+  return 'any';
+}
 
 function readDefaultSiteBoost(): number {
   if (_defaultSiteBoost === undefined) {
@@ -241,6 +261,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
   if (documentTagScope.length > 100) {
     throw new Error('document_tag_scope must not exceed 100 entries');
   }
+  const documentTagMatch = parseDocumentTagMatch(payload.document_tag_match);
 
   const budgetProfile =
     payload.budget_profile && typeof payload.budget_profile === 'object'
@@ -264,6 +285,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     entity_scope: entityScope,
     policy_scope: policyScope,
     document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
+    document_tag_match: documentTagMatch,
     site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
     site_source_systems: normalizeList(payload.site_source_systems),
     site_boost: parseNumber(payload.site_boost),
@@ -330,9 +352,14 @@ export async function executeEigenRetrieve(
     if (documentTagScope.length > 100) {
       return { ok: false, status: 400, message: 'document_tag_scope must not exceed 100 entries' };
     }
+    const documentTagMatchMode = parseDocumentTagMatch(payload.document_tag_match);
 
     const maxChunks = Math.max(1, payload.budget_profile?.max_chunks ?? 20);
-    const annLimit = Math.min(Math.max(maxChunks * 8, 100), 500);
+    const baseAnnLimit = computeRetrievalAnnLimitBase(maxChunks);
+    const annLimit =
+      documentTagScope.length > 0
+        ? computeRetrievalAnnLimitWithDocumentTagScope(baseAnnLimit)
+        : baseAnnLimit;
     const queryHash = await sha256Hex(payload.query);
     const nowIso = new Date().toISOString();
 
@@ -347,6 +374,7 @@ export async function executeEigenRetrieve(
               entity_scope: payload.entity_scope ?? [],
               policy_scope: effectivePolicyScope ?? [],
               document_tag_scope: documentTagScope.length > 0 ? documentTagScope : [],
+              document_tag_match: documentTagMatchMode,
               site_id: payload.site_id ?? null,
               site_source_systems: effectiveSiteSources ?? [],
               site_relevance_min: payload.site_relevance_min ?? null,
@@ -387,30 +415,57 @@ export async function executeEigenRetrieve(
 
     const { embedding: queryEmbedding } = embedOutcome.value;
 
-    const rpcResult = await client.rpc('match_knowledge_chunks', {
-      query_embedding: queryEmbedding,
-      ann_limit: annLimit,
-      filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
-      filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
-      valid_at: nowIso,
-      filter_document_tags: documentTagScope.length > 0 ? documentTagScope : null,
-    });
+    const droppedReasonsPreFallback: string[] = [];
+
+    const callMatchKnowledgeChunks = async (probeLimit: number, documentTags: string[] | null) =>
+      client.rpc('match_knowledge_chunks', {
+        query_embedding: queryEmbedding,
+        ann_limit: probeLimit,
+        filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
+        filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
+        valid_at: nowIso,
+        filter_document_tags: documentTags && documentTags.length > 0 ? documentTags : null,
+        filter_document_tag_match:
+          documentTags && documentTags.length > 0 ? documentTagMatchMode : 'any',
+      });
+
+    let rpcResult = await callMatchKnowledgeChunks(
+      annLimit,
+      documentTagScope.length > 0 ? documentTagScope : null,
+    );
 
     if (rpcResult.error) {
       await failRun(rpcResult.error.message);
       return { ok: false, status: 400, message: rpcResult.error.message };
     }
 
-    const envelope = parseMatchPayload(rpcResult.data);
-    const droppedReasons: string[] = [
-      `ann_index_probe: ${envelope.ann_row_count} rows (limit ${annLimit})`,
-    ];
+    let envelope = parseMatchPayload(rpcResult.data);
+
+    if (
+      readTagFilterFallbackEnabled() &&
+      documentTagScope.length > 0 &&
+      envelope.passed_row_count === 0 &&
+      envelope.ann_row_count > 0
+    ) {
+      droppedReasonsPreFallback.push(
+        `document_tag_filter_empty_pool: ann=${envelope.ann_row_count} passed=0 (ann_limit=${annLimit}); retry without document_tag_scope (ann_limit=${baseAnnLimit})`,
+      );
+      rpcResult = await callMatchKnowledgeChunks(baseAnnLimit, null);
+      if (rpcResult.error) {
+        await failRun(rpcResult.error.message);
+        return { ok: false, status: 400, message: rpcResult.error.message };
+      }
+      envelope = parseMatchPayload(rpcResult.data);
+    }
+
+    const droppedReasons: string[] = [...droppedReasonsPreFallback];
+    droppedReasons.push(
+      `ann_index_probe: ${envelope.ann_row_count} rows (ann_probe_limit=${documentTagScope.length > 0 ? annLimit : baseAnnLimit}${documentTagScope.length > 0 ? `; base_ann_limit=${baseAnnLimit}` : ''})`,
+    );
     const hardDropped = envelope.ann_row_count - envelope.passed_row_count;
     if (hardDropped > 0) {
-      const filterBits = ['entity/policy'];
-      if (documentTagScope.length > 0) filterBits.push('document tags');
       droppedReasons.push(
-        `hard_filter_dropped: ${hardDropped} chunks (${filterBits.join(' + ')} on ANN pool)`,
+        `hard_filter_dropped: ${hardDropped} chunks (entity/policy and optional document tag rules on final ANN pool)`,
       );
     }
 

@@ -29,6 +29,50 @@ ALLOWED_EXTENSIONS="${ALLOWED_EXTENSIONS:-.txt,.md,.csv,.pdf,.docx}"
 DRY_RUN="${DRY_RUN:-false}"
 PRUNE_MANIFEST_MISSING="${PRUNE_MANIFEST_MISSING:-false}"
 
+# Optional curator metadata (JSON `metadata` field on multipart ingest). See docs/eigen-curator-metadata.md
+CURATOR_TOPICS="${CURATOR_TOPICS:-}"
+CURATOR_CONTENT_DOMAIN="${CURATOR_CONTENT_DOMAIN:-}"
+CURATOR_AUDIENCE="${CURATOR_AUDIENCE:-}"
+CURATOR_CORPUS_LANE="${CURATOR_CORPUS_LANE:-}"
+CURATOR_INGEST_CHANNEL="${CURATOR_INGEST_CHANNEL:-eigen_ingest_sync}"
+
+CURATOR_METADATA_JSON="$(
+  CURATOR_TOPICS="${CURATOR_TOPICS}" \
+    CURATOR_CONTENT_DOMAIN="${CURATOR_CONTENT_DOMAIN}" \
+    CURATOR_AUDIENCE="${CURATOR_AUDIENCE}" \
+    CURATOR_CORPUS_LANE="${CURATOR_CORPUS_LANE}" \
+    CURATOR_INGEST_CHANNEL="${CURATOR_INGEST_CHANNEL}" \
+    python3 <<'PY'
+import json
+import os
+
+def split_topics(s: str):
+    return [p.strip() for p in s.replace(";", ",").split(",") if p.strip()]
+
+meta: dict = {}
+t = os.environ.get("CURATOR_TOPICS", "").strip()
+if t:
+    meta["curator_topics"] = split_topics(t)
+dom = os.environ.get("CURATOR_CONTENT_DOMAIN", "").strip()
+if dom:
+    meta["content_domain"] = dom
+aud = os.environ.get("CURATOR_AUDIENCE", "").strip()
+if aud:
+    meta["audience"] = aud
+lane = os.environ.get("CURATOR_CORPUS_LANE", "").strip()
+if lane:
+    meta["corpus_lane"] = lane
+ch = os.environ.get("CURATOR_INGEST_CHANNEL", "").strip()
+if ch:
+    meta["ingest_channel"] = ch
+
+if not meta:
+    print("")
+else:
+    print(json.dumps(meta, separators=(",", ":")))
+PY
+)"
+
 API_URL="${SUPABASE_URL%/}/functions/v1/eigen-ingest"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -44,6 +88,11 @@ echo "- source_ref_prefix: ${SOURCE_REF_PREFIX}"
 echo "- chunking_mode: ${CHUNKING_MODE}"
 echo "- manifest_path: ${MANIFEST_PATH}"
 echo "- allowed_extensions: ${ALLOWED_EXTENSIONS}"
+if [[ -n "${CURATOR_METADATA_JSON}" ]]; then
+  echo "- curator metadata: enabled (CURATOR_* env → metadata JSON)"
+else
+  echo "- curator metadata: off (set CURATOR_TOPICS etc. to attach labels)"
+fi
 echo
 
 python3 - "$INPUT_DIR_ABS" "$ALLOWED_EXTENSIONS" "$SOURCE_REF_PREFIX" > "$FILES_JSON" <<'PY'
@@ -205,6 +254,10 @@ PY
   esac
 
   response_file="${TMP_DIR}/resp.$RANDOM.json"
+  metadata_args=()
+  if [[ -n "${CURATOR_METADATA_JSON}" ]]; then
+    metadata_args=(-F "metadata=${CURATOR_METADATA_JSON}")
+  fi
   http_code="$(
     curl -sS \
       -o "$response_file" \
@@ -220,6 +273,7 @@ PY
       -F "policy_tags=${POLICY_TAGS}" \
       -F "entity_ids=${ENTITY_IDS}" \
       -F "embedding_model=${EMBEDDING_MODEL}" \
+      "${metadata_args[@]}" \
       -F "file=@${abs_path};type=${content_type}"
   )"
 

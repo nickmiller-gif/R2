@@ -42,6 +42,7 @@ interface WidgetChatRequest {
   conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
   /** Optional hard filter on `documents.tags`. */
   document_tag_scope?: string[];
+  document_tag_match?: 'any' | 'all';
   llm_provider?: LlmProvider;
   llm_model?: string;
   budget_profile?: {
@@ -72,6 +73,12 @@ function parseRequest(value: unknown): WidgetChatRequest {
   if (documentTagScope.length > 100) {
     throw new Error('document_tag_scope must not exceed 100 entries');
   }
+  const documentTagMatch: 'any' | 'all' | undefined =
+    body.document_tag_match === 'all' || body.document_tag_match === 'ALL'
+      ? 'all'
+      : body.document_tag_match === 'any' || body.document_tag_match === 'ANY'
+        ? 'any'
+        : undefined;
   return {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
@@ -81,6 +88,7 @@ function parseRequest(value: unknown): WidgetChatRequest {
         ? (body.conversation_intent as WidgetChatRequest['conversation_intent'])
         : 'general',
     document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
+    document_tag_match: documentTagMatch,
     llm_provider:
       body.llm_provider === 'openai' ||
       body.llm_provider === 'anthropic' ||
@@ -284,6 +292,7 @@ Deno.serve(
         query: body.message,
         policy_scope: effectivePolicyScope,
         document_tag_scope: body.document_tag_scope,
+        document_tag_match: body.document_tag_match,
         site_id: claims.site_id,
         site_source_systems: claims.site_source_systems,
         site_boost: retreatScopedPublic ? 0.7 : r2AppScopedPublic ? 0.6 : undefined,

@@ -30,6 +30,8 @@ Make target:
 - `MANIFEST_PATH` (default: `<INPUT_DIR>/.eigen-ingest-manifest.json`)
 - `PRUNE_MANIFEST_MISSING=true|false`
 - `DRY_RUN=true|false`
+- `CURATOR_TOPICS` (comma/semicolon-separated; merged into multipart `metadata` JSON per file)
+- `CURATOR_CONTENT_DOMAIN`, `CURATOR_AUDIENCE`, `CURATOR_CORPUS_LANE`, `CURATOR_INGEST_CHANNEL` (optional curator fields for the same `metadata` blob)
 
 ### Example
 

@@ -15,6 +15,31 @@ Anonymous / pre-login chat (`eigen-chat-public`) retrieves only chunks whose **`
 | Seed                 | `scripts/eigen-seed.sh`                                                                                               | Explicit **`eigen_public`** vs **`eigenx`** per seeded document.                                                                                                                                                                                                                                                                                       |
 | Dev UI               | `apps/eigen-chat/src/App.tsx`                                                                                         | User selects public vs eigenx tier → `policy_tags` set accordingly.                                                                                                                                                                                                                                                                                    |
 
+### Example JSON body (curator metadata)
+
+```json
+{
+  "source_system": "oracle_operator",
+  "source_ref": "manual:runbook-2026-01",
+  "document": {
+    "title": "Retreat runbook",
+    "body": "# Checklist\n...",
+    "content_type": "text/markdown",
+    "metadata": {
+      "curator_topics": ["hospitality", "pricing"],
+      "content_domain": "Retreat operations",
+      "audience": "operators",
+      "corpus_lane": "operator_manual",
+      "ingest_channel": "ci_or_script"
+    }
+  },
+  "policy_tags": ["eigenx"],
+  "chunking_mode": "hierarchical"
+}
+```
+
+Normalized tags on the document will be `topic:hospitality`, `topic:pricing`, `domain:retreat-operations`, `audience:operators`, `lane:operator-manual` — use those exact strings in `document_tag_scope` when calling retrieve/chat.
+
 ## App repos (Supabase edge → R2)
 
 | App                        | Path                                                        | Default policy intent                                                                                                                                                                              |

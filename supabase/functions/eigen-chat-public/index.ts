@@ -23,6 +23,7 @@ import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts'
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
+import { sanitizePublicDocumentTagScope } from '../../../src/lib/eigen/eigen-public-document-tag-scope.ts';
 
 interface PublicChatRequest {
   message: string;
@@ -83,12 +84,13 @@ function parseRequest(value: unknown): PublicChatRequest {
     };
   }
 
-  const documentTagScope = Array.isArray(body.document_tag_scope)
-    ? body.document_tag_scope.map((item) => String(item)).filter(Boolean)
+  const rawDocTags = Array.isArray(body.document_tag_scope)
+    ? body.document_tag_scope
+        .map((item) => String(item))
+        .filter(Boolean)
+        .slice(0, 100)
     : [];
-  if (documentTagScope.length > 100) {
-    throw new Error('document_tag_scope must not exceed 100 entries');
-  }
+  const documentTagScope = sanitizePublicDocumentTagScope(rawDocTags);
 
   return {
     message: body.message.trim(),

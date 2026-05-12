@@ -10853,6 +10853,7 @@ export type Database = {
       match_knowledge_chunks: {
         Args: {
           ann_limit: number
+          filter_document_tag_match?: string
           filter_document_tags?: string[]
           filter_entity_ids?: string[]
           filter_policy_tags?: string[]

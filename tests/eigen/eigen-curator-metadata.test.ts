@@ -3,6 +3,7 @@ import {
   buildCuratorDocumentTags,
   buildCuratorSummaryLine,
   buildEmbeddingPrefixFromCuratorMetadata,
+  previewCuratorDocumentTagsFromFormFields,
 } from '../../src/lib/eigen/eigen-curator-metadata.js';
 
 describe('buildCuratorDocumentTags', () => {
@@ -28,6 +29,25 @@ describe('buildCuratorDocumentTags', () => {
   it('returns empty for empty metadata', () => {
     expect(buildCuratorDocumentTags(undefined)).toEqual([]);
     expect(buildCuratorDocumentTags({})).toEqual([]);
+  });
+});
+
+describe('previewCuratorDocumentTagsFromFormFields', () => {
+  it('matches buildCuratorDocumentTags for equivalent metadata', () => {
+    const meta = {
+      curator_topics: ['A', 'B'],
+      content_domain: 'X',
+      audience: 'Y',
+      corpus_lane: 'Z',
+    };
+    expect(
+      previewCuratorDocumentTagsFromFormFields({
+        topicsRaw: 'A,B',
+        contentDomain: 'X',
+        audience: 'Y',
+        corpusLane: 'Z',
+      }),
+    ).toEqual(buildCuratorDocumentTags(meta));
   });
 });
 

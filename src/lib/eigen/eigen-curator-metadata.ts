@@ -16,7 +16,8 @@ const MAX_TOPIC_INPUTS = 24;
 const MAX_TAG_LEN = 72;
 const MAX_EMBEDDING_PREFIX_CHARS = 2000;
 
-function slugToken(raw: string): string {
+/** Exported for UI previews; must stay aligned with ingest slug rules. */
+export function curatorSlugToken(raw: string): string {
   const s = raw
     .trim()
     .toLowerCase()
@@ -50,21 +51,43 @@ export function buildCuratorDocumentTags(
   const out: string[] = [];
   const topics = asStringArray(metadata.curator_topics).slice(0, MAX_TOPIC_INPUTS);
   for (const t of topics) {
-    out.push(`topic:${slugToken(t)}`);
+    out.push(`topic:${curatorSlugToken(t)}`);
   }
 
   if (typeof metadata.content_domain === 'string' && metadata.content_domain.trim()) {
-    out.push(`domain:${slugToken(metadata.content_domain)}`);
+    out.push(`domain:${curatorSlugToken(metadata.content_domain)}`);
   }
   if (typeof metadata.audience === 'string' && metadata.audience.trim()) {
-    out.push(`audience:${slugToken(metadata.audience)}`);
+    out.push(`audience:${curatorSlugToken(metadata.audience)}`);
   }
   if (typeof metadata.corpus_lane === 'string' && metadata.corpus_lane.trim()) {
-    out.push(`lane:${slugToken(metadata.corpus_lane)}`);
+    out.push(`lane:${curatorSlugToken(metadata.corpus_lane)}`);
   }
 
   const capped = [...new Set(out)].map((t) => t.slice(0, MAX_TAG_LEN));
   return capped.slice(0, 40);
+}
+
+/**
+ * Preview tags from loose form fields (same output as ingest for equivalent metadata).
+ * Use in operator UIs so curators see exact `documents.tags` strings before calling eigen-ingest.
+ */
+export function previewCuratorDocumentTagsFromFormFields(input: {
+  topicsRaw?: string;
+  contentDomain?: string;
+  audience?: string;
+  corpusLane?: string;
+}): string[] {
+  const topics = (input.topicsRaw ?? '')
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const meta: Record<string, unknown> = {};
+  if (topics.length) meta.curator_topics = topics;
+  if (input.contentDomain?.trim()) meta.content_domain = input.contentDomain.trim();
+  if (input.audience?.trim()) meta.audience = input.audience.trim();
+  if (input.corpusLane?.trim()) meta.corpus_lane = input.corpusLane.trim();
+  return buildCuratorDocumentTags(meta);
 }
 
 /**

@@ -78,14 +78,26 @@ Update **`resolveMeg`** (or equivalent) to `POST` the bridge URL with the bridge
 
 ## Smoke (curl)
 
-Replace placeholders:
+Replace placeholders. For **`apikey`**, use whichever Eigen anon variable your shell already has (`SUPABASE_ANON_KEY`, `VITE_SUPABASE_PUBLISHABLE_KEY`, etc.); they are the same **public** key for `zudslxucibosjwefojtm` as long as the JWT `ref` matches that project ([Pitfall A3]).
 
 ```bash
 curl -sS -X POST "${MEG_RESOLVE_BRIDGE_URL}" \
   -H "Authorization: Bearer ${MEG_RESOLVE_BRIDGE_TOKEN}" \
-  -H "apikey: ${EIGEN_ANON_KEY}" \
+  -H "apikey: ${SUPABASE_ANON_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"source_platform":"ip_pulse_point","external_id":"smoke-test-1","kind":"topic","hints":{"title":"Smoke"}}' | jq .
 ```
 
 Expect `meg_entity_id` UUID and `resolution: "tower"`.
+
+### If you get **404** `NOT_FOUND`
+
+The Edge bundle is **not deployed** to Eigen yet. After merging `meg-resolve-bridge` into `main`, the **Deploy to Supabase** GitHub Action must succeed (production environment secrets, including a valid **`SUPABASE_ACCESS_TOKEN`** — see repo deploy runbook when auth fails). You can also deploy from a linked checkout: `supabase functions deploy meg-resolve-bridge --no-verify-jwt` (Eigen project).
+
+### If you get **401** `Unauthorized`
+
+The function is deployed; fix **`MEG_RESOLVE_BRIDGE_TOKEN`** (caller header must match the secret set on the function).
+
+### If you get **503** `MEG_RESOLVE_BRIDGE_TOKEN not configured`
+
+Set the function secret on Eigen for **`meg-resolve-bridge`**, then redeploy or wait for the secret to bind.

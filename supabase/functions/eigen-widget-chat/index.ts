@@ -40,6 +40,8 @@ interface WidgetChatRequest {
   message: string;
   response_format?: 'structured' | 'freeform';
   conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
+  /** Optional hard filter on `documents.tags`. */
+  document_tag_scope?: string[];
   llm_provider?: LlmProvider;
   llm_model?: string;
   budget_profile?: {
@@ -64,6 +66,12 @@ function parseRequest(value: unknown): WidgetChatRequest {
     body.budget_profile && typeof body.budget_profile === 'object'
       ? (body.budget_profile as Record<string, unknown>)
       : {};
+  const documentTagScope = Array.isArray(body.document_tag_scope)
+    ? body.document_tag_scope.map((item) => String(item)).filter(Boolean)
+    : [];
+  if (documentTagScope.length > 100) {
+    throw new Error('document_tag_scope must not exceed 100 entries');
+  }
   return {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
@@ -72,6 +80,7 @@ function parseRequest(value: unknown): WidgetChatRequest {
       body.conversation_intent === 'retreat_content' || body.conversation_intent === 'event_ops'
         ? (body.conversation_intent as WidgetChatRequest['conversation_intent'])
         : 'general',
+    document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
     llm_provider:
       body.llm_provider === 'openai' ||
       body.llm_provider === 'anthropic' ||
@@ -274,6 +283,7 @@ Deno.serve(
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
         policy_scope: effectivePolicyScope,
+        document_tag_scope: body.document_tag_scope,
         site_id: claims.site_id,
         site_source_systems: claims.site_source_systems,
         site_boost: retreatScopedPublic ? 0.7 : r2AppScopedPublic ? 0.6 : undefined,

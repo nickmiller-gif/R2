@@ -9,15 +9,14 @@ import {
   oracleCompositeBoost as computeOracleCompositeBoost,
   parseOracleRetrievalBoostCap,
 } from '../../../src/lib/eigen/oracle-retrieval-boost.ts';
-import {
-  applySiteRelevanceGate,
-  limitCrossSourceRatio,
-} from './source-relevance-gating.ts';
+import { applySiteRelevanceGate, limitCrossSourceRatio } from './source-relevance-gating.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
   entity_scope?: string[];
   policy_scope?: string[];
+  /** When non-empty, chunks whose document has no overlapping `documents.tags` entry are dropped (hard filter on ANN pool). */
+  document_tag_scope?: string[];
   site_id?: string;
   site_source_systems?: string[];
   site_boost?: number;
@@ -132,7 +131,9 @@ function readDefaultGlobalPenalty(): number {
 
 function readOracleRelevanceBoostCap(): number {
   if (_oracleBoostCap === undefined) {
-    _oracleBoostCap = parseOracleRetrievalBoostCap(Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'));
+    _oracleBoostCap = parseOracleRetrievalBoostCap(
+      Deno.env.get('EIGEN_ORACLE_RETRIEVAL_BOOST_CAP'),
+    );
   }
   return _oracleBoostCap;
 }
@@ -170,14 +171,17 @@ async function loadSiteRegistryContext(
 // prevent a caller from inflating the retrieval budget to the point where
 // embedding cost, RPC payload size, or LLM context-window usage become a
 // DoS vector. See FULL_AUDIT §1 L9.
-const QUERY_MAX_LENGTH = 8_000;            // chars; generous — typical queries < 500
-const BUDGET_MAX_CHUNKS = 100;              // absolute ceiling; ann_limit caps at 500
-const BUDGET_MAX_TOKENS = 32_000;           // covers the widest planner context
+const QUERY_MAX_LENGTH = 8_000; // chars; generous — typical queries < 500
+const BUDGET_MAX_CHUNKS = 100; // absolute ceiling; ann_limit caps at 500
+const BUDGET_MAX_TOKENS = 32_000; // covers the widest planner context
 const STRATA_WEIGHT_MAX_KEYS = 32;
 const STRATA_WEIGHT_MIN = -10;
 const STRATA_WEIGHT_MAX = 10;
 
-function parseBoundedInt(value: unknown, { min, max }: { min: number; max: number }): number | undefined {
+function parseBoundedInt(
+  value: unknown,
+  { min, max }: { min: number; max: number },
+): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   if (value < min || value > max) {
     throw new Error(`value ${value} out of allowed range [${min}, ${max}]`);
@@ -201,7 +205,9 @@ function parseStrataWeights(value: unknown): Record<string, number> | undefined 
       throw new Error(`strata_weights[${key}] must be a finite number`);
     }
     if (raw_val < STRATA_WEIGHT_MIN || raw_val > STRATA_WEIGHT_MAX) {
-      throw new Error(`strata_weights[${key}] out of range [${STRATA_WEIGHT_MIN}, ${STRATA_WEIGHT_MAX}]`);
+      throw new Error(
+        `strata_weights[${key}] out of range [${STRATA_WEIGHT_MIN}, ${STRATA_WEIGHT_MAX}]`,
+      );
     }
     out[key] = raw_val;
   }
@@ -231,6 +237,11 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     throw new Error('policy_scope must not exceed 100 entries');
   }
 
+  const documentTagScope = normalizeList(payload.document_tag_scope);
+  if (documentTagScope.length > 100) {
+    throw new Error('document_tag_scope must not exceed 100 entries');
+  }
+
   const budgetProfile =
     payload.budget_profile && typeof payload.budget_profile === 'object'
       ? {
@@ -252,6 +263,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     query,
     entity_scope: entityScope,
     policy_scope: policyScope,
+    document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
     site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
     site_source_systems: normalizeList(payload.site_source_systems),
     site_boost: parseNumber(payload.site_boost),
@@ -305,12 +317,19 @@ export async function executeEigenRetrieve(
 
   try {
     const siteRegistry = await loadSiteRegistryContext(client, payload.site_id);
-    const effectiveSiteSources = (payload.site_source_systems && payload.site_source_systems.length > 0)
-      ? payload.site_source_systems
-      : (siteRegistry?.source_systems ?? []);
-    const effectivePolicyScope = (payload.policy_scope && payload.policy_scope.length > 0)
-      ? payload.policy_scope
-      : (siteRegistry?.default_policy_scope ?? []);
+    const effectiveSiteSources =
+      payload.site_source_systems && payload.site_source_systems.length > 0
+        ? payload.site_source_systems
+        : (siteRegistry?.source_systems ?? []);
+    const effectivePolicyScope =
+      payload.policy_scope && payload.policy_scope.length > 0
+        ? payload.policy_scope
+        : (siteRegistry?.default_policy_scope ?? []);
+
+    const documentTagScope = normalizeList(payload.document_tag_scope);
+    if (documentTagScope.length > 100) {
+      return { ok: false, status: 400, message: 'document_tag_scope must not exceed 100 entries' };
+    }
 
     const maxChunks = Math.max(1, payload.budget_profile?.max_chunks ?? 20);
     const annLimit = Math.min(Math.max(maxChunks * 8, 100), 500);
@@ -327,11 +346,13 @@ export async function executeEigenRetrieve(
               query: payload.query,
               entity_scope: payload.entity_scope ?? [],
               policy_scope: effectivePolicyScope ?? [],
+              document_tag_scope: documentTagScope.length > 0 ? documentTagScope : [],
               site_id: payload.site_id ?? null,
               site_source_systems: effectiveSiteSources ?? [],
               site_relevance_min: payload.site_relevance_min ?? null,
               cross_source_max_ratio: payload.cross_source_max_ratio ?? null,
-              allow_cross_source_when_low_confidence: payload.allow_cross_source_when_low_confidence ?? false,
+              allow_cross_source_when_low_confidence:
+                payload.allow_cross_source_when_low_confidence ?? false,
               outside_domain_intent: payload.outside_domain_intent ?? false,
               disallowed_source_systems: payload.disallowed_source_systems ?? [],
             },
@@ -372,6 +393,7 @@ export async function executeEigenRetrieve(
       filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
       filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
       valid_at: nowIso,
+      filter_document_tags: documentTagScope.length > 0 ? documentTagScope : null,
     });
 
     if (rpcResult.error) {
@@ -385,7 +407,11 @@ export async function executeEigenRetrieve(
     ];
     const hardDropped = envelope.ann_row_count - envelope.passed_row_count;
     if (hardDropped > 0) {
-      droppedReasons.push(`hard_filter_dropped: ${hardDropped} chunks (entity/policy on ANN pool)`);
+      const filterBits = ['entity/policy'];
+      if (documentTagScope.length > 0) filterBits.push('document tags');
+      droppedReasons.push(
+        `hard_filter_dropped: ${hardDropped} chunks (${filterBits.join(' + ')} on ANN pool)`,
+      );
     }
 
     const temporalFiltered = envelope.chunks.map((row) => {
@@ -396,7 +422,8 @@ export async function executeEigenRetrieve(
           ? row.oracle_signal_id
           : null;
       const oracleRel =
-        typeof row.oracle_relevance_score === 'number' && Number.isFinite(row.oracle_relevance_score)
+        typeof row.oracle_relevance_score === 'number' &&
+        Number.isFinite(row.oracle_relevance_score)
           ? row.oracle_relevance_score
           : null;
       return {
@@ -466,11 +493,16 @@ export async function executeEigenRetrieve(
     }
 
     const disallowedSourceSystems = new Set(
-      (payload.disallowed_source_systems ?? []).map((value) => value.trim()).filter((value) => value.length > 0),
+      (payload.disallowed_source_systems ?? [])
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
     );
-    const filteredByDisallowed = disallowedSourceSystems.size > 0
-      ? relevanceGate.candidates.filter((candidate) => !disallowedSourceSystems.has(candidate.source_system))
-      : relevanceGate.candidates;
+    const filteredByDisallowed =
+      disallowedSourceSystems.size > 0
+        ? relevanceGate.candidates.filter(
+            (candidate) => !disallowedSourceSystems.has(candidate.source_system),
+          )
+        : relevanceGate.candidates;
     if (disallowedSourceSystems.size > 0) {
       const disallowedDroppedCount = relevanceGate.candidates.length - filteredByDisallowed.length;
       if (disallowedDroppedCount > 0) {
@@ -506,7 +538,9 @@ export async function executeEigenRetrieve(
             })
           : candidate.similarity_score;
         const siteAdj = hasSiteSources
-          ? (siteSources.has(candidate.source_system) ? siteBoost : globalPenalty)
+          ? siteSources.has(candidate.source_system)
+            ? siteBoost
+            : globalPenalty
           : 0;
         const oracleAdj = computeOracleCompositeBoost(
           candidate.oracle_signal_id,
@@ -515,7 +549,9 @@ export async function executeEigenRetrieve(
         );
         const sourceLower = candidate.source_system.toLowerCase();
         const uploadAdj =
-          sourceLower.includes('upload') || sourceLower.includes('manual') || sourceLower.includes('autonomous')
+          sourceLower.includes('upload') ||
+          sourceLower.includes('manual') ||
+          sourceLower.includes('autonomous')
             ? uploadSourceBoost
             : 0;
         return {
@@ -533,14 +569,19 @@ export async function executeEigenRetrieve(
       maxChunks,
     });
     if (ratioLimited.droppedCrossSourceCount > 0) {
-      droppedReasons.push(`cross_source_ratio_dropped: ${ratioLimited.droppedCrossSourceCount} chunks`);
+      droppedReasons.push(
+        `cross_source_ratio_dropped: ${ratioLimited.droppedCrossSourceCount} chunks`,
+      );
     }
 
-    const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(ratioLimited.candidates, {
-      maxChunks,
-      maxTokens: payload.budget_profile?.max_tokens,
-      strataWeights: payload.budget_profile?.strata_weights,
-    });
+    const { selected: reranked, skippedDueToTokenBudget } = selectChunksWithinBudget(
+      ratioLimited.candidates,
+      {
+        maxChunks,
+        maxTokens: payload.budget_profile?.max_tokens,
+        strataWeights: payload.budget_profile?.strata_weights,
+      },
+    );
 
     if (skippedDueToTokenBudget > 0) {
       droppedReasons.push(`token_budget_skipped: ${skippedDueToTokenBudget} chunks`);
@@ -574,15 +615,16 @@ export async function executeEigenRetrieve(
       composite_score: Number(candidate.composite_score.toFixed(6)),
       oracle_signal_id: candidate.oracle_signal_id,
       oracle_relevance_score: candidate.oracle_relevance_score,
-      provenance: payload.include_provenance === false
-        ? undefined
-        : {
-            document_id: candidate.document_id,
-            source_system: candidate.source_system,
-            source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
-            heading_path: candidate.heading_path,
-            valid_from: candidate.valid_from,
-          },
+      provenance:
+        payload.include_provenance === false
+          ? undefined
+          : {
+              document_id: candidate.document_id,
+              source_system: candidate.source_system,
+              source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
+              heading_path: candidate.heading_path,
+              valid_from: candidate.valid_from,
+            },
     }));
 
     return {

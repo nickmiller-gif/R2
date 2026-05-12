@@ -18,9 +18,11 @@ Slugs: lowercased, non-alphanumerics collapsed to `-`, max length capped per tag
 
 Optional free-form keys (ignored by normalization but echoed in `ingestion_runs.metadata.request_metadata`) are fine—for example `ingest_channel: "oracle_operator_ui"`.
 
-## Retrieval today
+## Retrieval
 
-`match_knowledge_chunks` still filters on **policy tags** and **entity ids** only. Curator tags are **not** yet a hard filter in ANN; they improve **semantic recall** via the embedding prefix and support **governance / audit** via `documents.tags`. When product needs topic-scoped retrieval, extend the RPC or post-filter using `documents.tags` joined from `document_id`.
+`match_knowledge_chunks` always applies **policy tags** and **entity ids** on the ANN pool (unchanged). When callers pass **`filter_document_tags`** (wired from **`document_tag_scope`** on `eigen-retrieve` and optional **`document_tag_scope`** on `eigen-chat`, `eigen-widget-chat`, and `eigen-chat-public`), chunks whose parent **`documents.tags`** do not **overlap** that array (`text[] && text[]`) are dropped—use the same normalized tag strings as ingest (for example `topic:hospitality`, `domain:retreat-operations`).
+
+When `document_tag_scope` is omitted or empty, behavior matches the previous policy+entity-only filter. Curator metadata still adds an **embedding-only prefix** so vectors align with declared topics even without a tag filter.
 
 ## Related
 

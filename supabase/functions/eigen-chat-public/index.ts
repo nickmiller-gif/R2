@@ -30,6 +30,8 @@ interface PublicChatRequest {
   llm_provider?: LlmProvider;
   llm_model?: string;
   conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
+  /** Optional hard filter on `documents.tags` within the public corpus. */
+  document_tag_scope?: string[];
   site_id?: string;
   site_source_systems?: string[];
   site_boost?: number;
@@ -81,6 +83,13 @@ function parseRequest(value: unknown): PublicChatRequest {
     };
   }
 
+  const documentTagScope = Array.isArray(body.document_tag_scope)
+    ? body.document_tag_scope.map((item) => String(item)).filter(Boolean)
+    : [];
+  if (documentTagScope.length > 100) {
+    throw new Error('document_tag_scope must not exceed 100 entries');
+  }
+
   return {
     message: body.message.trim(),
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
@@ -95,6 +104,7 @@ function parseRequest(value: unknown): PublicChatRequest {
       body.conversation_intent === 'retreat_content' || body.conversation_intent === 'event_ops'
         ? (body.conversation_intent as PublicChatRequest['conversation_intent'])
         : 'general',
+    document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: Array.isArray(body.site_source_systems)
       ? body.site_source_systems.map((item) => String(item))
@@ -243,6 +253,7 @@ Deno.serve(
         query: body.message,
         entity_scope: [],
         policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
+        document_tag_scope: body.document_tag_scope,
         site_id: body.site_id,
         site_source_systems: body.site_source_systems ?? [],
         site_boost: body.site_boost ?? (retreatScoped ? 0.7 : r2AppScoped ? 0.6 : undefined),

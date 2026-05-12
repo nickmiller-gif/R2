@@ -39,6 +39,8 @@ interface ChatRequest {
   conversation_context?: 'auto' | 'none';
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
+  /** Optional hard filter on `documents.tags` (e.g. topic:foo from curator metadata). */
+  document_tag_scope?: string[];
   /** Resolved after auth; parseRequest may leave empty when client omitted policy_scope. */
   policy_scope: string[];
   policy_scope_explicit: boolean;
@@ -144,12 +146,17 @@ function parseRequest(value: unknown): ChatRequest {
   }
 
   const policyScopeList = toList(body.policy_scope);
+  const documentTagScope = toList(body.document_tag_scope);
+  if (documentTagScope.length > 100) {
+    throw new Error('document_tag_scope must not exceed 100 entries');
+  }
   return {
     message: body.message.trim(),
     session_id: typeof body.session_id === 'string' ? body.session_id : undefined,
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
+    document_tag_scope: documentTagScope.length > 0 ? documentTagScope : undefined,
     policy_scope: policyScopeList,
     policy_scope_explicit: policyScopeList.length > 0,
     stream: body.stream === true,
@@ -260,6 +267,7 @@ Deno.serve(
         query: body.message,
         entity_scope: body.entity_scope ?? [],
         policy_scope: body.policy_scope ?? [],
+        document_tag_scope: body.document_tag_scope,
         site_id: body.site_id,
         site_source_systems: body.site_source_systems ?? [],
         site_boost: body.site_boost,

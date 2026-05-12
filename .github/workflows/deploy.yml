@@ -77,6 +77,50 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Deploy uses `environment: production`. GitHub resolves secrets with
+      # **environment secrets overriding repository secrets** for the same name.
+      # If preflight still says Unauthorized after rotating the token, update
+      # **Settings → Environments → production → Environment secrets**, not only
+      # **Settings → Secrets and variables → Actions** (see deploy job `environment:`).
+      #
+      # Pasted tokens often include a trailing newline — strip CR/LF so the CLI
+      # does not send `sbp_…\n` to the API ([Pitfall A1]).
+      - name: Normalize Supabase credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(printf '%s' "${SUPABASE_ACCESS_TOKEN:-}" | tr -d '\r\n')
+          project_ref=$(printf '%s' "${SUPABASE_PROJECT_REF:-}" | tr -d '\r\n')
+          db_password=$(printf '%s' "${SUPABASE_DB_PASSWORD:-}" | tr -d '\r\n')
+
+          if [ -z "$token" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is empty after trimming. Add it under **Settings → Environments → production → Environment secrets** (this job uses \`environment: production\`). If you only updated a repository secret, either remove the stale environment override or paste the same value into the production environment."
+            exit 1
+          fi
+          if [ -z "$project_ref" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is empty. Set it on the **production** environment (same place as SUPABASE_ACCESS_TOKEN)."
+            exit 1
+          fi
+          if [ -z "$db_password" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is empty. Set it on the **production** environment (required for \`supabase link\`)."
+            exit 1
+          fi
+
+          {
+            echo "SUPABASE_ACCESS_TOKEN<<__GITHUB_ENV_EOF__"
+            printf '%s' "$token"
+            echo
+            echo "__GITHUB_ENV_EOF__"
+            echo "SUPABASE_PROJECT_REF<<__GITHUB_ENV_EOF__"
+            printf '%s' "$project_ref"
+            echo
+            echo "__GITHUB_ENV_EOF__"
+            echo "SUPABASE_DB_PASSWORD<<__GITHUB_ENV_EOF__"
+            printf '%s' "$db_password"
+            echo
+            echo "__GITHUB_ENV_EOF__"
+          } >> "$GITHUB_ENV"
+
       - name: Resolve Supabase CLI version
         id: cli_version
         # Reads the single source of truth so CI (typegen / drift checks) and
@@ -98,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! supabase projects list >/dev/null 2>&1; then
-            echo "::error::Supabase CLI is not authorized. Typical fix: create a new access token at https://supabase.com/dashboard/account/tokens and update the **SUPABASE_ACCESS_TOKEN** secret for this repo’s **production** environment (and repository-level copy if you duplicate secrets). Confirm the token can see project ref **$SUPABASE_PROJECT_REF** (Eigen / R2)."
+            echo "::error::Supabase CLI is not authorized (\`supabase projects list\` failed). Checklist: (1) Mint a new token at https://supabase.com/dashboard/account/tokens with access to project **$SUPABASE_PROJECT_REF**. (2) This workflow uses \`environment: production\` — set **SUPABASE_ACCESS_TOKEN** under **Settings → Environments → production → Environment secrets** (environment secrets override repository secrets with the same name). (3) Ensure the secret value has no accidental spaces or line breaks — the **Normalize Supabase credentials** step strips CR/LF. (4) Confirm **SUPABASE_PROJECT_REF** matches the Eigen/R2 project ref."
             exit 1
           fi
           echo "Supabase CLI authenticated successfully."

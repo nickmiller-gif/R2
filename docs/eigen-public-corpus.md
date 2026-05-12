@@ -2,31 +2,33 @@
 
 Use this when you want **public** answers to draw from:
 
-1. **Website pages** discovered via **sitemap(s)**  
-2. **Recent news / blog** via **RSS or Atom** feeds  
-3. **Static files** in a folder (committed or uploaded in CI), ingested with `eigen_public` tags  
+1. **Website pages** discovered via **sitemap(s)**
+2. **Recent news / blog** via **RSS or Atom** feeds
+3. **Static files** in a folder (committed or uploaded in CI), ingested with `eigen_public` tags
 
 All three go through the same policy tag **`eigen_public`**. URLs still must pass server **`EIGEN_FETCH_ALLOWLIST`**.
+
+Curator-declared **topics / domain / audience** on manual or scripted JSON ingest are documented in [eigen-curator-metadata.md](./eigen-curator-metadata.md) (embedding prefix + `documents.tags`).
 
 ## One-shot script (recommended)
 
 `scripts/eigen-public-corpus-ingest.sh` runs every stage you configure via environment variables.
 
-| Variable | Purpose |
-|----------|---------|
-| `SUPABASE_URL` | Project URL |
-| `AUTH_BEARER` | JWT for a user with **member** (or higher) role |
-| `EIGEN_PUBLIC_SITEMAP_URLS` | Comma-separated sitemap URLs (optional) |
-| `EIGEN_PUBLIC_RSS_URLS` | Comma-separated RSS/Atom feed URLs (optional) |
-| `EIGEN_PUBLIC_FILES_DIR` | Path to a directory of files, e.g. `knowledge/public` (optional) |
+| Variable                    | Purpose                                                          |
+| --------------------------- | ---------------------------------------------------------------- |
+| `SUPABASE_URL`              | Project URL                                                      |
+| `AUTH_BEARER`               | JWT for a user with **member** (or higher) role                  |
+| `EIGEN_PUBLIC_SITEMAP_URLS` | Comma-separated sitemap URLs (optional)                          |
+| `EIGEN_PUBLIC_RSS_URLS`     | Comma-separated RSS/Atom feed URLs (optional)                    |
+| `EIGEN_PUBLIC_FILES_DIR`    | Path to a directory of files, e.g. `knowledge/public` (optional) |
 
 **File sync naming** (only when `EIGEN_PUBLIC_FILES_DIR` is set):
 
-| Variable | Default |
-|----------|---------|
-| `EIGEN_PUBLIC_FILES_SOURCE_SYSTEM` | `public-site-files` |
-| `EIGEN_PUBLIC_FILES_SOURCE_REF_PREFIX` | `public` |
-| `EIGEN_PUBLIC_FILES_POLICY_TAGS` | `eigen_public` |
+| Variable                               | Default             |
+| -------------------------------------- | ------------------- |
+| `EIGEN_PUBLIC_FILES_SOURCE_SYSTEM`     | `public-site-files` |
+| `EIGEN_PUBLIC_FILES_SOURCE_REF_PREFIX` | `public`            |
+| `EIGEN_PUBLIC_FILES_POLICY_TAGS`       | `eigen_public`      |
 
 **Tuning:**
 
@@ -47,9 +49,9 @@ make eigen-public-corpus
 
 ## Individual scripts
 
-- `scripts/eigen-public-sitemap-ingest.py` — sitemap-only  
-- `scripts/eigen-public-rss-ingest.py` — feeds-only  
-- `scripts/eigen-ingest-sync.sh` — directory-only (set `POLICY_TAGS=eigen_public`)  
+- `scripts/eigen-public-sitemap-ingest.py` — sitemap-only
+- `scripts/eigen-public-rss-ingest.py` — feeds-only
+- `scripts/eigen-ingest-sync.sh` — directory-only (set `POLICY_TAGS=eigen_public`)
 
 ## GitHub Actions
 
@@ -63,11 +65,11 @@ Schedule: weekly (Monday 06:00 UTC) + **workflow_dispatch**.
 
 **Variables** (set at least one or the job only prints a skip notice):
 
-| Variable | Example |
-|----------|---------|
+| Variable                    | Example                               |
+| --------------------------- | ------------------------------------- |
 | `EIGEN_PUBLIC_SITEMAP_URLS` | `https://raysretreat.com/sitemap.xml` |
-| `EIGEN_PUBLIC_RSS_URLS` | `https://raysretreat.com/news/feed/` |
-| `EIGEN_PUBLIC_FILES_DIR` | `knowledge/public` |
+| `EIGEN_PUBLIC_RSS_URLS`     | `https://raysretreat.com/news/feed/`  |
+| `EIGEN_PUBLIC_FILES_DIR`    | `knowledge/public`                    |
 
 Optional: `EIGEN_FETCH_INGEST_DELAY_SEC` (default `0.35`).
 

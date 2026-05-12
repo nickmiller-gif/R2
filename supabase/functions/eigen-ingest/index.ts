@@ -19,6 +19,11 @@ import {
   enforceEigenKosCapabilityBundle,
 } from '../_shared/eigen-kos-enforcement.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
+import {
+  buildCuratorDocumentTags,
+  buildCuratorSummaryLine,
+  buildEmbeddingPrefixFromCuratorMetadata,
+} from '../../../src/lib/eigen/eigen-curator-metadata.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
 
 // Explicit `ingestion_runs` projection so schema additions don't leak through
@@ -488,10 +493,13 @@ Deno.serve(
           ? requestBody.embedding_model.trim()
           : 'text-embedding-3-small';
 
-      const entityKey = [...requestBody.entity_ids].sort().join('\u0002');
+      const entityKey = [...(requestBody.entity_ids ?? [])].sort().join('\u0002');
       const policyKey = [...policyTags].sort().join('\u0002');
+      const docMeta = (requestBody.document.metadata ?? {}) as Record<string, unknown>;
+      const curatorDocumentTags = buildCuratorDocumentTags(docMeta);
+      const curatorKey = [...curatorDocumentTags].sort().join('\u0002');
       const documentHash = await sha256Hex(
-        `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}`,
+        `${requestBody.document.title}\u001f${requestBody.document.body}\u001f${requestBody.chunking_mode}\u001f${effectiveEmbeddingModel}\u001f${entityKey}\u001f${policyKey}\u001f${curatorKey}`,
       );
 
       const [existingRunResult, existingDocResult] = await Promise.all([
@@ -629,24 +637,28 @@ Deno.serve(
         if (runUpdate.error) return errorResponse(runUpdate.error.message, 400);
       }
 
+      const upsertPayload: Record<string, unknown> = {
+        source_system: requestBody.source_system,
+        source_ref: requestBody.source_ref,
+        owner_id: ownerUserId,
+        title: requestBody.document.title,
+        body: requestBody.document.body,
+        content_type: requestBody.document.content_type,
+        content_hash: documentHash,
+        index_status: 'indexed',
+        embedding_status: 'embedded',
+        extracted_text_status: 'extracted',
+        updated_at: new Date().toISOString(),
+      };
+      if (curatorDocumentTags.length > 0) {
+        upsertPayload.tags = curatorDocumentTags;
+        const summaryLine = buildCuratorSummaryLine(docMeta);
+        if (summaryLine) upsertPayload.summary = summaryLine;
+      }
+
       const upsertDoc = await client
         .from('documents')
-        .upsert(
-          {
-            source_system: requestBody.source_system,
-            source_ref: requestBody.source_ref,
-            owner_id: ownerUserId,
-            title: requestBody.document.title,
-            body: requestBody.document.body,
-            content_type: requestBody.document.content_type,
-            content_hash: documentHash,
-            index_status: 'indexed',
-            embedding_status: 'embedded',
-            extracted_text_status: 'extracted',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'source_system,source_ref' },
-        )
+        .upsert(upsertPayload, { onConflict: 'source_system,source_ref' })
         .select('id')
         .single();
 
@@ -677,8 +689,14 @@ Deno.serve(
         requestBody.chunking_mode ?? 'hierarchical',
       );
 
+      const embeddingPrefix = buildEmbeddingPrefixFromCuratorMetadata(docMeta);
       const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
-        chunks.map((chunk) => chunk.content),
+        chunks.map((chunk) => {
+          const shouldPrefix =
+            embeddingPrefix.length > 0 &&
+            (chunk.chunkLevel === 'document' || chunk.chunkLevel === 'section');
+          return shouldPrefix ? `${embeddingPrefix}${chunk.content}` : chunk.content;
+        }),
         effectiveEmbeddingModel,
       );
 
@@ -784,6 +802,7 @@ Deno.serve(
             oracle_outbox_event_id: oracleOutboxEventId,
             request_metadata: requestBody.document.metadata ?? {},
             corpus_tier: inferCorpusTier(policyTags),
+            curator_document_tags: curatorDocumentTags,
           },
         })
         .eq('id', ingestionRunId);
@@ -796,6 +815,7 @@ Deno.serve(
           chunks_created: chunkRows.length,
           embedding_dimensions: 1536,
           oracle_outbox_event_id: oracleOutboxEventId,
+          curator_document_tags: curatorDocumentTags,
         },
         201,
       );

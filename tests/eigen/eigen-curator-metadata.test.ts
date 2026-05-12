@@ -3,7 +3,7 @@ import {
   buildCuratorDocumentTags,
   buildCuratorSummaryLine,
   buildEmbeddingPrefixFromCuratorMetadata,
-} from '../../src/lib/eigen/eigen-curator-metadata';
+} from '../../src/lib/eigen/eigen-curator-metadata.js';
 
 describe('buildCuratorDocumentTags', () => {
   it('maps topics domain audience lane', () => {

@@ -27,7 +27,7 @@ Headers:
 
 - `Authorization: Bearer <MEG_RESOLVE_BRIDGE_TOKEN>`
 - `Content-Type: application/json`
-- `apikey: <EIGEN_ANON_KEY>` — required by Supabase gateway for Edge invokes (same as other functions).
+- `apikey: <Eigen public anon key>` — required by Supabase gateway for Edge invokes. In Lovable or other repos this value is often already present as **`SUPABASE_ANON_KEY`**, **`VITE_SUPABASE_PUBLISHABLE_KEY`**, **`VITE_SUPABASE_ANON_KEY`**, or a project-specific alias — any of them is fine **as long as the JWT `ref` claim is `zudslxucibosjwefojtm`** ([Pitfall A3]). The header name must be **`apikey`**.
 
 Body (JSON object):
 

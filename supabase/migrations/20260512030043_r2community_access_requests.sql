@@ -1,5 +1,6 @@
 -- R2 Community (open-intel-commons) — public intake rows written only via Edge (service role).
--- Admins read with authenticated JWT + has_role(..., 'admin').
+-- Admins read with authenticated JWT + charter_user_roles (charter_role enum); portable for
+-- preview branches — do not reference public.app_role / has_role (not created by R2 migrations).
 -- Version aligned with remote migration applied via Supabase tooling (20260512030043).
 
 CREATE TABLE IF NOT EXISTS public.access_requests (
@@ -41,4 +42,11 @@ CREATE POLICY "Admins can select access requests"
   ON public.access_requests
   FOR SELECT
   TO authenticated
-  USING (public.has_role((SELECT auth.uid()), 'admin'::public.app_role));
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.charter_user_roles cur
+      WHERE cur.user_id = (SELECT auth.uid())
+        AND cur.role::text = 'admin'
+    )
+  );

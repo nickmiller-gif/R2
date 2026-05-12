@@ -157,7 +157,7 @@ jobs:
           # (r2-signal-process: pg_cron dispatcher uses
           # `x-r2-signal-process-token`, validated inside the function by
           # `resolveTrustedProcessCaller`).
-          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-public-sources|r2-signal-process)$"
+          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-public-sources|r2-signal-process|meg-resolve-bridge)$"
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
             # skip shared and known non-deployable legacy function

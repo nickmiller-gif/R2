@@ -23,6 +23,10 @@ Use defensive migrations (`DO $$ … IF to_regclass(…)`) when Lovable may lag 
 
 ## 3. Resolver and dedup keys
 
+### 3.0 HTTP bridge (third-party hosts)
+
+For Lovable Cloud or other environments where embedding the Eigen **service-role** JWT is undesirable, call the **`meg-resolve-bridge`** Edge function on Eigen with a scoped **`MEG_RESOLVE_BRIDGE_TOKEN`**. Do **not** point legacy **`TOWER_MEG_RESOLVER_*`** variables at CentralR2 Tower — Tower does not implement that contract, and Tower MEG UUIDs are not the Eigen registry. See [meg-resolve-bridge.md](./meg-resolve-bridge.md).
+
 Call **`public.meg_resolve_or_create`** (service role) with:
 
 - **`p_entity_type`** — catalog string (`meg:person`, `meg:property`, `meg:ip_matter`, …).

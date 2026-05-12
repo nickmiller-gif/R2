@@ -64,6 +64,7 @@ export function buildCuratorDocumentTags(
   }
 
   const capped = [...new Set(out)].map((t) => t.slice(0, MAX_TAG_LEN));
+  capped.sort();
   return capped.slice(0, 40);
 }
 

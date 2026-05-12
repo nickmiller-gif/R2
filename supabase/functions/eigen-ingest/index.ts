@@ -691,7 +691,12 @@ Deno.serve(
 
       const embeddingPrefix = buildEmbeddingPrefixFromCuratorMetadata(docMeta);
       const { embeddings, model: resolvedEmbeddingModel } = await embedTexts(
-        chunks.map((chunk) => `${embeddingPrefix}${chunk.content}`),
+        chunks.map((chunk) => {
+          const shouldPrefix =
+            embeddingPrefix.length > 0 &&
+            (chunk.chunkLevel === 'document' || chunk.chunkLevel === 'section');
+          return shouldPrefix ? `${embeddingPrefix}${chunk.content}` : chunk.content;
+        }),
         effectiveEmbeddingModel,
       );
 

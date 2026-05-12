@@ -4,8 +4,8 @@ import {
   reflectedErrorResponse,
   reflectedJsonResponse,
 } from '../_shared/cors.ts';
+import { IDEMPOTENCY_KEY_HEADER, withRequestMeta } from '../_shared/correlation.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
-import { withRequestMeta } from '../_shared/correlation.ts';
 import { enforceEigenPublicRateLimit } from '../_shared/public-rate-limit.ts';
 
 function normalizeOrigin(origin: string): string {
@@ -43,6 +43,13 @@ function isAllowedOrigin(origin: string, allow: Set<string>): boolean {
   return false;
 }
 
+function forbiddenOriginResponse(): Response {
+  return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 interface AccessRequestBody {
   name: string;
   email: string;
@@ -53,18 +60,26 @@ interface AccessRequestBody {
   source?: string;
 }
 
+class AccessRequestValidationError extends Error {
+  readonly status = 400;
+}
+
 function parseBody(value: unknown): AccessRequestBody {
-  if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AccessRequestValidationError('Request body must be a JSON object');
+  }
   const body = value as Record<string, unknown>;
   if (typeof body.name !== 'string' || body.name.trim().length < 1)
-    throw new Error('name is required');
+    throw new AccessRequestValidationError('Missing required field: name');
   if (typeof body.email !== 'string' || body.email.trim().length < 3)
-    throw new Error('email is required');
+    throw new AccessRequestValidationError('Missing required field: email');
   if (typeof body.pathway !== 'string' || body.pathway.trim().length < 1) {
-    throw new Error('pathway is required');
+    throw new AccessRequestValidationError('Missing required field: pathway');
   }
   const email = body.email.trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('email format is invalid');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AccessRequestValidationError('Field email is invalid');
+  }
 
   return {
     name: body.name.trim().slice(0, 240),
@@ -81,19 +96,55 @@ function parseBody(value: unknown): AccessRequestBody {
   };
 }
 
+const IDEMPOTENCY_KEY_MAX_LENGTH = 256;
+
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, _meta) => {
     const rawOrigin = req.headers.get('origin');
-    if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
+    const allowed = loadAllowedOrigins();
+
+    if (req.method === 'OPTIONS') {
+      if (!rawOrigin || !isAllowedOrigin(rawOrigin, allowed)) {
+        return forbiddenOriginResponse();
+      }
+      return reflectedCorsResponse(rawOrigin);
+    }
+
+    if (rawOrigin && !isAllowedOrigin(rawOrigin, allowed)) {
+      return forbiddenOriginResponse();
+    }
+
     if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
 
-    const allowed = loadAllowedOrigins();
     if (!rawOrigin || !isAllowedOrigin(rawOrigin, allowed)) {
-      return reflectedErrorResponse(rawOrigin, 'Origin not allowed', 403);
+      return forbiddenOriginResponse();
     }
 
     try {
-      const parsed = parseBody(await req.json());
+      const idempotencyKey = _meta.idempotencyKey;
+      if (!idempotencyKey || idempotencyKey.trim().length === 0) {
+        return reflectedErrorResponse(
+          rawOrigin,
+          `Missing required header: ${IDEMPOTENCY_KEY_HEADER}`,
+          400,
+        );
+      }
+      if (idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+        return reflectedErrorResponse(
+          rawOrigin,
+          `${IDEMPOTENCY_KEY_HEADER} must be <= ${IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
+          400,
+        );
+      }
+
+      let json: unknown;
+      try {
+        json = await req.json();
+      } catch {
+        return reflectedErrorResponse(rawOrigin, 'Invalid JSON body', 400);
+      }
+
+      const parsed = parseBody(json);
       const client = getServiceClient();
       const rl = await enforceEigenPublicRateLimit(client, req);
       if (!rl.ok) {
@@ -110,7 +161,17 @@ Deno.serve(
         );
       }
 
+      const { data: existing } = await client
+        .from('access_requests')
+        .select('id')
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing && (existing as { id?: string }).id) {
+        return reflectedJsonResponse(rawOrigin, { ok: true, id: (existing as { id: string }).id });
+      }
+
       const row = {
+        idempotency_key: idempotencyKey,
         name: parsed.name,
         email: parsed.email,
         organization: parsed.organization ?? null,
@@ -126,13 +187,32 @@ Deno.serve(
         .insert(row)
         .select('id')
         .single();
-      if (error) throw new Error(error.message);
+      if (error) {
+        if ((error as { code?: string }).code === '23505') {
+          const { data: replay } = await client
+            .from('access_requests')
+            .select('id')
+            .eq('idempotency_key', idempotencyKey)
+            .maybeSingle();
+          if (replay && (replay as { id?: string }).id) {
+            return reflectedJsonResponse(rawOrigin, {
+              ok: true,
+              id: (replay as { id: string }).id,
+            });
+          }
+        }
+        return reflectedErrorResponse(rawOrigin, 'Internal server error', 500);
+      }
 
       return reflectedJsonResponse(rawOrigin, { ok: true, id: data?.id });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      const status = message.includes('required') || message.includes('invalid') ? 400 : 500;
-      return reflectedErrorResponse(rawOrigin, message, status);
+      if (err instanceof AccessRequestValidationError) {
+        return reflectedErrorResponse(rawOrigin, err.message, err.status);
+      }
+      if (err instanceof SyntaxError) {
+        return reflectedErrorResponse(rawOrigin, 'Invalid JSON body', 400);
+      }
+      return reflectedErrorResponse(rawOrigin, 'Internal server error', 500);
     }
   }),
 );

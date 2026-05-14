@@ -61,6 +61,37 @@ In `supabase/config.toml` for this repo, add a block so the gateway does not req
 verify_jwt = false
 ```
 
+## Hardening (defense-in-depth)
+
+The bridge runs with gateway `verify_jwt = false`, so all access control is in
+code. The handler enforces the following policies (see
+`supabase/functions/_shared/meg-bridge-policy.ts` and
+`tests/meg/meg-resolve-bridge-hardening.test.ts`):
+
+| Env var                                       | Default | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MEG_RESOLVE_BRIDGE_TOKEN`                    | —       | Required. Tokens shorter than 32 chars are rejected at preflight with `503` (catches placeholder / sample secrets). Use `openssl rand -hex 32`.                                                                                                                                                                                                                                                                                                 |
+| `MEG_RESOLVE_BRIDGE_ALLOWED_SOURCES`          | unset   | Optional comma-separated allowlist (case-insensitive). When set, requests with a `source_platform` outside the list are rejected with `400 source_platform not in allowlist` and logged as `meg_resolve_source_rejected`. When unset, any `source_platform` is accepted (back-compat).                                                                                                                                                          |
+| `MEG_RESOLVE_BRIDGE_ALLOW_CANONICAL_OVERRIDE` | `true`  | Controls whether `hints.meg_canonical_id` / `hints.canonical_external_id` is honored. Set to `false` (or `0` / `no` / `off`) to ignore caller-supplied canonical ids — closes a spine-poisoning vector where a token holder attaches their `(source_platform, external_id)` to an existing canonical entity. Suppressed overrides emit `meg_resolve_override_suppressed`; honored ones emit `canonical_override_used: true` on the success log. |
+
+Other always-on hardening:
+
+- `Content-Type`, when present, must be `application/json` (with optional
+  `charset`); other media types are rejected with `415`. Absent header is
+  accepted for server-to-server `fetch` back-compat.
+- `401` responses emit a structured `meg_resolve_unauthorized` log line
+  including caller IP (`cf-connecting-ip` → `x-real-ip` → `x-forwarded-for`)
+  and (capped) user-agent so abuse attempts are auditable.
+- `503` preflight failures emit `meg_resolve_misconfigured` with a
+  `reason` of `token_missing` or `token_too_short`.
+
+Recommended production posture once callers are confirmed:
+
+```bash
+MEG_RESOLVE_BRIDGE_ALLOWED_SOURCES=ip_pulse_point,centralr2,...
+MEG_RESOLVE_BRIDGE_ALLOW_CANONICAL_OVERRIDE=false
+```
+
 ## `meg-backfill` on Lovable (or other hosts)
 
 Batch backfills should call the **same** bridge URL + token per row (or batch in your Edge with concurrency limits), not a separate Tower URL. Keeps `meg_entity_id` FK-compatible with Eigen `meg_entities` when you store those UUIDs in app tables.

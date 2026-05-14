@@ -21,15 +21,27 @@ import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { extractBearerToken } from '../_shared/auth.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
+import {
+  getRequesterFingerprint,
+  isAcceptableContentType,
+  isCanonicalOverrideAllowed,
+  isSourcePlatformAllowed,
+  parseAllowedSources,
+  validateBridgeToken,
+} from '../_shared/meg-bridge-policy.ts';
 
 const MAX_BODY_BYTES = 32 * 1024;
 
-function authorizeBridge(req: Request): 'ok' | 'missing_secret' | 'unauthorized' {
+type AuthOutcome = 'ok' | 'missing_secret' | 'weak_secret' | 'unauthorized';
+
+function authorizeBridge(req: Request): AuthOutcome {
   const configured = Deno.env.get('MEG_RESOLVE_BRIDGE_TOKEN')?.trim();
-  if (!configured) return 'missing_secret';
+  const status = validateBridgeToken(configured);
+  if (status === 'missing') return 'missing_secret';
+  if (status === 'weak') return 'weak_secret';
   const bearer = extractBearerToken(req)?.trim() ?? '';
   if (!bearer) return 'unauthorized';
-  if (timingSafeEqual(bearer, configured)) return 'ok';
+  if (timingSafeEqual(bearer, configured!)) return 'ok';
   return 'unauthorized';
 }
 
@@ -80,12 +92,39 @@ Deno.serve(
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
+    const fingerprint = getRequesterFingerprint(req);
+
     const auth = authorizeBridge(req);
     if (auth === 'missing_secret') {
+      log.error('meg_resolve_misconfigured', {
+        event: 'meg_resolve_misconfigured',
+        reason: 'token_missing',
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
+      });
       return errorResponse('MEG_RESOLVE_BRIDGE_TOKEN not configured on function', 503);
     }
+    if (auth === 'weak_secret') {
+      log.error('meg_resolve_misconfigured', {
+        event: 'meg_resolve_misconfigured',
+        reason: 'token_too_short',
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
+      });
+      return errorResponse('MEG_RESOLVE_BRIDGE_TOKEN is too short to be safe', 503);
+    }
     if (auth !== 'ok') {
+      log.warn('meg_resolve_unauthorized', {
+        event: 'meg_resolve_unauthorized',
+        bearer_present: Boolean(extractBearerToken(req)),
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
+      });
       return errorResponse('Unauthorized', 401);
+    }
+
+    if (!isAcceptableContentType(req.headers.get('content-type'))) {
+      return errorResponse('Unsupported Content-Type; expected application/json', 415);
     }
 
     const len = req.headers.get('content-length');
@@ -109,12 +148,38 @@ Deno.serve(
     if (!source_platform) return errorResponse('source_platform required', 400);
     if (!external_id) return errorResponse('external_id required', 400);
 
+    const allowedSources = parseAllowedSources(Deno.env.get('MEG_RESOLVE_BRIDGE_ALLOWED_SOURCES'));
+    if (!isSourcePlatformAllowed(source_platform, allowedSources)) {
+      log.warn('meg_resolve_source_rejected', {
+        event: 'meg_resolve_source_rejected',
+        source_platform,
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
+      });
+      return errorResponse('source_platform not in allowlist', 400);
+    }
+
     const kind = raw.kind;
     const hints = isRecord(raw.hints) ? raw.hints : {};
 
     const entityType = normalizeCatalogEntityType(kind);
-    const overrideExt =
+    const overrideAllowed = isCanonicalOverrideAllowed(
+      Deno.env.get('MEG_RESOLVE_BRIDGE_ALLOW_CANONICAL_OVERRIDE'),
+    );
+    const requestedOverride =
       safeString(hints.meg_canonical_id, 256) ?? safeString(hints.canonical_external_id, 256);
+    const overrideExt = overrideAllowed ? requestedOverride : null;
+    const canonical_override_used = Boolean(overrideExt);
+    const canonical_override_suppressed = Boolean(requestedOverride && !overrideAllowed);
+    if (canonical_override_suppressed) {
+      log.warn('meg_resolve_override_suppressed', {
+        event: 'meg_resolve_override_suppressed',
+        source_platform,
+        external_id,
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
+      });
+    }
     const canonical_external_id =
       overrideExt ?? buildCanonicalExternalId(entityType, source_platform, external_id);
 
@@ -154,6 +219,8 @@ Deno.serve(
         message: rpcErr.message,
         source_platform,
         external_id,
+        ip: fingerprint.ip,
+        user_agent: fingerprint.userAgent,
       });
       return errorResponse(rpcErr.message, 500);
     }
@@ -184,6 +251,9 @@ Deno.serve(
       source_platform,
       external_id,
       meg_entity_id: megEntityId,
+      canonical_override_used,
+      ip: fingerprint.ip,
+      user_agent: fingerprint.userAgent,
     });
 
     return jsonResponse({

@@ -18,9 +18,14 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  // Build the binary string in fixed-size chunks via String.fromCharCode.apply to avoid
+  // O(n²) cost of repeated string concatenation and to bound argument count safely.
+  const CHUNK = 0x8000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    parts.push(String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK))));
+  }
+  return btoa(parts.join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function fromBase64Url(value: string): Uint8Array {

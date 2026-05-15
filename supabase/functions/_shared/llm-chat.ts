@@ -45,11 +45,15 @@ function apiKeyForProvider(provider: LlmProvider): string | null {
 
 function defaultModelForProvider(provider: LlmProvider): string {
   if (provider === 'openai') return Deno.env.get('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
-  if (provider === 'anthropic') return Deno.env.get('ANTHROPIC_CHAT_MODEL') ?? 'claude-3-5-sonnet-latest';
+  if (provider === 'anthropic')
+    return Deno.env.get('ANTHROPIC_CHAT_MODEL') ?? 'claude-3-5-sonnet-latest';
   return Deno.env.get('PERPLEXITY_CHAT_MODEL') ?? 'sonar';
 }
 
-function resolveProvider(requested?: LlmProvider): { provider: LlmProvider; fallbackUsed: boolean } {
+function resolveProvider(requested?: LlmProvider): {
+  provider: LlmProvider;
+  fallbackUsed: boolean;
+} {
   const firstChoice = requested ?? DEFAULT_PROVIDER;
   const ordered = [firstChoice, ...PROVIDER_ORDER.filter((p) => p !== firstChoice)];
   for (let idx = 0; idx < ordered.length; idx += 1) {
@@ -96,11 +100,7 @@ function sanitizeConversationHistory(history?: ConversationTurn[]): Conversation
 const DEFAULT_COMPLETION_TIMEOUT_FALLBACK_MS = 45000;
 const MIN_COMPLETION_TIMEOUT_MS = 1;
 
-function parseTimeoutMs(
-  value: string | undefined,
-  fallbackMs: number,
-  minimumMs: number,
-): number {
+function parseTimeoutMs(value: string | undefined, fallbackMs: number, minimumMs: number): number {
   if (typeof value !== 'string') return fallbackMs;
 
   const trimmedValue = value.trim();
@@ -120,10 +120,7 @@ const DEFAULT_COMPLETION_TIMEOUT_MS = parseTimeoutMs(
   MIN_COMPLETION_TIMEOUT_MS,
 );
 
-function resolveRequestTimeoutMs(
-  init: RequestInit,
-  timeoutMs?: number,
-): number {
+function resolveRequestTimeoutMs(init: RequestInit, timeoutMs?: number): number {
   if (typeof timeoutMs === 'number') return timeoutMs;
 
   const headers = new Headers(init.headers);
@@ -161,9 +158,7 @@ async function fetchWithStreamTimeout(
   }
 }
 
-function buildOpenAiMessages(
-  request: LlmChatRequest,
-): Array<{ role: string; content: string }> {
+function buildOpenAiMessages(request: LlmChatRequest): Array<{ role: string; content: string }> {
   const history = sanitizeConversationHistory(request.conversationHistory);
   return [
     { role: 'system', content: request.systemPrompt },
@@ -172,9 +167,7 @@ function buildOpenAiMessages(
   ];
 }
 
-function buildAnthropicMessages(
-  request: LlmChatRequest,
-): Array<{ role: string; content: string }> {
+function buildAnthropicMessages(request: LlmChatRequest): Array<{ role: string; content: string }> {
   const history = sanitizeConversationHistory(request.conversationHistory);
   return [...history, { role: 'user', content: request.userContent }];
 }
@@ -198,7 +191,9 @@ async function completeOpenAi(request: LlmChatRequest, model: string): Promise<s
   if (!response.ok) {
     throw new Error(`OpenAI chat failed (${response.status}): ${await response.text()}`);
   }
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
@@ -223,7 +218,7 @@ async function completeAnthropic(request: LlmChatRequest, model: string): Promis
   if (!response.ok) {
     throw new Error(`Anthropic chat failed (${response.status}): ${await response.text()}`);
   }
-  const payload = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+  const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
   const text = (payload.content ?? [])
     .filter((item) => item.type === 'text')
     .map((item) => item.text ?? '')
@@ -250,7 +245,9 @@ async function completePerplexity(request: LlmChatRequest, model: string): Promi
   if (!response.ok) {
     throw new Error(`Perplexity chat failed (${response.status}): ${await response.text()}`);
   }
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
@@ -516,11 +513,13 @@ export async function* streamLlmChatDeltas(
   const { provider, fallbackUsed } = resolveProvider(request.provider);
   const model = request.model?.trim() || defaultModelForProvider(provider);
 
-  let draft = '';
+  // Accumulate deltas in an array to avoid O(n²) string concatenation across long streams.
+  const draftParts: string[] = [];
   for await (const delta of streamProviderDeltas(provider, request, model)) {
-    draft += delta;
+    draftParts.push(delta);
     yield delta;
   }
+  let draft = draftParts.join('');
 
   if (!draft.trim()) {
     draft = await completeWithProvider(provider, request, model);

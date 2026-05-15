@@ -303,12 +303,14 @@ async function gatherEvidence(
 async function resolveEntities(serviceClient: ReturnType<typeof getServiceClient>, runId: string) {
   await updateRunStatus(serviceClient, runId, 'resolving_entities');
 
-  // Fetch evidence gathered for this run
+  // Fetch evidence gathered for this run. Cap at 500 to bound payload for runs that
+  // somehow accumulate large evidence sets — stage 3 only needs chunk references.
   const { data: evidence } = await serviceClient
     .from('oracle_run_evidence')
     .select('id, chunk_id, content_excerpt')
     .eq('run_id', runId)
-    .not('chunk_id', 'is', null);
+    .not('chunk_id', 'is', null)
+    .limit(500);
 
   if (!evidence || evidence.length === 0) {
     return {
@@ -440,11 +442,13 @@ async function scoreAndVerify(
 ) {
   await updateRunStatus(serviceClient, runId, 'scoring');
 
-  // Fetch hypotheses for this run
+  // Fetch hypotheses for this run. Cap to bound result size — single runs are not
+  // expected to produce more than ~200 hypotheses.
   const { data: hypotheses, error } = await serviceClient
     .from('oracle_run_hypotheses')
     .select('id, hypothesis_text, composite_score, evidence_strength, confidence')
-    .eq('run_id', runId);
+    .eq('run_id', runId)
+    .limit(500);
 
   if (error) throw new Error(`Failed to fetch hypotheses: ${error.message}`);
   if (!hypotheses || hypotheses.length === 0) return { verified: 0, total: 0 };
@@ -543,12 +547,24 @@ async function computeEvaluation(
   serviceClient: ReturnType<typeof getServiceClient>,
   runId: string,
 ) {
-  const { data: hypotheses } = await serviceClient
-    .from('oracle_run_hypotheses')
-    .select(
-      'composite_score, novelty_score, evidence_strength, confidence, publishable, citation_ids',
-    )
-    .eq('run_id', runId);
+  // Fetch hypotheses and verification rows in parallel — they are independent queries.
+  const [hypothesesRes, verificationRes] = await Promise.all([
+    serviceClient
+      .from('oracle_run_hypotheses')
+      .select(
+        'composite_score, novelty_score, evidence_strength, confidence, publishable, citation_ids',
+      )
+      .eq('run_id', runId)
+      .limit(500),
+    serviceClient
+      .from('verification_results')
+      .select('sources_checked')
+      .eq('run_id', runId)
+      .limit(1000),
+  ]);
+
+  const hypotheses = hypothesesRes.data;
+  const verificationRows = verificationRes.data;
 
   if (!hypotheses || hypotheses.length === 0) {
     return {
@@ -561,21 +577,25 @@ async function computeEvaluation(
     };
   }
 
+  // Single-pass aggregation over hypotheses (replaces 5 separate filter/reduce calls).
   const count = hypotheses.length;
-  const withCitations = hypotheses.filter(
-    (h: Record<string, unknown>) =>
-      Array.isArray(h.citation_ids) && (h.citation_ids as string[]).length >= 2,
-  ).length;
-  const scoreTotal = hypotheses.reduce(
-    (sum: number, hypothesis: Record<string, unknown>) =>
-      sum + ((hypothesis.composite_score as number) ?? 0),
-    0,
-  );
-  const { data: verificationRows } = await serviceClient
-    .from('verification_results')
-    .select('sources_checked')
-    .eq('run_id', runId);
-  const verifiedCount = hypotheses.filter((h: Record<string, unknown>) => h.publishable).length;
+  let withCitations = 0;
+  let publishedCount = 0;
+  let scoreTotal = 0;
+  let noveltyTotal = 0;
+  let confidenceTotal = 0;
+  let evidenceTotal = 0;
+  for (const h of hypotheses as Record<string, unknown>[]) {
+    if (Array.isArray(h.citation_ids) && (h.citation_ids as string[]).length >= 2) {
+      withCitations++;
+    }
+    if (h.publishable) publishedCount++;
+    scoreTotal += (h.composite_score as number) ?? 0;
+    noveltyTotal += (h.novelty_score as number) ?? 0;
+    confidenceTotal += (h.confidence as number) ?? 0;
+    evidenceTotal += (h.evidence_strength as number) ?? 0;
+  }
+
   const evidenceDiversity = new Set(
     (verificationRows ?? [])
       .map((row: Record<string, unknown>) => Number(row.sources_checked ?? 0))
@@ -584,26 +604,14 @@ async function computeEvaluation(
 
   return {
     hypothesis_count: count,
-    published_count: hypotheses.filter((h: Record<string, unknown>) => h.publishable).length,
+    published_count: publishedCount,
     citation_coverage: withCitations / count,
-    verified_rate: verifiedCount / count,
+    verified_rate: publishedCount / count,
     evidence_diversity: evidenceDiversity,
     avg_composite_score: scoreTotal / count,
-    novelty_score:
-      hypotheses.reduce(
-        (s: number, h: Record<string, unknown>) => s + ((h.novelty_score as number) ?? 0),
-        0,
-      ) / count,
-    avg_confidence:
-      hypotheses.reduce(
-        (s: number, h: Record<string, unknown>) => s + ((h.confidence as number) ?? 0),
-        0,
-      ) / count,
-    avg_evidence_strength:
-      hypotheses.reduce(
-        (s: number, h: Record<string, unknown>) => s + ((h.evidence_strength as number) ?? 0),
-        0,
-      ) / count,
+    novelty_score: noveltyTotal / count,
+    avg_confidence: confidenceTotal / count,
+    avg_evidence_strength: evidenceTotal / count,
   };
 }
 
@@ -980,17 +988,15 @@ Deno.serve(
 
             if (thErr) throw new Error(`Failed to create thesis: ${thErr.message}`);
 
-            // Link hypothesis to thesis
-            const { error: linkErr } = await serviceClient
-              .from('oracle_run_hypotheses')
-              .update({ thesis_id: thesis!.id })
-              .eq('id', h.id);
-            if (linkErr) throw new Error(`Failed to link hypothesis to thesis: ${linkErr.message}`);
-
-            // Write publication event
-            const { error: pubEventErr } = await serviceClient
-              .from('oracle_publication_events')
-              .insert([
+            // The link-update, publication event, and audit log entry only depend on the
+            // newly created thesis id — they are independent of each other and can run
+            // in parallel.
+            const [linkRes, pubEventRes] = await Promise.all([
+              serviceClient
+                .from('oracle_run_hypotheses')
+                .update({ thesis_id: thesis!.id })
+                .eq('id', h.id),
+              serviceClient.from('oracle_publication_events').insert([
                 {
                   target_type: 'thesis',
                   target_id: thesis!.id,
@@ -1000,24 +1006,27 @@ Deno.serve(
                   notes: body.data.publicationNotes,
                   metadata: { source_run_id: body.data.runId },
                 },
-              ]);
-            if (pubEventErr)
-              throw new Error(`Failed to write publication event: ${pubEventErr.message}`);
-            await serviceClient.from('eigen_governance_audit_log').insert([
-              {
-                event_type: 'hypothesis_published',
-                run_id: body.data.runId,
-                thesis_id: thesis!.id,
-                actor_id: auth.claims.userId,
-                details: {
-                  hypothesis_id: h.id,
-                  publication_notes: body.data.publicationNotes,
-                  confidence: h.confidence,
-                  evidence_strength: h.evidence_strength,
-                  composite_score: h.composite_score,
+              ]),
+              serviceClient.from('eigen_governance_audit_log').insert([
+                {
+                  event_type: 'hypothesis_published',
+                  run_id: body.data.runId,
+                  thesis_id: thesis!.id,
+                  actor_id: auth.claims.userId,
+                  details: {
+                    hypothesis_id: h.id,
+                    publication_notes: body.data.publicationNotes,
+                    confidence: h.confidence,
+                    evidence_strength: h.evidence_strength,
+                    composite_score: h.composite_score,
+                  },
                 },
-              },
+              ]),
             ]);
+            if (linkRes.error)
+              throw new Error(`Failed to link hypothesis to thesis: ${linkRes.error.message}`);
+            if (pubEventRes.error)
+              throw new Error(`Failed to write publication event: ${pubEventRes.error.message}`);
 
             publishedThesisIds.push(thesis!.id);
           }

@@ -98,27 +98,35 @@ Deno.serve(
       let entityAssetId: string | null = null;
       let signalAnchor: 'governance_entity' | 'document' | null = null;
       let assetLookupFailed = false;
-      for (const refId of entityIds) {
-        const asset = await client
+      if (entityIds.length > 0) {
+        // Batch entity-id lookup into a single .in() query instead of N sequential queries.
+        const assets = await client
           .from('asset_registry')
-          .select('id')
+          .select('id, ref_id')
           .eq('kind', 'governance_entity')
-          .eq('ref_id', refId)
-          .limit(1)
-          .maybeSingle();
-        if (asset.error) {
+          .in('ref_id', entityIds)
+          .limit(entityIds.length);
+        if (assets.error) {
           await client
             .from('eigen_oracle_outbox')
             .update({ status: 'failed', processed_at: new Date().toISOString() })
             .eq('id', id);
-          results.push({ id, outcome: 'failed', error: asset.error.message });
+          results.push({ id, outcome: 'failed', error: assets.error.message });
           assetLookupFailed = true;
-          break;
-        }
-        if (asset.data?.id) {
-          entityAssetId = asset.data.id as string;
-          signalAnchor = 'governance_entity';
-          break;
+        } else if (assets.data && assets.data.length > 0) {
+          // Preserve original priority: first refId in entityIds wins.
+          const byRef = new Map<string, string>();
+          for (const a of assets.data as Array<{ id: string; ref_id: string }>) {
+            byRef.set(String(a.ref_id), String(a.id));
+          }
+          for (const refId of entityIds) {
+            const found = byRef.get(refId);
+            if (found) {
+              entityAssetId = found;
+              signalAnchor = 'governance_entity';
+              break;
+            }
+          }
         }
       }
 

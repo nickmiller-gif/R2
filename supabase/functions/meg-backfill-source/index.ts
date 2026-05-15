@@ -314,17 +314,23 @@ async function backfillRelatedAndCoffeeForFeedRow(
   const existingRel = (row.related_entity_ids ?? []).filter((id) => isUuid(id));
   const merged = new Set<string>(existingRel);
 
-  for (const rArgs of inferRelatedMegResolveArgsList(feedForInfer)) {
-    const { data: rid, error: relErr } = await client.rpc('meg_resolve_or_create', {
-      p_entity_type: rArgs.p_entity_type,
-      p_canonical_name: rArgs.p_canonical_name,
-      p_canonical_email: rArgs.p_canonical_email,
-      p_canonical_external_id: rArgs.p_canonical_external_id,
-      p_source_system: rArgs.p_source_system,
-      p_source_table: rArgs.p_source_table,
-      p_source_row_id: rArgs.p_source_row_id,
-      p_payload: rArgs.p_payload,
-    });
+  // Resolve all related entity RPCs in parallel — each call is independent.
+  const relatedArgsList = inferRelatedMegResolveArgsList(feedForInfer);
+  const relatedResults = await Promise.all(
+    relatedArgsList.map((rArgs) =>
+      client.rpc('meg_resolve_or_create', {
+        p_entity_type: rArgs.p_entity_type,
+        p_canonical_name: rArgs.p_canonical_name,
+        p_canonical_email: rArgs.p_canonical_email,
+        p_canonical_external_id: rArgs.p_canonical_external_id,
+        p_source_system: rArgs.p_source_system,
+        p_source_table: rArgs.p_source_table,
+        p_source_row_id: rArgs.p_source_row_id,
+        p_payload: rArgs.p_payload,
+      }),
+    ),
+  );
+  for (const { data: rid, error: relErr } of relatedResults) {
     if (relErr) {
       throw new Error(relErr.message);
     }
@@ -357,6 +363,7 @@ async function backfillRelatedAndCoffeeForFeedRow(
   };
 
   if (isCoffeePairingSignal(feedLike)) {
+    // Resolve once and reuse for both the meg_link_entities edge and the coffee_matches update.
     const target = await resolveCoffeeCounterpartyMegEntityId(client, feedForInfer);
     if (target && isUuid(target)) {
       const { error: edgeErr } = await client.rpc('meg_link_entities', {
@@ -378,12 +385,11 @@ async function backfillRelatedAndCoffeeForFeedRow(
     const matchId =
       typeof p.coffee_match_id === 'string' && isUuid(p.coffee_match_id) ? p.coffee_match_id : null;
     if (matchId) {
-      const matchTarget = await resolveCoffeeCounterpartyMegEntityId(client, feedForInfer);
       const upd: { actor_meg_entity_id: string; matched_meg_entity_id?: string | null } = {
         actor_meg_entity_id: actorMegId,
       };
-      if (matchTarget && isUuid(matchTarget)) {
-        upd.matched_meg_entity_id = matchTarget;
+      if (target && isUuid(target)) {
+        upd.matched_meg_entity_id = target;
       }
       const { data: cmRow, error: cmErr } = await client
         .from('coffee_matches')

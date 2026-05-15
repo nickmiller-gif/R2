@@ -53,6 +53,28 @@ make eigen-public-corpus
 - `scripts/eigen-public-rss-ingest.py` — feeds-only
 - `scripts/eigen-ingest-sync.sh` — directory-only (set `POLICY_TAGS=eigen_public`)
 
+## Atlas link rows (sitemap provenance)
+
+When the **`atlas_*`** tables are present (see migration `20260515203256_atlas_link_graph.sql`), you can persist crawl metadata alongside public ingest:
+
+| Flag / variable             | Purpose                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `--write-atlas-links`       | Create `atlas_crawls`, insert `atlas_urls` + `atlas_links` (`link_kind=sitemap_parent`), PATCH ingest outcome after each fetch |
+| `--atlas-brand-key <slug>`  | Stored on `atlas_crawls.brand_key` (default `r2app`)                                                                           |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Required with `--write-atlas-links`**. PostgREST writes use service_role; never commit this key                              |
+| `AUTH_BEARER`               | Unchanged — still **member** JWT for `eigen-fetch-ingest`                                                                      |
+
+Example (from `R2/` root, secrets in gitignored env files):
+
+```bash
+export SUPABASE_URL="https://YOUR.supabase.co"
+export AUTH_BEARER="<member_jwt>"
+export SUPABASE_SERVICE_ROLE_KEY="<service_role_jwt>"
+python3 scripts/eigen-public-sitemap-ingest.py --write-atlas-links --atlas-brand-key r2app "https://YOUR_PUBLIC_SITE/sitemap.xml"
+```
+
+Regulatory fetch seeds use the same **`eigen-fetch-ingest`** path; hostnames must appear on the Edge secret **`EIGEN_FETCH_ALLOWLIST`**. See [eigen-regulatory-watchlist.md](./eigen-regulatory-watchlist.md).
+
 ## GitHub Actions
 
 Workflow: `.github/workflows/eigen-public-corpus.yml`  

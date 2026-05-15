@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_requests: {
+        Row: {
+          created_at: string
+          domain: string | null
+          email: string
+          id: string
+          idempotency_key: string | null
+          message: string | null
+          name: string
+          organization: string | null
+          pathway: string
+          source: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          email: string
+          id?: string
+          idempotency_key?: string | null
+          message?: string | null
+          name: string
+          organization?: string | null
+          pathway: string
+          source?: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          email?: string
+          id?: string
+          idempotency_key?: string | null
+          message?: string | null
+          name?: string
+          organization?: string | null
+          pathway?: string
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       activity_log: {
         Row: {
           consumed: boolean | null
@@ -554,6 +596,132 @@ export type Database = {
             columns: ["target_asset_id"]
             isOneToOne: false
             referencedRelation: "asset_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_crawls: {
+        Row: {
+          brand_key: string
+          completed_at: string | null
+          id: string
+          metadata: Json
+          source: Database["public"]["Enums"]["atlas_crawl_source"]
+          started_at: string
+          status: Database["public"]["Enums"]["atlas_crawl_status"]
+        }
+        Insert: {
+          brand_key: string
+          completed_at?: string | null
+          id?: string
+          metadata?: Json
+          source?: Database["public"]["Enums"]["atlas_crawl_source"]
+          started_at?: string
+          status?: Database["public"]["Enums"]["atlas_crawl_status"]
+        }
+        Update: {
+          brand_key?: string
+          completed_at?: string | null
+          id?: string
+          metadata?: Json
+          source?: Database["public"]["Enums"]["atlas_crawl_source"]
+          started_at?: string
+          status?: Database["public"]["Enums"]["atlas_crawl_status"]
+        }
+        Relationships: []
+      }
+      atlas_links: {
+        Row: {
+          crawl_id: string
+          from_url: string
+          id: string
+          link_kind: string
+          to_url: string
+        }
+        Insert: {
+          crawl_id: string
+          from_url: string
+          id?: string
+          link_kind: string
+          to_url: string
+        }
+        Update: {
+          crawl_id?: string
+          from_url?: string
+          id?: string
+          link_kind?: string
+          to_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_links_crawl_id_fkey"
+            columns: ["crawl_id"]
+            isOneToOne: false
+            referencedRelation: "atlas_crawls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_snapshots: {
+        Row: {
+          captured_at: string
+          crawl_id: string | null
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          captured_at?: string
+          crawl_id?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          captured_at?: string
+          crawl_id?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_snapshots_crawl_id_fkey"
+            columns: ["crawl_id"]
+            isOneToOne: false
+            referencedRelation: "atlas_crawls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_urls: {
+        Row: {
+          crawl_id: string
+          first_seen_at: string
+          id: string
+          ingest_ok: boolean | null
+          last_error: string | null
+          url: string
+        }
+        Insert: {
+          crawl_id: string
+          first_seen_at?: string
+          id?: string
+          ingest_ok?: boolean | null
+          last_error?: string | null
+          url: string
+        }
+        Update: {
+          crawl_id?: string
+          first_seen_at?: string
+          id?: string
+          ingest_ok?: boolean | null
+          last_error?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_urls_crawl_id_fkey"
+            columns: ["crawl_id"]
+            isOneToOne: false
+            referencedRelation: "atlas_crawls"
             referencedColumns: ["id"]
           },
         ]
@@ -1845,6 +2013,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "charter_asset_valuations_charter_entity_id_fkey"
+            columns: ["charter_entity_id"]
+            isOneToOne: false
+            referencedRelation: "generational_brand_index"
+            referencedColumns: ["charter_entity_id"]
+          },
+          {
             foreignKeyName: "charter_asset_valuations_meg_entity_id_fkey"
             columns: ["meg_entity_id"]
             isOneToOne: false
@@ -2179,6 +2354,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "charter_obligations_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "generational_brand_index"
+            referencedColumns: ["charter_entity_id"]
+          },
+          {
             foreignKeyName: "charter_obligations_right_id_fkey"
             columns: ["right_id"]
             isOneToOne: false
@@ -2243,6 +2425,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "charter_entities"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "charter_payouts_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "generational_brand_index"
+            referencedColumns: ["charter_entity_id"]
           },
           {
             foreignKeyName: "charter_payouts_obligation_id_fkey"
@@ -2367,6 +2556,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "charter_entities"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "charter_rights_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "generational_brand_index"
+            referencedColumns: ["charter_entity_id"]
           },
         ]
       }
@@ -4852,6 +5048,177 @@ export type Database = {
           },
         ]
       }
+      entity_enrichment_evidence: {
+        Row: {
+          created_at: string
+          entity_type: string
+          field_path: string
+          id: string
+          ingest_run_id: string | null
+          meg_entity_id: string
+          observed_at: string
+          raw_snippet: string | null
+          site_id: string
+          source_key: string
+          source_tier: number
+          value_json: Json
+        }
+        Insert: {
+          created_at?: string
+          entity_type: string
+          field_path: string
+          id?: string
+          ingest_run_id?: string | null
+          meg_entity_id: string
+          observed_at: string
+          raw_snippet?: string | null
+          site_id: string
+          source_key: string
+          source_tier: number
+          value_json: Json
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string
+          field_path?: string
+          id?: string
+          ingest_run_id?: string | null
+          meg_entity_id?: string
+          observed_at?: string
+          raw_snippet?: string | null
+          site_id?: string
+          source_key?: string
+          source_tier?: number
+          value_json?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_enrichment_evidence_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_enrichment_field_consensus: {
+        Row: {
+          consensus_reason_json: Json
+          consensus_score: number
+          consensus_value_json: Json | null
+          decided_at: string
+          entity_type: string
+          field_path: string
+          id: string
+          meg_entity_id: string
+          site_id: string
+        }
+        Insert: {
+          consensus_reason_json: Json
+          consensus_score: number
+          consensus_value_json?: Json | null
+          decided_at?: string
+          entity_type: string
+          field_path: string
+          id?: string
+          meg_entity_id: string
+          site_id: string
+        }
+        Update: {
+          consensus_reason_json?: Json
+          consensus_score?: number
+          consensus_value_json?: Json | null
+          decided_at?: string
+          entity_type?: string
+          field_path?: string
+          id?: string
+          meg_entity_id?: string
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_enrichment_field_consensus_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_enrichment_review_queue: {
+        Row: {
+          created_at: string
+          entity_type: string
+          field_path: string
+          id: string
+          meg_entity_id: string
+          payload_json: Json
+          resolved_at: string | null
+          resolved_by: string | null
+          site_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          entity_type: string
+          field_path: string
+          id?: string
+          meg_entity_id: string
+          payload_json: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          site_id: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string
+          field_path?: string
+          id?: string
+          meg_entity_id?: string
+          payload_json?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          site_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_enrichment_review_queue_meg_entity_id_fkey"
+            columns: ["meg_entity_id"]
+            isOneToOne: false
+            referencedRelation: "meg_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_enrichment_run_checkpoints: {
+        Row: {
+          fields_refreshed: number
+          id: string
+          last_meg_entity_id: string | null
+          run_kind: string
+          site_id: string
+          updated_at: string
+        }
+        Insert: {
+          fields_refreshed?: number
+          id?: string
+          last_meg_entity_id?: string | null
+          run_kind: string
+          site_id: string
+          updated_at?: string
+        }
+        Update: {
+          fields_refreshed?: number
+          id?: string
+          last_meg_entity_id?: string | null
+          run_kind?: string
+          site_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       entity_mentions: {
         Row: {
           chunk_id: string
@@ -4979,6 +5346,7 @@ export type Database = {
           existing_solutions: string | null
           id: string
           idea: string
+          meg_entity_id: string | null
           plan_tier: string
           problem: string
           stage: string
@@ -4991,6 +5359,7 @@ export type Database = {
           existing_solutions?: string | null
           id?: string
           idea: string
+          meg_entity_id?: string | null
           plan_tier?: string
           problem: string
           stage?: string
@@ -5003,6 +5372,7 @@ export type Database = {
           existing_solutions?: string | null
           id?: string
           idea?: string
+          meg_entity_id?: string | null
           plan_tier?: string
           problem?: string
           stage?: string
@@ -5678,6 +6048,7 @@ export type Database = {
           attributes: Json
           canonical_name: string
           created_at: string
+          enrichment_consensus: Json
           entity_type: Database["public"]["Enums"]["meg_entity_type"]
           external_ids: Json
           id: string
@@ -5691,6 +6062,7 @@ export type Database = {
           attributes?: Json
           canonical_name: string
           created_at?: string
+          enrichment_consensus?: Json
           entity_type: Database["public"]["Enums"]["meg_entity_type"]
           external_ids?: Json
           id?: string
@@ -5704,6 +6076,7 @@ export type Database = {
           attributes?: Json
           canonical_name?: string
           created_at?: string
+          enrichment_consensus?: Json
           entity_type?: Database["public"]["Enums"]["meg_entity_type"]
           external_ids?: Json
           id?: string
@@ -8103,33 +8476,42 @@ export type Database = {
       }
       profiles: {
         Row: {
+          affiliation: string | null
           avatar_url: string | null
+          bio: string | null
           company: string | null
           created_at: string
           display_name: string | null
           id: string
+          links: Json
           meg_entity_id: string | null
           preferences: Json | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          affiliation?: string | null
           avatar_url?: string | null
+          bio?: string | null
           company?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
+          links?: Json
           meg_entity_id?: string | null
           preferences?: Json | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          affiliation?: string | null
           avatar_url?: string | null
+          bio?: string | null
           company?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
+          links?: Json
           meg_entity_id?: string | null
           preferences?: Json | null
           updated_at?: string
@@ -8256,6 +8638,256 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      publication_audit_log: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          from_status: Database["public"]["Enums"]["publication_status"] | null
+          id: string
+          note: string | null
+          publication_id: string
+          to_status: Database["public"]["Enums"]["publication_status"]
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["publication_status"] | null
+          id?: string
+          note?: string | null
+          publication_id: string
+          to_status: Database["public"]["Enums"]["publication_status"]
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["publication_status"] | null
+          id?: string
+          note?: string | null
+          publication_id?: string
+          to_status?: Database["public"]["Enums"]["publication_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_audit_log_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publication_authors: {
+        Row: {
+          author_role: Database["public"]["Enums"]["publication_author_role"]
+          created_at: string
+          id: string
+          ordinal: number
+          profile_id: string
+          publication_id: string
+        }
+        Insert: {
+          author_role?: Database["public"]["Enums"]["publication_author_role"]
+          created_at?: string
+          id?: string
+          ordinal?: number
+          profile_id: string
+          publication_id: string
+        }
+        Update: {
+          author_role?: Database["public"]["Enums"]["publication_author_role"]
+          created_at?: string
+          id?: string
+          ordinal?: number
+          profile_id?: string
+          publication_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_authors_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publication_citations: {
+        Row: {
+          accessed_at: string | null
+          citation_text: string
+          created_at: string
+          doi: string | null
+          evidence_item_id: string | null
+          id: string
+          ordinal: number
+          publication_id: string
+          source_url: string | null
+        }
+        Insert: {
+          accessed_at?: string | null
+          citation_text: string
+          created_at?: string
+          doi?: string | null
+          evidence_item_id?: string | null
+          id?: string
+          ordinal?: number
+          publication_id: string
+          source_url?: string | null
+        }
+        Update: {
+          accessed_at?: string | null
+          citation_text?: string
+          created_at?: string
+          doi?: string | null
+          evidence_item_id?: string | null
+          id?: string
+          ordinal?: number
+          publication_id?: string
+          source_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_citations_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publication_tags: {
+        Row: {
+          created_at: string
+          id: string
+          publication_id: string
+          tag: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          publication_id: string
+          tag: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          publication_id?: string
+          tag?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_tags_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publication_versions: {
+        Row: {
+          body_html: string | null
+          body_md: string | null
+          changelog: string | null
+          created_at: string
+          id: string
+          publication_id: string
+          snapshot_at: string
+          snapshot_by: string | null
+          version: string
+        }
+        Insert: {
+          body_html?: string | null
+          body_md?: string | null
+          changelog?: string | null
+          created_at?: string
+          id?: string
+          publication_id: string
+          snapshot_at?: string
+          snapshot_by?: string | null
+          version: string
+        }
+        Update: {
+          body_html?: string | null
+          body_md?: string | null
+          changelog?: string | null
+          created_at?: string
+          id?: string
+          publication_id?: string
+          snapshot_at?: string
+          snapshot_by?: string | null
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_versions_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      publications: {
+        Row: {
+          abstract: string | null
+          cover_image_path: string | null
+          created_at: string
+          deck: string | null
+          doi: string | null
+          domain: Database["public"]["Enums"]["publication_domain"]
+          id: string
+          lead_author_id: string | null
+          license: string
+          og_image_path: string | null
+          published_at: string | null
+          retracted_at: string | null
+          slug: string
+          status: Database["public"]["Enums"]["publication_status"]
+          title: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          abstract?: string | null
+          cover_image_path?: string | null
+          created_at?: string
+          deck?: string | null
+          doi?: string | null
+          domain: Database["public"]["Enums"]["publication_domain"]
+          id?: string
+          lead_author_id?: string | null
+          license?: string
+          og_image_path?: string | null
+          published_at?: string | null
+          retracted_at?: string | null
+          slug: string
+          status?: Database["public"]["Enums"]["publication_status"]
+          title: string
+          updated_at?: string
+          version?: string
+        }
+        Update: {
+          abstract?: string | null
+          cover_image_path?: string | null
+          created_at?: string
+          deck?: string | null
+          doi?: string | null
+          domain?: Database["public"]["Enums"]["publication_domain"]
+          id?: string
+          lead_author_id?: string | null
+          license?: string
+          og_image_path?: string | null
+          published_at?: string | null
+          retracted_at?: string | null
+          slug?: string
+          status?: Database["public"]["Enums"]["publication_status"]
+          title?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
       }
       qa_questions: {
         Row: {
@@ -9351,6 +9983,69 @@ export type Database = {
         }
         Relationships: []
       }
+      text_origin_feedback: {
+        Row: {
+          created_at: string
+          helpful: string | null
+          id: string
+          length_bucket: number
+          retention_purge_after: string
+          score_run_id: string | null
+          scores: Json
+          source: string
+          text_sha256: string
+          user_label: string | null
+        }
+        Insert: {
+          created_at?: string
+          helpful?: string | null
+          id?: string
+          length_bucket: number
+          retention_purge_after?: string
+          score_run_id?: string | null
+          scores?: Json
+          source?: string
+          text_sha256: string
+          user_label?: string | null
+        }
+        Update: {
+          created_at?: string
+          helpful?: string | null
+          id?: string
+          length_bucket?: number
+          retention_purge_after?: string
+          score_run_id?: string | null
+          scores?: Json
+          source?: string
+          text_sha256?: string
+          user_label?: string | null
+        }
+        Relationships: []
+      }
+      text_origin_reference_profiles: {
+        Row: {
+          family: string
+          id: string
+          stats: Json
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          family: string
+          id?: string
+          stats?: Json
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          family?: string
+          id?: string
+          stats?: Json
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       tool_capabilities: {
         Row: {
           approval_policy: Database["public"]["Enums"]["approval_policy"]
@@ -9554,9 +10249,11 @@ export type Database = {
           id: string
           interviews_completed: number
           interviews_target: number
+          payment_status: string
           researcher_id: string | null
           sla_deadline: string
           status: string
+          stripe_checkout_session_id: string | null
           submission_id: string
         }
         Insert: {
@@ -9564,9 +10261,11 @@ export type Database = {
           id: string
           interviews_completed?: number
           interviews_target?: number
+          payment_status?: string
           researcher_id?: string | null
           sla_deadline: string
           status?: string
+          stripe_checkout_session_id?: string | null
           submission_id: string
         }
         Update: {
@@ -9574,9 +10273,11 @@ export type Database = {
           id?: string
           interviews_completed?: number
           interviews_target?: number
+          payment_status?: string
           researcher_id?: string | null
           sla_deadline?: string
           status?: string
+          stripe_checkout_session_id?: string | null
           submission_id?: string
         }
         Relationships: [
@@ -9883,6 +10584,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      generational_brand_index: {
+        Row: {
+          atlas_page_count: number | null
+          atlas_pages_portfolio_total: number | null
+          canonical_entity_id: string | null
+          charter_entity_id: string | null
+          charter_entity_name: string | null
+          charter_entity_type: string | null
+          charter_metadata: Json | null
+          document_counts_by_source_system: Json | null
+          documents_active_total: number | null
+          persona_chunk_count_placeholder: number | null
+        }
+        Relationships: []
       }
       oracle_briefings_read_model: {
         Row: {
@@ -10663,7 +11379,15 @@ export type Database = {
         Args: { _area: string; _user_id: string }
         Returns: boolean
       }
+      can_edit_publication: {
+        Args: { _publication_id: string; _user_id: string }
+        Returns: boolean
+      }
       can_read_centralr2: { Args: { _user_id: string }; Returns: boolean }
+      can_read_publication: {
+        Args: { _publication_id: string; _user_id: string }
+        Returns: boolean
+      }
       claim_operator_proposals_for_review: {
         Args: { p_limit?: number }
         Returns: {
@@ -10849,10 +11573,14 @@ export type Database = {
         Args: { _client_id: string; _user_id: string }
         Returns: boolean
       }
+      is_publications_editor: { Args: { _user_id: string }; Returns: boolean }
+      is_publications_staff: { Args: { _user_id: string }; Returns: boolean }
       is_works_admin: { Args: { _uid: string }; Returns: boolean }
       match_knowledge_chunks: {
         Args: {
           ann_limit: number
+          filter_document_tag_match?: string
+          filter_document_tags?: string[]
           filter_entity_ids?: string[]
           filter_policy_tags?: string[]
           query_embedding: number[]
@@ -10937,7 +11665,14 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "analyst" | "viewer" | "reviewer"
+      app_role:
+        | "admin"
+        | "analyst"
+        | "viewer"
+        | "reviewer"
+        | "reader"
+        | "contributor"
+        | "editor"
       approval_policy: "none_required" | "user_approval" | "admin_approval"
       asset_governance_status:
         | "local"
@@ -10969,6 +11704,8 @@ export type Database = {
         | "lease_on"
         | "secures"
         | "supports"
+      atlas_crawl_source: "sitemap" | "html"
+      atlas_crawl_status: "running" | "completed" | "failed"
       charter_context_status: "unlinked" | "linked" | "stale" | "error"
       charter_role: "member" | "reviewer" | "operator" | "counsel" | "admin"
       charter_valuation_kind:
@@ -11236,6 +11973,9 @@ export type Database = {
         | "industrial"
         | "land"
         | "tower"
+      publication_author_role: "lead" | "contributor" | "reviewer" | "editor"
+      publication_domain: "ip_patent" | "public_health" | "real_estate"
+      publication_status: "draft" | "in_review" | "published" | "retracted"
       retention_class: "ephemeral" | "short_term" | "long_term" | "permanent"
       retrieval_run_status: "pending" | "running" | "completed" | "failed"
       right_status: "pending" | "active" | "expired" | "revoked"
@@ -11390,7 +12130,15 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "analyst", "viewer", "reviewer"],
+      app_role: [
+        "admin",
+        "analyst",
+        "viewer",
+        "reviewer",
+        "reader",
+        "contributor",
+        "editor",
+      ],
       approval_policy: ["none_required", "user_approval", "admin_approval"],
       asset_governance_status: [
         "local",
@@ -11425,6 +12173,8 @@ export const Constants = {
         "secures",
         "supports",
       ],
+      atlas_crawl_source: ["sitemap", "html"],
+      atlas_crawl_status: ["running", "completed", "failed"],
       charter_context_status: ["unlinked", "linked", "stale", "error"],
       charter_role: ["member", "reviewer", "operator", "counsel", "admin"],
       charter_valuation_kind: [
@@ -11723,6 +12473,9 @@ export const Constants = {
         "land",
         "tower",
       ],
+      publication_author_role: ["lead", "contributor", "reviewer", "editor"],
+      publication_domain: ["ip_patent", "public_health", "real_estate"],
+      publication_status: ["draft", "in_review", "published", "retracted"],
       retention_class: ["ephemeral", "short_term", "long_term", "permanent"],
       retrieval_run_status: ["pending", "running", "completed", "failed"],
       right_status: ["pending", "active", "expired", "revoked"],

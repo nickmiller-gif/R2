@@ -344,6 +344,7 @@ def main() -> int:
                 print(f"[atlas] patch atlas_urls failed for {url!r}: {pmsg[:400]}", file=sys.stderr)
 
     ok_n, fail_n = 0, 0
+    crawl_exception = False
     try:
         ok_n, fail_n = run_fetch_ingest_batch(
             to_ingest,
@@ -355,13 +356,17 @@ def main() -> int:
             on_progress=on_progress,
             on_result=on_result,
         )
+    except Exception:
+        crawl_exception = True
+        raise
     finally:
         if write_atlas and crawl_id and service_key:
+            fin_status = "failed" if crawl_exception else "completed"
             fin_ok, fin_body = atlas_finish_crawl(
                 supabase,
                 service_key,
                 crawl_id,
-                status="completed",
+                status=fin_status,
             )
             if not fin_ok:
                 print(f"[atlas] finish crawl failed: {fin_body[:800]}", file=sys.stderr)

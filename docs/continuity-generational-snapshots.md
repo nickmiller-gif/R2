@@ -27,7 +27,7 @@ tar -czf "$OUT" -C "$UMBRELLA" \
   R2-Master-Brief.pdf \
   R2-Entity-Tree.pdf \
   R2-Generational-Implementation-Plan-2026-05-15.md \
-  ADR-008-eigen-library-layer.md \
+  R2/docs/adr/ADR-0008-generational-openhuman-decision.md \
   Negotiation_Intelligence_System_Plan.md
 ```
 

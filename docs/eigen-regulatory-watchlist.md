@@ -21,13 +21,14 @@ The Generational Implementation Plan also names a longer Initiative 4 list (`fed
 3. Smoke one URL per host with a **member** JWT:
 
    ```bash
-   curl -sS -X POST "$SUPABASE_URL/functions/v1/eigen-fetch-ingest" \
+   curl -sS -o /tmp/eigen-fetch-ingest-body.txt -w "HTTP %{http_code}\n" \
+     -X POST "$SUPABASE_URL/functions/v1/eigen-fetch-ingest" \
      -H "Authorization: Bearer $AUTH_BEARER" \
      -H "Content-Type: application/json" \
      -d '{"url":"https://sos.sc.gov/..."}'
    ```
 
-   Expect **2xx** once the host is allowlisted.
+   Expect **`HTTP 2xx`** in the last line once the host is allowlisted (response body in `/tmp/eigen-fetch-ingest-body.txt`).
 
 ## Slack `#r2-regulatory-alerts` (stub)
 

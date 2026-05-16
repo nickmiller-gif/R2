@@ -10,6 +10,7 @@
 
 ## Repo-Specific Priorities
 
+- Default **knowledge-base drivers** wired into this repo: prioritize **CentralR2** (`centralr2-core`), **R2Works** (`operator-workbench`), **R2Chart** (`continuity-nexus`), **R2-IP** (`ip-pulse-point`) for corpus, signals, and Atlas examples. **`r2app`** is the **Ray's Retreat** Lovable application only — optional unless retreat scope is explicit.
 - Minimize blast radius for migrations and edge-function changes.
 - Preserve governance and security boundaries (RBAC + RLS + publication controls).
 - Keep Oracle and Eigen pipelines traceable (idempotency, provenance, policy tags).

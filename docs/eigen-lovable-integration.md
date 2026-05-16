@@ -2,6 +2,8 @@
 
 Deploy the Eigen chat widget on any Lovable frontend with mixed mode: public chat for anonymous visitors, EigenX (authenticated, policy-scoped) for signed-in users.
 
+**Knowledge base — default drivers:** corpus and operator attention should prioritize **CentralR2** (`centralr2-core`), **R2Works** (`operator-workbench`), **R2Chart** (`continuity-nexus`), and **R2-IP** (`ip-pulse-point`). The **`r2app`** row is the **Ray's Retreat** Lovable shell only — optional for the unified KB unless retreat work is in scope.
+
 ## Architecture
 
 ```
@@ -29,8 +31,9 @@ packages/eigen-widget-react/EigenWidgetConnected.tsx → src/components/eigen/Ei
 ```
 
 Update the import path in `EigenWidgetConnected.tsx`:
+
 ```ts
-import EigenWidget from './EigenWidget';  // same directory
+import EigenWidget from './EigenWidget'; // same directory
 ```
 
 ## Step 2 — Add environment variables
@@ -60,6 +63,7 @@ export default function SomePage() {
 ```
 
 That's it. The component reads the auth session from your existing `AuthProvider` and automatically:
+
 - Starts in public mode (no login needed)
 - Upgrades to EigenX when the user signs in
 - Downgrades back to public on sign-out
@@ -77,21 +81,24 @@ import EigenWidget from '@/components/eigen/EigenWidget';
   accessToken={myToken}
   widgetHost="https://eigen-widget.pages.dev"
   apiBase="https://zudslxucibosjwefojtm.supabase.co/functions/v1"
-/>
+/>;
 ```
 
 ## Step 4 — Register the site (already done)
 
-Migration `202604080010_eigen_site_registry_lovable_apps.sql` registers all four apps:
+Migration `202604080010_eigen_site_registry_lovable_apps.sql` registers mixed-mode Lovable apps (excerpt):
 
-| site_id | origins | mode |
-|---------|---------|------|
-| r2app | r2app.lovable.app, localhost:5173/8080 | mixed |
-| hpseller | hpseller.lovable.app, localhost:5173/8080 | mixed |
-| ip-insights-hub | ip-insights-hub.lovable.app, localhost:5173/8080 | mixed |
-| centralr2-core | centralr2-core.lovable.app, localhost:5173/8080 | mixed |
+| site_id          | origins                                         | mode  | Notes                                                                                   |
+| ---------------- | ----------------------------------------------- | ----- | --------------------------------------------------------------------------------------- |
+| `r2app`          | r2app.lovable.app, localhost:5173/8080          | mixed | **Ray's Retreat** — optional retreat spine; not a default portfolio KB driver.          |
+| `hpseller`       | hpseller.lovable.app, localhost:5173/8080       | mixed |                                                                                         |
+| `ip-pulse-point` | ip-pulse-point.lovable.app, localhost:5173/8080 | mixed | **R2-IP** — canonical repo `ip-pulse-point` (replaces legacy `ip-insights-hub` naming). |
+| `centralr2-core` | centralr2-core.lovable.app, localhost:5173/8080 | mixed | **CentralR2**                                                                           |
+
+**Also registered elsewhere / follow-on migrations:** **`r2chart`** (R2Chart — repo `continuity-nexus`), **`operator-workbench`** (R2Works at `r2works.com`), and other rows — see umbrella **`SITE_REGISTRY.md`** for the full map.
 
 **Custom domains**: if any app uses a custom domain, add it to the `origins` array:
+
 ```sql
 UPDATE eigen_site_registry
 SET origins = origins || '["https://mycustomdomain.com"]'::jsonb,
@@ -104,11 +111,13 @@ WHERE site_id = 'hpseller';
 ### Option A: Drop files in the knowledge directory
 
 Put `.md`, `.txt`, `.csv`, `.pdf`, or `.docx` files into:
+
 ```
 knowledge/<site_id>/
 ```
 
 Then run:
+
 ```bash
 export SUPABASE_URL=https://zudslxucibosjwefojtm.supabase.co
 export AUTH_BEARER=<member-jwt>
@@ -118,6 +127,7 @@ export AUTH_BEARER=<member-jwt>
 ### Option B: Configure sitemap/RSS crawling
 
 Edit `config/eigen-sites.json` to add URLs:
+
 ```json
 {
   "hpseller": {
@@ -129,9 +139,10 @@ Edit `config/eigen-sites.json` to add URLs:
 ```
 
 Then add the domain to the edge function's fetch allowlist:
+
 ```
 # In Supabase Dashboard → Edge Functions → eigen-fetch-ingest → Secrets
-EIGEN_FETCH_ALLOWLIST=hpseller.lovable.app,r2app.lovable.app,...
+EIGEN_FETCH_ALLOWLIST=hpseller.lovable.app,centralr2-core.lovable.app,ip-pulse-point.lovable.app,continuity-nexus.lovable.app,...
 ```
 
 ### Option C: GitHub Actions (automated)
@@ -148,14 +159,14 @@ The existing `eigen-public-corpus.yml` workflow runs weekly. Update its variable
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-|---------|-------------|
-| "Origin not allowed for site" | App's domain not in `eigen_site_registry.origins` |
-| "Unknown site_id" | Migration not applied or site_id mismatch |
-| Widget doesn't appear | `VITE_EIGEN_WIDGET_HOST` not set or widget not deployed |
-| "No response generated" | `OPENAI_API_KEY` not set in R2 Supabase edge function secrets |
-| Public mode works but EigenX fails | User doesn't have `member` role in R2's `charter_user_roles` |
-| Low confidence / no citations | No content ingested yet for this site's policy scope |
+| Symptom                            | Likely cause                                                  |
+| ---------------------------------- | ------------------------------------------------------------- |
+| "Origin not allowed for site"      | App's domain not in `eigen_site_registry.origins`             |
+| "Unknown site_id"                  | Migration not applied or site_id mismatch                     |
+| Widget doesn't appear              | `VITE_EIGEN_WIDGET_HOST` not set or widget not deployed       |
+| "No response generated"            | `OPENAI_API_KEY` not set in R2 Supabase edge function secrets |
+| Public mode works but EigenX fails | User doesn't have `member` role in R2's `charter_user_roles`  |
+| Low confidence / no citations      | No content ingested yet for this site's policy scope          |
 
 ## Safe rollout
 
@@ -171,7 +182,7 @@ packages/eigen-widget-react/EigenWidget.tsx           — Reusable React compone
 packages/eigen-widget-react/EigenWidgetConnected.tsx  — Auth-aware wrapper (useAuth)
 supabase/migrations/202604080010_...lovable_apps.sql  — Site registry entries
 config/eigen-sites.json                               — Per-site ingestion config
-knowledge/{r2app,hpseller,ip-insights-hub,centralr2-core}/  — Content directories
+knowledge/{centralr2-core,hpseller,ip-pulse-point,continuity-nexus}/  — Content directories (retreat-specific `r2app` paths optional)
 scripts/eigen-ingest-all-sites.sh                     — Multi-site ingestion runner
 docs/eigen-lovable-integration.md                     — This guide
 ```

@@ -27,7 +27,7 @@ Atlas (--write-atlas-links):
 
 Usage:
   python3 scripts/eigen-public-sitemap-ingest.py https://example.com/sitemap.xml
-  python3 scripts/eigen-public-sitemap-ingest.py --write-atlas-links --atlas-brand-key r2app https://example.com/sitemap.xml
+  python3 scripts/eigen-public-sitemap-ingest.py --write-atlas-links --atlas-brand-key centralr2-core https://example.com/sitemap.xml
   EIGEN_PUBLIC_SITEMAP_URLS=https://a.com/sitemap.xml,https://b.com/page python3 scripts/eigen-public-sitemap-ingest.py
 
 For sitemap + RSS + a public file folder in one run, see scripts/eigen-public-corpus-ingest.sh
@@ -175,7 +175,7 @@ def collect_page_urls(
 
 def _parse_cli(argv: list[str]) -> tuple[list[str], bool, str]:
     write_atlas = False
-    brand = "r2app"
+    brand = "centralr2-core"
     rest: list[str] = []
     i = 0
     while i < len(argv):

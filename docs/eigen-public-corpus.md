@@ -1,5 +1,7 @@
 # Public Eigen corpus (sitemap + news + files)
 
+Default **knowledge-base and Atlas** attention should follow the four portfolio drivers: **CentralR2** (`centralr2-core`), **R2Works** (`operator-workbench`), **R2Chart** (`continuity-nexus` / `r2chart`), **R2-IP** (`ip-pulse-point`). The **`r2app`** Lovable host is **Ray's Retreat** only — optional for corpus scripts unless retreat is explicitly in scope.
+
 Use this when you want **public** answers to draw from:
 
 1. **Website pages** discovered via **sitemap(s)**
@@ -60,7 +62,7 @@ When the **`atlas_*`** tables are present (see migration `20260515203256_atlas_l
 | Flag / variable             | Purpose                                                                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `--write-atlas-links`       | Create `atlas_crawls`, insert `atlas_urls` + `atlas_links` (`link_kind=sitemap_parent`), PATCH ingest outcome after each fetch |
-| `--atlas-brand-key <slug>`  | Stored on `atlas_crawls.brand_key` (default `r2app`)                                                                           |
+| `--atlas-brand-key <slug>`  | Stored on `atlas_crawls.brand_key` (default **`centralr2-core`**)                                                              |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Required with `--write-atlas-links`**. PostgREST writes use service_role; never commit this key                              |
 | `AUTH_BEARER`               | Unchanged — still **member** JWT for `eigen-fetch-ingest`                                                                      |
 
@@ -70,7 +72,7 @@ Example (from `R2/` root, secrets in gitignored env files):
 export SUPABASE_URL="https://YOUR.supabase.co"
 export AUTH_BEARER="<member_jwt>"
 export SUPABASE_SERVICE_ROLE_KEY="<service_role_jwt>"
-python3 scripts/eigen-public-sitemap-ingest.py --write-atlas-links --atlas-brand-key r2app "https://YOUR_PUBLIC_SITE/sitemap.xml"
+python3 scripts/eigen-public-sitemap-ingest.py --write-atlas-links --atlas-brand-key centralr2-core "https://centralr2.com/sitemap.xml"
 ```
 
 Regulatory fetch seeds use the same **`eigen-fetch-ingest`** path; hostnames must appear on the Edge secret **`EIGEN_FETCH_ALLOWLIST`**. See [eigen-regulatory-watchlist.md](./eigen-regulatory-watchlist.md).

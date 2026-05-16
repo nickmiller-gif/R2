@@ -30,14 +30,14 @@ Anonymous / pre-login chat (`eigen-chat-public`) retrieves only chunks whose **`
 
 Used by tooling/tests and future server paths; they call `createEigenIngestClient` with explicit `policy_tags` / `visibilityPolicyTags`:
 
-| Adapter                                                   | Default visibility / tags                                          |
-| --------------------------------------------------------- | ------------------------------------------------------------------ |
-| `r2app/eigen-r2app-adapter.ts`                            | Default **`public`** → includes **`eigen_public`**.                |
-| `raysretreat/eigen-raysretreat-adapter.ts`                | Default **`public`** → **`eigen_public`**.                         |
-| `health-supplement-tr/eigen-health-supplement-adapter.ts` | Default **`public`** (pass **`eigenx`** for operator-only).        |
-| `smartplrx-trend-tracker/eigen-smartplrx-adapter.ts`      | Default **`public`**; same visibility switch as health supplement. |
-| `centralr2-core/eigen-centralr2-adapter.ts`               | **`eigenx`** (internal narratives).                                |
-| `ip-insights-hub/eigen-ip-adapter.ts`                     | IP-internal tags; optional `defaultPolicyTags` merge.              |
+| Adapter                                                   | Default visibility / tags                                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `r2app/eigen-r2app-adapter.ts`                            | Default **`public`** → **`eigen_public`** (Ray's Retreat Lovable repo — optional KB path). |
+| `raysretreat/eigen-raysretreat-adapter.ts`                | Default **`public`** → **`eigen_public`**.                                                 |
+| `health-supplement-tr/eigen-health-supplement-adapter.ts` | Default **`public`** (pass **`eigenx`** for operator-only).                                |
+| `smartplrx-trend-tracker/eigen-smartplrx-adapter.ts`      | Default **`public`**; same visibility switch as health supplement.                         |
+| `centralr2-core/eigen-centralr2-adapter.ts`               | **`eigenx`** (internal narratives).                                                        |
+| `ip-insights-hub/eigen-ip-adapter.ts`                     | IP-internal tags; optional `defaultPolicyTags` merge.                                      |
 
 ## Operational check
 

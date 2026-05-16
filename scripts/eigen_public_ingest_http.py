@@ -13,9 +13,11 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import Callable
+from datetime import UTC, datetime
+from typing import Any, Callable
 
 # Sitemaps/feeds larger than this are rejected before XML parse (DoS / accidental huge HTML).
 DEFAULT_MAX_FETCH_BYTES = 25 * 1024 * 1024
@@ -228,3 +230,189 @@ def run_fetch_ingest_batch(
                 else:
                     fail_n += 1
     return ok_n, fail_n
+
+
+def _service_rest_request(
+    base_url: str,
+    service_key: str,
+    method: str,
+    path_query: str,
+    *,
+    body: bytes | None = None,
+    prefer: str | None = None,
+    timeout: float = 120.0,
+) -> tuple[int, str]:
+    """Low-level PostgREST call with service_role JWT."""
+    base = normalize_supabase_base_url(base_url)
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if prefer:
+        headers["Prefer"] = prefer
+    req = urllib.request.Request(
+        f"{base}{path_query}",
+        data=body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return resp.status, raw
+    except urllib.error.HTTPError as e:
+        try:
+            err = e.read().decode("utf-8", errors="replace")
+        except OSError:
+            err = "(could not read error body)"
+        return e.code, err
+    except (urllib.error.URLError, OSError) as e:
+        return 0, str(e)
+
+
+def atlas_create_crawl(
+    base_url: str,
+    service_key: str,
+    brand_key: str,
+    *,
+    source: str = "sitemap",
+    timeout: float = 60.0,
+) -> tuple[bool, str, str | None]:
+    """
+    Insert atlas_crawls row (status running). Returns (ok, message_or_body, crawl_id).
+    """
+    payload = json.dumps(
+        {"brand_key": brand_key, "source": source, "status": "running"},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    status, body = _service_rest_request(
+        base_url,
+        service_key,
+        "POST",
+        "/rest/v1/atlas_crawls",
+        body=payload,
+        prefer="return=representation",
+        timeout=timeout,
+    )
+    if not (200 <= status < 300):
+        return False, body, None
+    try:
+        rows = json.loads(body)
+    except json.JSONDecodeError:
+        return False, f"invalid JSON from atlas_crawls insert: {body[:500]}", None
+    if not isinstance(rows, list) or not rows:
+        return False, f"unexpected atlas_crawls response: {body[:500]}", None
+    cid = rows[0].get("id") if isinstance(rows[0], dict) else None
+    if not cid:
+        return False, f"missing id in atlas_crawls response: {body[:500]}", None
+    return True, body, str(cid)
+
+
+def atlas_finish_crawl(
+    base_url: str,
+    service_key: str,
+    crawl_id: str,
+    *,
+    status: str,
+    timeout: float = 60.0,
+) -> tuple[bool, str]:
+    """Patch atlas_crawls status to completed or failed."""
+    completed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    payload = json.dumps(
+        {"status": status, "completed_at": completed_at},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    q = urllib.parse.quote(crawl_id, safe="")
+    st, body = _service_rest_request(
+        base_url,
+        service_key,
+        "PATCH",
+        f"/rest/v1/atlas_crawls?id=eq.{q}",
+        body=payload,
+        prefer="return=minimal",
+        timeout=timeout,
+    )
+    if 200 <= st < 300:
+        return True, body
+    return False, body
+
+
+def atlas_bulk_insert_urls(
+    base_url: str,
+    service_key: str,
+    rows: list[dict[str, Any]],
+    *,
+    timeout: float = 120.0,
+) -> tuple[bool, str]:
+    if not rows:
+        return True, ""
+    payload = json.dumps(rows, ensure_ascii=False).encode("utf-8")
+    st, body = _service_rest_request(
+        base_url,
+        service_key,
+        "POST",
+        "/rest/v1/atlas_urls",
+        body=payload,
+        prefer="return=minimal",
+        timeout=timeout,
+    )
+    if 200 <= st < 300:
+        return True, body
+    return False, body
+
+
+def atlas_bulk_insert_links(
+    base_url: str,
+    service_key: str,
+    rows: list[dict[str, Any]],
+    *,
+    timeout: float = 120.0,
+) -> tuple[bool, str]:
+    if not rows:
+        return True, ""
+    payload = json.dumps(rows, ensure_ascii=False).encode("utf-8")
+    st, body = _service_rest_request(
+        base_url,
+        service_key,
+        "POST",
+        "/rest/v1/atlas_links",
+        body=payload,
+        prefer="return=minimal",
+        timeout=timeout,
+    )
+    if 200 <= st < 300:
+        return True, body
+    return False, body
+
+
+def atlas_patch_url_ingest_result(
+    base_url: str,
+    service_key: str,
+    crawl_id: str,
+    page_url: str,
+    *,
+    ingest_ok: bool,
+    last_error: str | None,
+    timeout: float = 60.0,
+) -> tuple[bool, str]:
+    """PATCH single atlas_urls row by crawl_id + url."""
+    err = (last_error or "")[:2000] if not ingest_ok else None
+    body_obj: dict[str, Any] = {"ingest_ok": ingest_ok, "last_error": err}
+    payload = json.dumps(body_obj, ensure_ascii=False).encode("utf-8")
+    cq = urllib.parse.quote(crawl_id, safe="")
+    uq = urllib.parse.quote(page_url, safe="")
+    st, body = _service_rest_request(
+        base_url,
+        service_key,
+        "PATCH",
+        f"/rest/v1/atlas_urls?crawl_id=eq.{cq}&url=eq.{uq}",
+        body=payload,
+        prefer="return=minimal",
+        timeout=timeout,
+    )
+    if 200 <= st < 300:
+        return True, body
+    return False, body

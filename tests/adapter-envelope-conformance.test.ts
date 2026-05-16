@@ -131,13 +131,13 @@ describe('adapter eigen-ingest conformance', () => {
       }),
     );
 
-    // IP lane uses eigen-ingest slug `ip_pulse_point`; signal contract lists `ip_insights_hub` for the same product family.
+    // IP lane maps to signal-contract literal `ip_pulse_point` (KB-four driver).
     const ip = mapIpEventToEigenDocument({
       analysis_run_id: 'a',
       analysis_title: 't',
       full_analysis_text: 'b',
     });
     expect(ip.source_system).toBe('ip_pulse_point');
-    expect(contract.has(ip.source_system)).toBe(false);
+    expect(contract.has(ip.source_system)).toBe(true);
   });
 });

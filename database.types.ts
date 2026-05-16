@@ -6843,6 +6843,127 @@ export type Database = {
           },
         ]
       }
+      missing_institution_briefs: {
+        Row: {
+          affected_domains: string[]
+          contradiction_summary: Json
+          created_at: string
+          governance_requirements: Json
+          id: string
+          institution_gap_summary: string
+          kill_tests: Json
+          metadata: Json
+          owner_user_id: string | null
+          primary_opportunity_id: string | null
+          proof_plan: Json
+          related_meg_entity_ids: string[]
+          status: Database["public"]["Enums"]["missing_institution_brief_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          affected_domains?: string[]
+          contradiction_summary?: Json
+          created_at?: string
+          governance_requirements?: Json
+          id?: string
+          institution_gap_summary: string
+          kill_tests?: Json
+          metadata?: Json
+          owner_user_id?: string | null
+          primary_opportunity_id?: string | null
+          proof_plan?: Json
+          related_meg_entity_ids?: string[]
+          status?: Database["public"]["Enums"]["missing_institution_brief_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          affected_domains?: string[]
+          contradiction_summary?: Json
+          created_at?: string
+          governance_requirements?: Json
+          id?: string
+          institution_gap_summary?: string
+          kill_tests?: Json
+          metadata?: Json
+          owner_user_id?: string | null
+          primary_opportunity_id?: string | null
+          proof_plan?: Json
+          related_meg_entity_ids?: string[]
+          status?: Database["public"]["Enums"]["missing_institution_brief_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missing_institution_briefs_primary_opportunity_id_fkey"
+            columns: ["primary_opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_opportunities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      missing_institution_evidence_links: {
+        Row: {
+          brief_id: string
+          created_at: string
+          id: string
+          knowledge_chunk_id: string | null
+          link_role: string
+          oracle_evidence_item_id: string | null
+          platform_feed_item_id: string | null
+        }
+        Insert: {
+          brief_id: string
+          created_at?: string
+          id?: string
+          knowledge_chunk_id?: string | null
+          link_role?: string
+          oracle_evidence_item_id?: string | null
+          platform_feed_item_id?: string | null
+        }
+        Update: {
+          brief_id?: string
+          created_at?: string
+          id?: string
+          knowledge_chunk_id?: string | null
+          link_role?: string
+          oracle_evidence_item_id?: string | null
+          platform_feed_item_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missing_institution_evidence_links_brief_id_fkey"
+            columns: ["brief_id"]
+            isOneToOne: false
+            referencedRelation: "missing_institution_briefs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missing_institution_evidence_links_knowledge_chunk_id_fkey"
+            columns: ["knowledge_chunk_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_chunks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missing_institution_evidence_links_oracle_evidence_item_id_fkey"
+            columns: ["oracle_evidence_item_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_evidence_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missing_institution_evidence_links_platform_feed_item_id_fkey"
+            columns: ["platform_feed_item_id"]
+            isOneToOne: false
+            referencedRelation: "platform_feed_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_reviews: {
         Row: {
           blind_spots: string[]
@@ -7308,6 +7429,134 @@ export type Database = {
             columns: ["run_id"]
             isOneToOne: false
             referencedRelation: "oracle_whitespace_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oracle_opportunities: {
+        Row: {
+          affected_domains: string[]
+          buyer_or_beneficiary: string | null
+          confidence: number | null
+          contradiction_flags: Json
+          created_at: string
+          description: string | null
+          economic_value_basis: string | null
+          economic_value_estimate: number | null
+          evidence_pack_ref: Json
+          id: string
+          metadata: Json
+          outcome_closed_at: string | null
+          outcome_learnings: string | null
+          outcome_revenue: number | null
+          outcome_status: string | null
+          owner_user_id: string | null
+          primary_thesis_id: string | null
+          recommended_next_action: string | null
+          related_meg_entities: string[]
+          status: Database["public"]["Enums"]["oracle_opportunity_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          affected_domains?: string[]
+          buyer_or_beneficiary?: string | null
+          confidence?: number | null
+          contradiction_flags?: Json
+          created_at?: string
+          description?: string | null
+          economic_value_basis?: string | null
+          economic_value_estimate?: number | null
+          evidence_pack_ref?: Json
+          id?: string
+          metadata?: Json
+          outcome_closed_at?: string | null
+          outcome_learnings?: string | null
+          outcome_revenue?: number | null
+          outcome_status?: string | null
+          owner_user_id?: string | null
+          primary_thesis_id?: string | null
+          recommended_next_action?: string | null
+          related_meg_entities?: string[]
+          status?: Database["public"]["Enums"]["oracle_opportunity_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          affected_domains?: string[]
+          buyer_or_beneficiary?: string | null
+          confidence?: number | null
+          contradiction_flags?: Json
+          created_at?: string
+          description?: string | null
+          economic_value_basis?: string | null
+          economic_value_estimate?: number | null
+          evidence_pack_ref?: Json
+          id?: string
+          metadata?: Json
+          outcome_closed_at?: string | null
+          outcome_learnings?: string | null
+          outcome_revenue?: number | null
+          outcome_status?: string | null
+          owner_user_id?: string | null
+          primary_thesis_id?: string | null
+          recommended_next_action?: string | null
+          related_meg_entities?: string[]
+          status?: Database["public"]["Enums"]["oracle_opportunity_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_opportunities_primary_thesis_id_fkey"
+            columns: ["primary_thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_briefings_read_model"
+            referencedColumns: ["thesis_id"]
+          },
+          {
+            foreignKeyName: "oracle_opportunities_primary_thesis_id_fkey"
+            columns: ["primary_thesis_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_theses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oracle_opportunity_transitions: {
+        Row: {
+          from_status: string | null
+          id: string
+          opportunity_id: string
+          rationale: string | null
+          to_status: string
+          transitioned_at: string
+          transitioned_by: string | null
+        }
+        Insert: {
+          from_status?: string | null
+          id?: string
+          opportunity_id: string
+          rationale?: string | null
+          to_status: string
+          transitioned_at?: string
+          transitioned_by?: string | null
+        }
+        Update: {
+          from_status?: string | null
+          id?: string
+          opportunity_id?: string
+          rationale?: string | null
+          to_status?: string
+          transitioned_at?: string
+          transitioned_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oracle_opportunity_transitions_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_opportunities"
             referencedColumns: ["id"]
           },
         ]
@@ -11652,6 +11901,33 @@ export type Database = {
         Args: { p_request_id: string; p_user_id: string }
         Returns: undefined
       }
+      truth_market_promote: {
+        Args: {
+          p_affected_domains?: string[]
+          p_contradiction_summary?: Json
+          p_description?: string
+          p_governance_requirements?: Json
+          p_institution_gap_summary: string
+          p_metadata?: Json
+          p_oracle_evidence_item_ids?: string[]
+          p_owner_user_id?: string
+          p_platform_feed_item_ids?: string[]
+          p_primary_thesis_id?: string
+          p_proof_plan?: Json
+          p_source_system?: string
+          p_title: string
+        }
+        Returns: Json
+      }
+      truth_market_promote_feed_cluster: {
+        Args: {
+          p_limit?: number
+          p_owner_user_id?: string
+          p_source_system: string
+          p_title?: string
+        }
+        Returns: Json
+      }
       try_cast_double: { Args: { inp: string }; Returns: number }
       url_decode: { Args: { data: string }; Returns: string }
       url_encode: { Args: { data: string }; Returns: string }
@@ -11895,6 +12171,11 @@ export type Database = {
         | "location"
         | "ip"
       memory_scope: "session" | "user" | "workspace"
+      missing_institution_brief_status:
+        | "draft"
+        | "review"
+        | "published"
+        | "archived"
       news_category:
         | "market"
         | "portfolio"
@@ -11917,6 +12198,13 @@ export type Database = {
         | "duplicate"
         | "near_duplicate"
         | "updated_existing"
+      oracle_opportunity_status:
+        | "draft"
+        | "active"
+        | "validate"
+        | "won"
+        | "lost"
+        | "archived"
       oracle_outcome_source:
         | "manual"
         | "automated"
@@ -12384,6 +12672,12 @@ export const Constants = {
         "ip",
       ],
       memory_scope: ["session", "user", "workspace"],
+      missing_institution_brief_status: [
+        "draft",
+        "review",
+        "published",
+        "archived",
+      ],
       news_category: [
         "market",
         "portfolio",
@@ -12408,6 +12702,14 @@ export const Constants = {
         "duplicate",
         "near_duplicate",
         "updated_existing",
+      ],
+      oracle_opportunity_status: [
+        "draft",
+        "active",
+        "validate",
+        "won",
+        "lost",
+        "archived",
       ],
       oracle_outcome_source: [
         "manual",

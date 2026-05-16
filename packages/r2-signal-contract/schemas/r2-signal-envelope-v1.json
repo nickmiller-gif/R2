@@ -28,6 +28,8 @@
       "enum": [
         "rays_retreat",
         "centralr2",
+        "r2chart",
+        "ip_pulse_point",
         "operator_workbench",
         "oracle_operator",
         "autonomous_bot_os",

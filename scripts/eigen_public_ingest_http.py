@@ -7,20 +7,42 @@ with optional parallel in-flight requests so slow responses do not block the pip
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
+import ssl
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any, Callable
 
 # Sitemaps/feeds larger than this are rejected before XML parse (DoS / accidental huge HTML).
 DEFAULT_MAX_FETCH_BYTES = 25 * 1024 * 1024
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Prefer certifi CA bundle (macOS Python often lacks system certs)."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def _decompress_body(data: bytes, content_encoding: str | None) -> bytes:
+    enc = (content_encoding or "").strip().lower()
+    if enc == "gzip" or data[:2] == b"\x1f\x8b":
+        return gzip.decompress(data)
+    if enc == "deflate":
+        return zlib.decompress(data)
+    return data
 
 
 def fetch_bytes(
@@ -39,7 +61,8 @@ def fetch_bytes(
         },
         method="GET",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+        content_encoding = resp.headers.get("Content-Encoding")
         if max_response_bytes is not None:
             # Read one byte beyond the cap so we can detect oversized responses without
             # pulling the full payload into memory first.
@@ -50,7 +73,7 @@ def fetch_bytes(
                 )
         else:
             data = resp.read()
-    return data
+    return _decompress_body(data, content_encoding)
 
 
 def normalize_supabase_base_url(base_url: str) -> str:
@@ -93,7 +116,7 @@ def post_fetch_ingest(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             if 200 <= resp.status < 300:
                 return True, body
@@ -260,7 +283,7 @@ def _service_rest_request(
         method=method,
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             return resp.status, raw
     except urllib.error.HTTPError as e:

@@ -3,6 +3,8 @@ export type SignalContractVersion = '1.0.0';
 export type R2SignalSourceSystem =
   | 'rays_retreat'
   | 'centralr2'
+  | 'r2chart'
+  | 'ip_pulse_point'
   | 'operator_workbench'
   | 'oracle_operator'
   | 'autonomous_bot_os'
@@ -58,6 +60,8 @@ export const SIGNAL_CONTRACT_VERSION: SignalContractVersion = '1.0.0';
 export const R2_SIGNAL_SOURCE_SYSTEMS: readonly R2SignalSourceSystem[] = [
   'rays_retreat',
   'centralr2',
+  'r2chart',
+  'ip_pulse_point',
   'operator_workbench',
   'oracle_operator',
   'autonomous_bot_os',

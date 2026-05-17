@@ -75,24 +75,53 @@ async function postIngest(jwt, label) {
   return res.status;
 }
 
+async function postPromote(jwt, label) {
+  const res = await fetch(`${eigenUrl}/functions/v1/truth-market-promote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${jwt}`,
+      'x-idempotency-key': `prod-verify:promote:${label}:${Date.now()}`,
+    },
+    body: JSON.stringify({
+      mode: 'manual',
+      title: 'post-hardening promote probe',
+      institution_gap_summary: 'probe',
+    }),
+  });
+  return res.status;
+}
+
 async function checkEdgeAuthz() {
   if (!eigenUrl || !anonKey) {
     console.log('⊘ Edge authz skipped (set EIGEN_SUPABASE_URL + EIGEN_ANON_KEY)');
     return;
   }
   if (operatorJwt) {
-    const status = await postIngest(operatorJwt, 'operator');
-    if (status === 202 || status === 200) pass(`operator JWT ingest → ${status}`);
-    else fail(`operator JWT ingest → ${status} (expected 202)`);
+    const ingestStatus = await postIngest(operatorJwt, 'operator');
+    if (ingestStatus === 202 || ingestStatus === 200) pass(`operator JWT ingest → ${ingestStatus}`);
+    else fail(`operator JWT ingest → ${ingestStatus} (expected 202)`);
+
+    const promoteStatus = await postPromote(operatorJwt, 'operator');
+    if (promoteStatus >= 200 && promoteStatus < 300)
+      pass(`operator JWT truth-market-promote → ${promoteStatus}`);
+    else if (promoteStatus === 422)
+      pass(`operator JWT truth-market-promote → 422 (validation; auth ok)`);
+    else fail(`operator JWT truth-market-promote → ${promoteStatus} (expected 2xx or 422)`);
   } else {
-    console.log('⊘ OPERATOR_JWT not set — skip operator ingest check');
+    console.log('⊘ OPERATOR_JWT not set — skip operator edge checks');
   }
   if (memberJwt) {
-    const status = await postIngest(memberJwt, 'member');
-    if (status === 403) pass(`non-operator JWT ingest → 403`);
-    else fail(`non-operator JWT ingest → ${status} (expected 403)`);
+    const ingestStatus = await postIngest(memberJwt, 'member');
+    if (ingestStatus === 403) pass(`non-operator JWT ingest → 403`);
+    else fail(`non-operator JWT ingest → ${ingestStatus} (expected 403)`);
+
+    const promoteStatus = await postPromote(memberJwt, 'member');
+    if (promoteStatus === 403) pass(`non-operator JWT truth-market-promote → 403`);
+    else fail(`non-operator JWT truth-market-promote → ${promoteStatus} (expected 403)`);
   } else {
-    console.log('⊘ MEMBER_JWT not set — skip 403 check');
+    console.log('⊘ MEMBER_JWT not set — skip 403 checks');
   }
 }
 

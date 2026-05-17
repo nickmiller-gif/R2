@@ -48,6 +48,14 @@
       "fetch_allowlist": ["project-darling.lovable.app"],
       "notes": "Current app is UI-only; use file and sitemap ingest unless a backing data model is added."
     },
+    "raysretreat": {
+      "display_name": "Ray's Retreat",
+      "sitemaps": [],
+      "rss_feeds": [],
+      "files_dir": "knowledge/raysretreat",
+      "fetch_allowlist": ["raysretreat.com"],
+      "notes": "Public retreat content can ingest through R2 Eigen public flows; the app smoke script already targets site_id raysretreat."
+    },
     "smartplrx-trend-tracker": {
       "display_name": "TrendPulse (Smartplrx)",
       "sitemaps": [],

@@ -156,6 +156,11 @@ function lintMigrationsForSearchPath() {
   return findings;
 }
 
+function hasSupabaseCli() {
+  const res = spawnSync('supabase', ['--version'], { encoding: 'utf8' });
+  return !res.error && res.status === 0;
+}
+
 function runLint() {
   const res = spawnSync(
     'supabase',
@@ -196,7 +201,7 @@ for (const f of lintMigrationsForSearchPath()) {
   blocking.push({ key: f.rule, schema: TARGET_SCHEMA, detail: f.detail });
 }
 
-if (process.env.SUPABASE_ACCESS_TOKEN) {
+if (process.env.SUPABASE_ACCESS_TOKEN && hasSupabaseCli()) {
   const findings = runLint();
   for (const f of findings) {
     const key = lintKey(f);
@@ -207,9 +212,10 @@ if (process.env.SUPABASE_ACCESS_TOKEN) {
     else advisory.push(target);
   }
 } else {
-  console.log(
-    '[security-scan] SUPABASE_ACCESS_TOKEN not set — skipping DB lint (edge + migration gates still run).',
-  );
+  const reason = !process.env.SUPABASE_ACCESS_TOKEN
+    ? 'SUPABASE_ACCESS_TOKEN not set'
+    : 'supabase CLI not in PATH';
+  console.log(`[security-scan] ${reason} — skipping DB lint (edge + migration gates still run).`);
 }
 
 if (advisory.length) {

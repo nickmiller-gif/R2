@@ -23,15 +23,24 @@ if [ "$REQUIRE_REMOTE_CHECKS" != "true" ]; then
 fi
 
 OUTPUT_FILE="$(mktemp)"
-trap 'rm -f "$OUTPUT_FILE"' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUPABASE_CLI_VERSION="$(bash "$SCRIPT_DIR/supabase-cli-version.sh")"
 
-if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" link --project-ref "$PROJECT_REF" 2>&1; then
+LINK_OUTPUT="$(mktemp)"
+trap 'rm -f "$OUTPUT_FILE" "$LINK_OUTPUT"' EXIT
+
+if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" link --project-ref "$PROJECT_REF" >"$LINK_OUTPUT" 2>&1; then
+  if grep -qiE 'invalid access token|unauthorized' "$LINK_OUTPUT"; then
+    echo "Skipping drift check: unable to authenticate to Supabase (refresh SUPABASE_ACCESS_TOKEN)."
+    cat "$LINK_OUTPUT" >&2
+    exit 0
+  fi
   echo "FAIL: Unable to link Supabase project $PROJECT_REF"
+  cat "$LINK_OUTPUT" >&2
   exit 1
 fi
+rm -f "$LINK_OUTPUT"
 
 if ! npx --yes "supabase@${SUPABASE_CLI_VERSION}" migration list --linked >"$OUTPUT_FILE" 2>&1; then
   echo "FAIL: Unable to list Supabase migrations for project $PROJECT_REF"

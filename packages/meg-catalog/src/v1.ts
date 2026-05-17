@@ -1,9 +1,9 @@
 /**
- * MEG catalog v1.0.0 — vocabulary locked for Phase 3.
+ * MEG catalog v1.1.0 — additive source-system literals (ADR-0007).
  * Changes require semver + ADR per docs/adr/ADR-0004-meg-phase3-preflight.md
  */
 
-export type MegCatalogVersion = '1.0.0';
+export type MegCatalogVersion = '1.1.0';
 
 export type MegEntityType =
   | 'meg:person'
@@ -64,6 +64,16 @@ export type MegSourceSystem =
   | 'open_intel_commons'
   | 'insr'
   | 'r2_widget'
-  | 'plrx_external';
+  | 'plrx_external'
+  | 'oracle_signals'
+  | 'oracle_theses'
+  | 'knowledge_chunks'
+  | 'productivity_workflow'
+  | 'regrid_external'
+  | 'meg'
+  | 'r2_works'
+  | 'r2app'
+  | 'friction_zero'
+  | 'r2chart';
 
-export const MEG_CATALOG_VERSION: MegCatalogVersion = '1.0.0';
+export const MEG_CATALOG_VERSION: MegCatalogVersion = '1.1.0';

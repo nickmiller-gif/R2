@@ -24,7 +24,7 @@ jobs:
       # Remote typegen + drift require valid SUPABASE_* credentials in CI.
       # Keep remote checks opt-in (vars.REQUIRE_SUPABASE_REMOTE_CHECKS=true)
       # so PRs are not blocked by temporary token/project permission drift.
-      REQUIRE_SUPABASE_REMOTE_CHECKS: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
+      REQUIRE_SUPABASE_REMOTE_CHECKS: ${{ vars.REQUIRE_SUPABASE_REMOTE_CHECKS == 'true' && secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
 
     steps:
       - uses: actions/checkout@v6

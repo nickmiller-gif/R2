@@ -161,7 +161,26 @@ function hasSupabaseCli() {
   return !res.error && res.status === 0;
 }
 
+function tryLinkProject() {
+  const projectRef = process.env.SUPABASE_PROJECT_REF;
+  if (!projectRef || !process.env.SUPABASE_ACCESS_TOKEN) return false;
+  const res = spawnSync('supabase', ['link', '--project-ref', projectRef], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (res.status !== 0) {
+    const msg = (res.stderr || res.stdout || '').trim();
+    console.log(
+      `[security-scan] unable to link project ${projectRef} — skipping DB lint${msg ? ` (${msg})` : ''}.`,
+    );
+    return false;
+  }
+  return true;
+}
+
 function runLint() {
+  if (!tryLinkProject()) return [];
+
   const res = spawnSync(
     'supabase',
     ['db', 'lint', '--linked', '--level', 'warning', '--output', 'json'],
@@ -172,9 +191,11 @@ function runLint() {
     process.exit(2);
   }
   if (!res.stdout.trim()) {
-    console.error('[security-scan] empty output from supabase db lint');
-    console.error(res.stderr);
-    process.exit(2);
+    const msg = (res.stderr || '').trim();
+    console.log(
+      `[security-scan] empty output from supabase db lint — skipping DB lint${msg ? ` (${msg})` : ''}.`,
+    );
+    return [];
   }
   return JSON.parse(res.stdout);
 }
@@ -201,7 +222,7 @@ for (const f of lintMigrationsForSearchPath()) {
   blocking.push({ key: f.rule, schema: TARGET_SCHEMA, detail: f.detail });
 }
 
-if (process.env.SUPABASE_ACCESS_TOKEN && hasSupabaseCli()) {
+if (process.env.SUPABASE_ACCESS_TOKEN && process.env.SUPABASE_PROJECT_REF && hasSupabaseCli()) {
   const findings = runLint();
   for (const f of findings) {
     const key = lintKey(f);

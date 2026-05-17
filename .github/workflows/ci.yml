@@ -34,6 +34,17 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
+      - name: Resolve Supabase CLI version
+        id: cli_version
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: echo "version=$(bash scripts/supabase-cli-version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Supabase CLI
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        uses: supabase/setup-cli@v2
+        with:
+          version: ${{ steps.cli_version.outputs.version }}
+
       - name: Install dependencies
         run: npm ci
 
@@ -41,6 +52,16 @@ jobs:
         run: npm run check
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Edge authz contract (optional)
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        env:
+          EIGEN_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          EIGEN_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MEMBER_JWT: ${{ secrets.EDGE_CONTRACT_MEMBER_JWT }}
+          OPERATOR_JWT: ${{ secrets.EDGE_CONTRACT_OPERATOR_JWT }}
+        run: node scripts/edge-authz-contract-test.mjs
+        continue-on-error: true
 
       - name: Coverage report
         run: npm run coverage

@@ -6,9 +6,9 @@ All catalog vocabulary changes. Semver per the governance rules in `README.md`:
 - **Minor** — additive literals only (new union members) + ADR note.
 - **Major** — rename or remove literals.
 
-## Unreleased — pending v1.1.0 (proposed in ADR-0007)
+## v1.1.0 — 2026-05-17 (Accepted ADR-0007)
 
-Adds 8 new `MegSourceSystem` literals:
+Adds 10 new `MegSourceSystem` literals:
 
 - `oracle_signals` — Oracle white-space pipeline signal emits
 - `oracle_theses` — Oracle pipeline thesis emits
@@ -18,6 +18,8 @@ Adds 8 new `MegSourceSystem` literals:
 - `meg` — meta-source filter for entities sourced from MEG itself
 - `r2_works` — meta-source filter for r2-works-sourced entities
 - `r2app` — r2app Lovable surface real producer
+- `friction_zero` — operator-workbench Friction Zero outbound producer
+- `r2chart` — continuity-nexus / Charter continuity bridge
 
 Source-code renames applied at the same time:
 

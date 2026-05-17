@@ -21,7 +21,8 @@
     "lint:supabase:drift": "bash scripts/check-supabase-migration-drift.sh",
     "lint:supabase:types": "bash scripts/check-supabase-generated-types.sh",
     "lint:correlation": "bash scripts/check-correlation-wrap.sh",
-    "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation"
+    "security:scan": "node scripts/security-scan.mjs",
+    "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation && npm run security:scan"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [

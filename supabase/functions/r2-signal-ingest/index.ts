@@ -13,6 +13,7 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import {
@@ -111,6 +112,8 @@ Deno.serve(
     } else {
       const auth = await guardAuth(req);
       if (!auth.ok) return auth.response;
+      const roleCheck = await requireRole(auth.claims.userId, 'operator');
+      if (!roleCheck.ok) return roleCheck.response;
       authMode = 'user_jwt';
       actorUserId = auth.claims.userId;
     }

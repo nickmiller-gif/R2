@@ -4,6 +4,7 @@
  */
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
@@ -31,6 +32,9 @@ Deno.serve(
 
     const auth = await guardAuth(req);
     if (!auth.ok) return auth.response;
+
+    const roleCheck = await requireRole(auth.claims.userId, 'operator');
+    if (!roleCheck.ok) return roleCheck.response;
 
     let body: PromoteBody;
     try {

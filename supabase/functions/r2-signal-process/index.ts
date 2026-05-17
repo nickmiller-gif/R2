@@ -6,7 +6,11 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { buildChunks, embedTexts, sha256Hex } from '../_shared/eigen.ts';
-import { computeNextRetryAt, inferSignalPolicyTags } from '../_shared/signal-utils.ts';
+import {
+  computeNextRetryAt,
+  inferSignalPolicyTags,
+  timingSafeEqual,
+} from '../_shared/signal-utils.ts';
 import {
   findCoffeeCounterpartyMegResolveArgs,
   inferActorMegResolveArgs,
@@ -28,7 +32,7 @@ function resolveTrustedProcessCaller(req: Request): boolean {
   const configured = Deno.env.get('R2_SIGNAL_PROCESS_TOKEN')?.trim();
   if (!configured) return false;
   const provided = req.headers.get('x-r2-signal-process-token')?.trim();
-  return Boolean(provided && provided === configured);
+  return Boolean(provided && timingSafeEqual(provided, configured));
 }
 
 /** Parses `limit` query param or env override, clamped to [1, MAX_BATCH_LIMIT]. */

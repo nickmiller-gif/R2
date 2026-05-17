@@ -5339,6 +5339,317 @@ export type Database = {
           },
         ]
       }
+      friction_dossier_evidence: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          dossier_id: string
+          id: string
+          link_role: string
+          metadata: Json
+          ref: string | null
+          source_system: string | null
+          title: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          dossier_id: string
+          id?: string
+          link_role?: string
+          metadata?: Json
+          ref?: string | null
+          source_system?: string | null
+          title: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          dossier_id?: string
+          id?: string
+          link_role?: string
+          metadata?: Json
+          ref?: string | null
+          source_system?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "friction_dossier_evidence_dossier_id_fkey"
+            columns: ["dossier_id"]
+            isOneToOne: false
+            referencedRelation: "friction_dossiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      friction_dossiers: {
+        Row: {
+          ai_attack_surface: string
+          collapse_sequence: Json
+          collapse_thesis: string
+          confidence_economic: number | null
+          confidence_thesis: number | null
+          confidence_timing: number | null
+          contradictions: Json
+          created_at: string
+          created_by: string | null
+          evidence_items: Json
+          exposed_actors: Json
+          exposure_scores: Json
+          friction_being_monetized: string
+          friction_collapse_score: number | null
+          friction_node: string
+          friction_node_id: string | null
+          id: string
+          investable_play: string | null
+          market: string
+          market_id: string | null
+          oracle_opportunity_id: string | null
+          outbound_payload: Json
+          policy_tags: string[]
+          r2_angle: string | null
+          replacement_interface: string | null
+          revenue_pool_exposed: string
+          status: Database["public"]["Enums"]["friction_dossier_status"]
+          survivors: Json
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_attack_surface: string
+          collapse_sequence?: Json
+          collapse_thesis: string
+          confidence_economic?: number | null
+          confidence_thesis?: number | null
+          confidence_timing?: number | null
+          contradictions?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence_items?: Json
+          exposed_actors?: Json
+          exposure_scores?: Json
+          friction_being_monetized: string
+          friction_collapse_score?: number | null
+          friction_node: string
+          friction_node_id?: string | null
+          id?: string
+          investable_play?: string | null
+          market: string
+          market_id?: string | null
+          oracle_opportunity_id?: string | null
+          outbound_payload?: Json
+          policy_tags?: string[]
+          r2_angle?: string | null
+          replacement_interface?: string | null
+          revenue_pool_exposed: string
+          status?: Database["public"]["Enums"]["friction_dossier_status"]
+          survivors?: Json
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_attack_surface?: string
+          collapse_sequence?: Json
+          collapse_thesis?: string
+          confidence_economic?: number | null
+          confidence_thesis?: number | null
+          confidence_timing?: number | null
+          contradictions?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence_items?: Json
+          exposed_actors?: Json
+          exposure_scores?: Json
+          friction_being_monetized?: string
+          friction_collapse_score?: number | null
+          friction_node?: string
+          friction_node_id?: string | null
+          id?: string
+          investable_play?: string | null
+          market?: string
+          market_id?: string | null
+          oracle_opportunity_id?: string | null
+          outbound_payload?: Json
+          policy_tags?: string[]
+          r2_angle?: string | null
+          replacement_interface?: string | null
+          revenue_pool_exposed?: string
+          status?: Database["public"]["Enums"]["friction_dossier_status"]
+          survivors?: Json
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "friction_dossiers_friction_node_id_fkey"
+            columns: ["friction_node_id"]
+            isOneToOne: false
+            referencedRelation: "friction_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "friction_dossiers_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "friction_markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "friction_dossiers_oracle_opportunity_id_fkey"
+            columns: ["oracle_opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "oracle_opportunities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      friction_markets: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json
+          slug: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          slug: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          slug?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      friction_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          market_id: string
+          metadata: Json
+          slug: string
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          market_id: string
+          metadata?: Json
+          slug: string
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          market_id?: string
+          metadata?: Json
+          slug?: string
+          sort_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "friction_nodes_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "friction_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      friction_outbound_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dossier_id: string
+          error_message: string | null
+          id: string
+          payload: Json
+          platform_feed_item_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dossier_id: string
+          error_message?: string | null
+          id?: string
+          payload: Json
+          platform_feed_item_id?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dossier_id?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          platform_feed_item_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "friction_outbound_events_dossier_id_fkey"
+            columns: ["dossier_id"]
+            isOneToOne: false
+            referencedRelation: "friction_dossiers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "friction_outbound_events_platform_feed_item_id_fkey"
+            columns: ["platform_feed_item_id"]
+            isOneToOne: false
+            referencedRelation: "platform_feed_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      friction_watchlist_items: {
+        Row: {
+          created_at: string
+          id: string
+          item_key: string
+          item_type: string
+          label: string
+          metadata: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_key: string
+          item_type: string
+          label: string
+          metadata?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_key?: string
+          item_type?: string
+          label?: string
+          metadata?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       idea_submissions: {
         Row: {
           additional_context: string | null
@@ -11778,6 +12089,7 @@ export type Database = {
         }[]
       }
       expire_stale_operator_proposals: { Args: never; Returns: number }
+      friction_zero_is_operator: { Args: never; Returns: boolean }
       get_public_batch_view: { Args: { p_batch_id: string }; Returns: Json }
       has_charter_access: { Args: { _user_id: string }; Returns: boolean }
       has_platform_access: {
@@ -12140,6 +12452,13 @@ export type Database = {
         | "extracted"
         | "failed"
         | "not_applicable"
+      friction_dossier_status:
+        | "draft"
+        | "watching"
+        | "validated"
+        | "converted_to_opportunity"
+        | "dismissed"
+        | "archived"
       governance_entity_kind: "charter" | "policy" | "rule" | "amendment"
       governance_status: "draft" | "active" | "superseded" | "revoked"
       index_status: "pending" | "indexed" | "failed" | "stale"
@@ -12637,6 +12956,14 @@ export const Constants = {
         "extracted",
         "failed",
         "not_applicable",
+      ],
+      friction_dossier_status: [
+        "draft",
+        "watching",
+        "validated",
+        "converted_to_opportunity",
+        "dismissed",
+        "archived",
       ],
       governance_entity_kind: ["charter", "policy", "rule", "amendment"],
       governance_status: ["draft", "active", "superseded", "revoked"],

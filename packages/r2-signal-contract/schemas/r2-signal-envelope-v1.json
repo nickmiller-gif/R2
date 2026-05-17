@@ -31,6 +31,7 @@
         "r2chart",
         "ip_pulse_point",
         "operator_workbench",
+        "friction_zero",
         "oracle_operator",
         "autonomous_bot_os",
         "cloudflare_agent_chatbot",

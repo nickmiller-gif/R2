@@ -6,6 +6,7 @@ export type R2SignalSourceSystem =
   | 'r2chart'
   | 'ip_pulse_point'
   | 'operator_workbench'
+  | 'friction_zero'
   | 'oracle_operator'
   | 'autonomous_bot_os'
   | 'cloudflare_agent_chatbot'
@@ -63,6 +64,7 @@ export const R2_SIGNAL_SOURCE_SYSTEMS: readonly R2SignalSourceSystem[] = [
   'r2chart',
   'ip_pulse_point',
   'operator_workbench',
+  'friction_zero',
   'oracle_operator',
   'autonomous_bot_os',
   'cloudflare_agent_chatbot',

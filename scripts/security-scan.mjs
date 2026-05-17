@@ -46,14 +46,16 @@ const MIGRATIONS_DIR = 'supabase/migrations';
 const AUTH_REQUIRED_FUNCTIONS = new Set([
   'r2-signal-ingest',
   'truth-market-promote',
-  'continuity-ingest-signal',
+  'r2-signal-process-deadletter',
   'eigen-fetch-ingest',
+  'meg-resolve-bridge',
+  'meg-backfill-source',
 ]);
 
-const HMAC_EXEMPT_FUNCTIONS = new Set([]);
+const HMAC_EXEMPT_FUNCTIONS = new Set(['meg-resolve-bridge', 'meg-backfill-source']);
 
 const AUTH_PATTERNS =
-  /guardAuth\s*\(|verifySignalHmac\s*\(|verifyHmacRequest\s*\(|tryServiceRoleAuth\s*\(|requireRole\s*\(/;
+  /guardAuth\s*\(|verifySignalHmac\s*\(|verifyHmacRequest\s*\(|tryServiceRoleAuth\s*\(|requireRole\s*\(|timingSafeEqual\s*\(|authorizeBridge\s*\(/;
 
 function parseFunctionVerifyJwt() {
   if (!existsSync(CONFIG_TOML)) return new Map();

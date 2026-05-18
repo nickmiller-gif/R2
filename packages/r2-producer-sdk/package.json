@@ -1,0 +1,10 @@
+{
+  "name": "@r2/producer-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared emit helper for R2 signal-contract v1 producers (HMAC + idempotency).",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -4,7 +4,11 @@ import { SIGNAL_CONTRACT_VERSION } from '../../packages/r2-signal-contract/src/i
 
 describe('emitR2Signal', () => {
   it('validates, signs, and posts a minimal envelope', async () => {
-    const fetchImpl = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+    const fetchMock = vi.fn(
+      async (_input: string | URL, _init?: RequestInit) =>
+        new Response('{"ok":true}', { status: 200 }),
+    );
+    const fetchImpl = fetchMock as unknown as typeof fetch;
     const result = await emitR2Signal(
       {
         contract_version: SIGNAL_CONTRACT_VERSION,
@@ -31,17 +35,18 @@ describe('emitR2Signal', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledOnce();
-    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(init.method).toBe('POST');
-    const headers = init.headers as Record<string, string>;
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method).toBe('POST');
+    const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer test-bearer');
     expect(headers['x-idempotency-key']).toBe('r2chart:smoke:1');
     expect(headers['x-r2-signature']).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('rejects invalid envelopes without calling fetch', async () => {
-    const fetchImpl = vi.fn();
+    const fetchMock = vi.fn();
+    const fetchImpl = fetchMock as unknown as typeof fetch;
     const result = await emitR2Signal(
       {
         contract_version: SIGNAL_CONTRACT_VERSION,
@@ -69,6 +74,6 @@ describe('emitR2Signal', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect('validation' in result).toBe(true);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

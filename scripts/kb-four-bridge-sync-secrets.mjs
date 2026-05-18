@@ -48,8 +48,9 @@ const bearer = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const hmac = process.env.R2_SIGNAL_INGEST_HMAC_SECRET;
 const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
 
-if (!accessToken?.startsWith('sbp_')) {
-  console.error('Set SUPABASE_ACCESS_TOKEN (sbp_…) via umbrella .env');
+const token = accessToken?.trim().replace(/^["']|["']$/g, '');
+if (!token?.startsWith('sbp_')) {
+  console.error('Set SUPABASE_ACCESS_TOKEN (sbp_…) in umbrella .env — not the service role JWT.');
   process.exit(2);
 }
 if (!bearer || !hmac) {
@@ -72,7 +73,7 @@ function setSecrets(projectRef) {
   ];
   const r = spawnSync('npx', ['--yes', 'supabase@2.89.0', ...args], {
     stdio: 'inherit',
-    env: { ...process.env, SUPABASE_ACCESS_TOKEN: accessToken },
+    env: { ...process.env, SUPABASE_ACCESS_TOKEN: token },
   });
   return r.status === 0;
 }

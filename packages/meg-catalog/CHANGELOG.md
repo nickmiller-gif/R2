@@ -6,6 +6,15 @@ All catalog vocabulary changes. Semver per the governance rules in `README.md`:
 - **Minor** — additive literals only (new union members) + ADR note.
 - **Major** — rename or remove literals.
 
+## v1.2.0 — 2026-05-19 (Accepted ADR-0010)
+
+Adds 4 `MegSourceSystem` literals:
+
+- `congress` — US Congress legislation adapter (Eigen `legislation-ingest`)
+- `eurlex` — EUR-Lex legislation adapter
+- `legiscan` — LegiScan legislation adapter
+- `manual_upload` — R2 Works manual document ingest (Phase 2a)
+
 ## v1.1.0 — 2026-05-17 (Accepted ADR-0007)
 
 Adds 10 new `MegSourceSystem` literals:

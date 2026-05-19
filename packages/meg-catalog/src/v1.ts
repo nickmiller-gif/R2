@@ -1,9 +1,9 @@
 /**
- * MEG catalog v1.1.0 — additive source-system literals (ADR-0007).
+ * MEG catalog v1.2.0 — legislation + manual_upload literals (ADR-0010).
  * Changes require semver + ADR per docs/adr/ADR-0004-meg-phase3-preflight.md
  */
 
-export type MegCatalogVersion = '1.1.0';
+export type MegCatalogVersion = '1.2.0';
 
 export type MegEntityType =
   | 'meg:person'
@@ -74,6 +74,10 @@ export type MegSourceSystem =
   | 'r2_works'
   | 'r2app'
   | 'friction_zero'
-  | 'r2chart';
+  | 'r2chart'
+  | 'congress'
+  | 'eurlex'
+  | 'legiscan'
+  | 'manual_upload';
 
-export const MEG_CATALOG_VERSION: MegCatalogVersion = '1.1.0';
+export const MEG_CATALOG_VERSION: MegCatalogVersion = '1.2.0';

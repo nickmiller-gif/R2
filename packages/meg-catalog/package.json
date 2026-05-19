@@ -1,6 +1,6 @@
 {
   "name": "@r2/meg-catalog",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Canonical MEG entity/edge/source vocabulary for Phase 3 and producers.",

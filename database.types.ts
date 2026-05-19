@@ -7747,73 +7747,112 @@ export type Database = {
       oracle_opportunities: {
         Row: {
           affected_domains: string[]
+          asset_registry_ids: string[]
           buyer_or_beneficiary: string | null
+          closed_at: string | null
           confidence: number | null
+          confidence_breakdown: Json
           contradiction_flags: Json
           created_at: string
+          created_by: string | null
           description: string | null
           economic_value_basis: string | null
           economic_value_estimate: number | null
+          economics: Json
           evidence_pack_ref: Json
           id: string
+          lifecycle_state: Database["public"]["Enums"]["oracle_opportunity_lifecycle"]
           metadata: Json
+          oracle_evidence_item_ids: string[]
           outcome_closed_at: string | null
           outcome_learnings: string | null
           outcome_revenue: number | null
           outcome_status: string | null
+          outcomes: Json
           owner_user_id: string | null
+          platform_feed_item_ids: string[]
           primary_thesis_id: string | null
+          proof_required: Json
           recommended_next_action: string | null
           related_meg_entities: string[]
+          source_system: string | null
           status: Database["public"]["Enums"]["oracle_opportunity_status"]
+          summary: string | null
+          tags: string[]
           title: string
           updated_at: string
         }
         Insert: {
           affected_domains?: string[]
+          asset_registry_ids?: string[]
           buyer_or_beneficiary?: string | null
+          closed_at?: string | null
           confidence?: number | null
+          confidence_breakdown?: Json
           contradiction_flags?: Json
           created_at?: string
+          created_by?: string | null
           description?: string | null
           economic_value_basis?: string | null
           economic_value_estimate?: number | null
+          economics?: Json
           evidence_pack_ref?: Json
           id?: string
+          lifecycle_state?: Database["public"]["Enums"]["oracle_opportunity_lifecycle"]
           metadata?: Json
+          oracle_evidence_item_ids?: string[]
           outcome_closed_at?: string | null
           outcome_learnings?: string | null
           outcome_revenue?: number | null
           outcome_status?: string | null
+          outcomes?: Json
           owner_user_id?: string | null
+          platform_feed_item_ids?: string[]
           primary_thesis_id?: string | null
+          proof_required?: Json
           recommended_next_action?: string | null
           related_meg_entities?: string[]
+          source_system?: string | null
           status?: Database["public"]["Enums"]["oracle_opportunity_status"]
+          summary?: string | null
+          tags?: string[]
           title: string
           updated_at?: string
         }
         Update: {
           affected_domains?: string[]
+          asset_registry_ids?: string[]
           buyer_or_beneficiary?: string | null
+          closed_at?: string | null
           confidence?: number | null
+          confidence_breakdown?: Json
           contradiction_flags?: Json
           created_at?: string
+          created_by?: string | null
           description?: string | null
           economic_value_basis?: string | null
           economic_value_estimate?: number | null
+          economics?: Json
           evidence_pack_ref?: Json
           id?: string
+          lifecycle_state?: Database["public"]["Enums"]["oracle_opportunity_lifecycle"]
           metadata?: Json
+          oracle_evidence_item_ids?: string[]
           outcome_closed_at?: string | null
           outcome_learnings?: string | null
           outcome_revenue?: number | null
           outcome_status?: string | null
+          outcomes?: Json
           owner_user_id?: string | null
+          platform_feed_item_ids?: string[]
           primary_thesis_id?: string | null
+          proof_required?: Json
           recommended_next_action?: string | null
           related_meg_entities?: string[]
+          source_system?: string | null
           status?: Database["public"]["Enums"]["oracle_opportunity_status"]
+          summary?: string | null
+          tags?: string[]
           title?: string
           updated_at?: string
         }
@@ -12517,6 +12556,14 @@ export type Database = {
         | "duplicate"
         | "near_duplicate"
         | "updated_existing"
+      oracle_opportunity_lifecycle:
+        | "draft"
+        | "scoped"
+        | "proof"
+        | "live"
+        | "won"
+        | "lost"
+        | "archived"
       oracle_opportunity_status:
         | "draft"
         | "active"
@@ -13029,6 +13076,15 @@ export const Constants = {
         "duplicate",
         "near_duplicate",
         "updated_existing",
+      ],
+      oracle_opportunity_lifecycle: [
+        "draft",
+        "scoped",
+        "proof",
+        "live",
+        "won",
+        "lost",
+        "archived",
       ],
       oracle_opportunity_status: [
         "draft",

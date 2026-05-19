@@ -39,7 +39,13 @@ Used by tooling/tests and future server paths; they call `createEigenIngestClien
 | `centralr2-core/eigen-centralr2-adapter.ts`               | **`eigenx`** (internal narratives).                                                        |
 | `ip-insights-hub/eigen-ip-adapter.ts`                     | IP-internal tags; optional `defaultPolicyTags` merge.                                      |
 
-## Operational check
+## Operational checks
+
+Before changing `site_id`, `files_dir`, sitemap URLs, RSS URLs, or `fetch_allowlist` hosts in `config/eigen-sites.json`, run the registry validator so publication-boundary drift fails fast in CI and local checks:
+
+```bash
+npm run lint:eigen-sites
+```
 
 From `R2/` with `SUPABASE_SERVICE_ROLE_KEY` in `.env.supabase.local`:
 

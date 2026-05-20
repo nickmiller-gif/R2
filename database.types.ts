@@ -1284,6 +1284,90 @@ export type Database = {
         }
         Relationships: []
       }
+      botos_chatbot_facts: {
+        Row: {
+          confidence: number
+          evidence_turn_indices: number[]
+          host: string
+          id: string
+          kind: string
+          predicate: string
+          session_id: string
+          subject: string
+          ts: string
+          value: string
+        }
+        Insert: {
+          confidence?: number
+          evidence_turn_indices?: number[]
+          host: string
+          id: string
+          kind: string
+          predicate?: string
+          session_id: string
+          subject?: string
+          ts?: string
+          value?: string
+        }
+        Update: {
+          confidence?: number
+          evidence_turn_indices?: number[]
+          host?: string
+          id?: string
+          kind?: string
+          predicate?: string
+          session_id?: string
+          subject?: string
+          ts?: string
+          value?: string
+        }
+        Relationships: []
+      }
+      botos_chatbot_turns: {
+        Row: {
+          adapter_id: string
+          host: string
+          id: string
+          page_title: string
+          prior_turns: Json
+          role: string
+          session_id: string
+          session_label: string
+          source_url: string
+          text: string
+          ts: string
+          turn_index: number
+        }
+        Insert: {
+          adapter_id?: string
+          host: string
+          id?: string
+          page_title?: string
+          prior_turns?: Json
+          role: string
+          session_id: string
+          session_label?: string
+          source_url: string
+          text: string
+          ts?: string
+          turn_index: number
+        }
+        Update: {
+          adapter_id?: string
+          host?: string
+          id?: string
+          page_title?: string
+          prior_turns?: Json
+          role?: string
+          session_id?: string
+          session_label?: string
+          source_url?: string
+          text?: string
+          ts?: string
+          turn_index?: number
+        }
+        Relationships: []
+      }
       botos_content_gaps: {
         Row: {
           created_at: string
@@ -13194,3 +13278,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.100.1 (currently installed v2.89.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

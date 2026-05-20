@@ -36,7 +36,12 @@ const DRIVERS = [
   {
     id: 'ip_pulse_point',
     label: 'R2-IP',
-    liveTypes: ['patent_analysis_complete', 'ip_analysis_complete', 'analysis_complete'],
+    liveTypes: [
+      'patent_analysis_complete',
+      'ip_analysis_complete',
+      'ip_analysis_completed',
+      'analysis_complete',
+    ],
     smokeTypes: ['kb_four_smoke'],
   },
   {

@@ -14,15 +14,16 @@
  */
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { diagnoseBearer, normalizeBearer, pickHmacSecret } from './lib/pick-ingest-env.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const r2Root = join(__dirname, '..');
 const workspaceRoot = join(r2Root, '..');
 
-function loadEnvFile(path) {
+function loadEnvFile(path, { override = false } = {}) {
   if (!existsSync(path)) return;
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     const t = line.trim();
@@ -31,13 +32,14 @@ function loadEnvFile(path) {
     if (i < 0) continue;
     const key = t.slice(0, i).trim();
     const val = t.slice(i + 1).trim();
-    if (!process.env[key]) process.env[key] = val;
+    if (override || !process.env[key]) process.env[key] = val;
   }
 }
 
+// wave1 first, then bridge-sync (HMAC picked explicitly below)
 loadEnvFile(join(workspaceRoot, '.env'));
 loadEnvFile(join(r2Root, '.env.wave1.local'));
-loadEnvFile(join(r2Root, '.env.bridge-sync.local'));
+loadEnvFile(join(r2Root, '.env.bridge-sync.local'), { override: true });
 
 const EIGEN_REF = 'zudslxucibosjwefojtm';
 const TOWER_REF = 'ukffrvqainkntdgjzyde';
@@ -45,8 +47,8 @@ const IP_REF = 'jgglfgzvjcbqvnonmldr';
 const ingestUrl =
   process.env.R2_SIGNAL_INGEST_URL ??
   `https://${EIGEN_REF}.supabase.co/functions/v1/r2-signal-ingest`;
-const bearer = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const hmac = process.env.R2_SIGNAL_INGEST_HMAC_SECRET;
+const bearer = normalizeBearer(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+const hmac = pickHmacSecret(r2Root);
 const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
 
 const token = accessToken?.trim().replace(/^["']|["']$/g, '');
@@ -54,20 +56,32 @@ if (!token?.startsWith('sbp_')) {
   console.error('Set SUPABASE_ACCESS_TOKEN (sbp_…) in umbrella .env — not the service role JWT.');
   process.exit(2);
 }
-if (!bearer || !hmac) {
+const bearerDiag = diagnoseBearer(bearer);
+if (bearerDiag !== 'ok') {
   console.error(
-    'Need SUPABASE_SERVICE_ROLE_KEY (wave1) and R2_SIGNAL_INGEST_HMAC_SECRET (bridge-sync local)',
+    `Eigen service role bearer invalid (${bearerDiag}). Fix R2/.env.wave1.local SUPABASE_SERVICE_ROLE_KEY.`,
   );
   process.exit(2);
 }
+if (!bearer || !hmac) {
+  console.error(
+    'Need valid SUPABASE_SERVICE_ROLE_KEY (wave1) and 64-hex R2_SIGNAL_INGEST_HMAC_SECRET.',
+  );
+  process.exit(2);
+}
+console.log('Bearer diagnostic: ok (Eigen service_role ref)');
+console.log('HMAC: 64-hex selected from env files');
 
-function setSecrets(projectRef) {
+function setSecrets(projectRef, { bridge = true, ingest = false } = {}) {
+  const flags = [];
+  if (bridge) flags.push('ENABLE_R2_SIGNAL_BRIDGE=true');
+  if (ingest) flags.push('ENABLE_R2_SIGNAL_INGEST=true');
   const args = [
     'secrets',
     'set',
     '--project-ref',
     projectRef,
-    'ENABLE_R2_SIGNAL_BRIDGE=true',
+    ...flags,
     `R2_SIGNAL_INGEST_URL=${ingestUrl}`,
     `R2_SIGNAL_INGEST_BEARER=${bearer}`,
     `R2_SIGNAL_INGEST_HMAC_SECRET=${hmac}`,
@@ -80,21 +94,7 @@ function setSecrets(projectRef) {
 }
 
 function setTowerSecrets() {
-  const args = [
-    'secrets',
-    'set',
-    '--project-ref',
-    TOWER_REF,
-    'ENABLE_R2_SIGNAL_INGEST=true',
-    `R2_SIGNAL_INGEST_URL=${ingestUrl}`,
-    `R2_SIGNAL_INGEST_BEARER=${bearer}`,
-    `R2_SIGNAL_INGEST_HMAC_SECRET=${hmac}`,
-  ];
-  const r = spawnSync('npx', ['--yes', 'supabase@2.89.0', ...args], {
-    stdio: 'inherit',
-    env: { ...process.env, SUPABASE_ACCESS_TOKEN: token },
-  });
-  return r.status === 0;
+  return setSecrets(TOWER_REF, { bridge: false, ingest: true });
 }
 
 console.log('Setting KB-four bridge on Eigen…');
@@ -107,7 +107,7 @@ if (!setTowerSecrets()) {
   );
 }
 console.log('Setting KB-four bridge on IP project…');
-if (!setSecrets(IP_REF)) {
+if (!setSecrets(IP_REF, { bridge: true, ingest: true })) {
   console.warn(
     'IP project secrets failed (403 expected) — set the same four keys in Supabase Dashboard for',
     IP_REF,
@@ -152,7 +152,8 @@ for (const [label, sys, repo] of [
     ingest_run_id: ingestRunUuid,
   };
   const body = JSON.stringify(envelope);
-  const sig = crypto.createHmac('sha256', hmac).update(body).digest('hex');
+  const { signBodyHmacHex } = await import('./lib/normalize-hmac-secret.mjs');
+  const sig = signBodyHmacHex(hmac, body);
   const res = await fetch(ingestUrl, {
     method: 'POST',
     headers: {

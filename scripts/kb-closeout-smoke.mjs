@@ -8,6 +8,7 @@
  *   export SUPABASE_ACCESS_TOKEN=sbp_…  # umbrella .env
  *   node scripts/kb-closeout-smoke.mjs
  */
+import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

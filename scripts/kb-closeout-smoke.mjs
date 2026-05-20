@@ -8,16 +8,16 @@
  *   export SUPABASE_ACCESS_TOKEN=sbp_…  # umbrella .env
  *   node scripts/kb-closeout-smoke.mjs
  */
-import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeHmacSecret, signBodyHmacHex } from './lib/normalize-hmac-secret.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const r2Root = join(__dirname, '..');
 const workspaceRoot = join(r2Root, '..');
 
-function loadEnvFile(path) {
+function loadEnvFile(path, { override = false } = {}) {
   if (!existsSync(path)) return;
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     const t = line.trim();
@@ -26,13 +26,37 @@ function loadEnvFile(path) {
     if (i < 0) continue;
     const key = t.slice(0, i).trim();
     const val = t.slice(i + 1).trim();
-    if (!process.env[key]) process.env[key] = val;
+    if (override || !process.env[key]) process.env[key] = val;
   }
+}
+
+function readEnvKey(path, key) {
+  if (!existsSync(path)) return undefined;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const i = t.indexOf('=');
+    if (i < 0) continue;
+    if (t.slice(0, i).trim() === key) return t.slice(i + 1).trim();
+  }
+  return undefined;
+}
+
+function isValidHmacSecret(raw) {
+  return /^[0-9a-f]{64}$/i.test(normalizeHmacSecret(raw));
 }
 
 loadEnvFile(join(workspaceRoot, '.env'));
 loadEnvFile(join(r2Root, '.env.wave1.local'));
-loadEnvFile(join(r2Root, '.env.bridge-sync.local'));
+loadEnvFile(join(r2Root, '.env.bridge-sync.local'), { override: true });
+
+const hmacCandidates = [
+  readEnvKey(join(r2Root, '.env.bridge-sync.local'), 'R2_SIGNAL_INGEST_HMAC_SECRET'),
+  readEnvKey(join(r2Root, '.env.wave1.local'), 'R2_SIGNAL_INGEST_HMAC_SECRET'),
+  process.env.R2_SIGNAL_INGEST_HMAC_SECRET,
+].filter(Boolean);
+const pickedHmac = hmacCandidates.find(isValidHmacSecret);
+if (pickedHmac) process.env.R2_SIGNAL_INGEST_HMAC_SECRET = normalizeHmacSecret(pickedHmac);
 
 const ingestUrl =
   process.env.R2_SIGNAL_INGEST_URL ??
@@ -49,7 +73,7 @@ if (!bearer || !hmac) {
 async function emit(label, envelope, idemPrefix) {
   const idem = `${idemPrefix}:${Date.now()}`;
   const body = JSON.stringify(envelope);
-  const sig = crypto.createHmac('sha256', hmac).update(body).digest('hex');
+  const sig = signBodyHmacHex(hmac, body);
   const res = await fetch(ingestUrl, {
     method: 'POST',
     headers: {

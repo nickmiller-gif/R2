@@ -40,6 +40,7 @@ loadEnvFile(join(r2Root, '.env.wave1.local'));
 loadEnvFile(join(r2Root, '.env.bridge-sync.local'));
 
 const EIGEN_REF = 'zudslxucibosjwefojtm';
+const TOWER_REF = 'ukffrvqainkntdgjzyde';
 const IP_REF = 'jgglfgzvjcbqvnonmldr';
 const ingestUrl =
   process.env.R2_SIGNAL_INGEST_URL ??
@@ -78,8 +79,33 @@ function setSecrets(projectRef) {
   return r.status === 0;
 }
 
+function setTowerSecrets() {
+  const args = [
+    'secrets',
+    'set',
+    '--project-ref',
+    TOWER_REF,
+    'ENABLE_R2_SIGNAL_INGEST=true',
+    `R2_SIGNAL_INGEST_URL=${ingestUrl}`,
+    `R2_SIGNAL_INGEST_BEARER=${bearer}`,
+    `R2_SIGNAL_INGEST_HMAC_SECRET=${hmac}`,
+  ];
+  const r = spawnSync('npx', ['--yes', 'supabase@2.89.0', ...args], {
+    stdio: 'inherit',
+    env: { ...process.env, SUPABASE_ACCESS_TOKEN: token },
+  });
+  return r.status === 0;
+}
+
 console.log('Setting KB-four bridge on Eigen…');
 if (!setSecrets(EIGEN_REF)) process.exit(1);
+console.log('Setting Stream A ingest on Tower (CentralR2)…');
+if (!setTowerSecrets()) {
+  console.warn(
+    'Tower secrets failed (403 expected) — set ENABLE_R2_SIGNAL_INGEST + ingest URL/bearer/HMAC in Lovable/Dashboard for',
+    TOWER_REF,
+  );
+}
 console.log('Setting KB-four bridge on IP project…');
 if (!setSecrets(IP_REF)) {
   console.warn(

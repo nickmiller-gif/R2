@@ -1772,6 +1772,75 @@ export type Database = {
         }
         Relationships: []
       }
+      botos_page_captures: {
+        Row: {
+          created_at: string
+          host: string
+          id: string
+          page_title: string
+          raw_excerpt: string
+          session_label: string
+          source_url: string
+          ts: string
+        }
+        Insert: {
+          created_at?: string
+          host: string
+          id: string
+          page_title?: string
+          raw_excerpt?: string
+          session_label?: string
+          source_url: string
+          ts?: string
+        }
+        Update: {
+          created_at?: string
+          host?: string
+          id?: string
+          page_title?: string
+          raw_excerpt?: string
+          session_label?: string
+          source_url?: string
+          ts?: string
+        }
+        Relationships: []
+      }
+      botos_page_facts: {
+        Row: {
+          confidence: number
+          host: string
+          id: string
+          kind: string
+          predicate: string
+          source_url: string
+          subject: string
+          ts: string
+          value: string
+        }
+        Insert: {
+          confidence?: number
+          host: string
+          id: string
+          kind?: string
+          predicate?: string
+          source_url: string
+          subject?: string
+          ts?: string
+          value?: string
+        }
+        Update: {
+          confidence?: number
+          host?: string
+          id?: string
+          kind?: string
+          predicate?: string
+          source_url?: string
+          subject?: string
+          ts?: string
+          value?: string
+        }
+        Relationships: []
+      }
       botos_policy_state: {
         Row: {
           action_cooldown_until: Json
@@ -12310,8 +12379,20 @@ export type Database = {
         Args: { p_entity_id: string; p_payload: Json; p_source_system: string }
         Returns: undefined
       }
+      operator_allows_scope: {
+        Args: { _scope: string; _uid: string }
+        Returns: boolean
+      }
       pgmq_delete: {
         Args: { msg_id: number; queue_name: string }
+        Returns: boolean
+      }
+      platform_feed_item_is_synthetic: {
+        Args: {
+          p_provenance: Json
+          p_source_event_type: string
+          p_summary: string
+        }
         Returns: boolean
       }
       provenance_chain: {
@@ -13278,5 +13359,3 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.100.1 (currently installed v2.89.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

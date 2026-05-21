@@ -101,8 +101,6 @@ export function normalizeR2SignalEnvelope(input: unknown): unknown {
 
   if (!Array.isArray(record.related_entity_ids)) {
     record.related_entity_ids = [];
-  } else {
-    record.related_entity_ids = record.related_entity_ids.filter(isUuid);
   }
 
   if (!isObject(record.provenance)) {

@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 /**
- * Close-out smokes for Stream A (centralr2), Friction Zero, and non-smoke IP-shaped ingest.
- * Uses service role + HMAC (same path as kb-four-bridge-sync-secrets.mjs).
+ * Close-out smokes — auth/ingest path only; rows are labeled [SMOKE] and closeout_smoke.
+ * Does NOT prove Tower/IP/Friction live producers (use kb-connectivity-verify.mjs).
  *
  * Usage:
- *   cd R2 && set -a && . ./.env.wave1.local && . ./.env.bridge-sync.local; set +a
- *   export SUPABASE_ACCESS_TOKEN=sbp_…  # umbrella .env
- *   node scripts/kb-closeout-smoke.mjs
+ *   cd R2 && op run --env-file=op.env -- node scripts/kb-closeout-smoke.mjs
  */
 import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalizeHmacSecret, signBodyHmacHex } from './lib/normalize-hmac-secret.mjs';
+import { signBodyHmacHex } from './lib/normalize-hmac-secret.mjs';
+import { pickHmacSecret, normalizeBearer, diagnoseBearer } from './lib/pick-ingest-env.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const r2Root = join(__dirname, '..');
@@ -31,43 +30,22 @@ function loadEnvFile(path, { override = false } = {}) {
   }
 }
 
-function readEnvKey(path, key) {
-  if (!existsSync(path)) return undefined;
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const i = t.indexOf('=');
-    if (i < 0) continue;
-    if (t.slice(0, i).trim() === key) return t.slice(i + 1).trim();
-  }
-  return undefined;
-}
-
-function isValidHmacSecret(raw) {
-  return /^[0-9a-f]{64}$/i.test(normalizeHmacSecret(raw));
-}
-
 loadEnvFile(join(workspaceRoot, '.env'));
 loadEnvFile(join(r2Root, '.env.wave1.local'));
-loadEnvFile(join(r2Root, '.env.bridge-sync.local'), { override: true });
-
-const hmacCandidates = [
-  readEnvKey(join(r2Root, '.env.bridge-sync.local'), 'R2_SIGNAL_INGEST_HMAC_SECRET'),
-  readEnvKey(join(r2Root, '.env.wave1.local'), 'R2_SIGNAL_INGEST_HMAC_SECRET'),
-  process.env.R2_SIGNAL_INGEST_HMAC_SECRET,
-].filter(Boolean);
-const pickedHmac = hmacCandidates.find(isValidHmacSecret);
-if (pickedHmac) process.env.R2_SIGNAL_INGEST_HMAC_SECRET = normalizeHmacSecret(pickedHmac);
+if (existsSync(join(r2Root, 'op.env'))) loadEnvFile(join(r2Root, 'op.env'));
+loadEnvFile(join(r2Root, '.env.bridge-sync.local'));
 
 const ingestUrl =
   process.env.R2_SIGNAL_INGEST_URL ??
   'https://zudslxucibosjwefojtm.supabase.co/functions/v1/r2-signal-ingest';
-const bearer = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const hmac = process.env.R2_SIGNAL_INGEST_HMAC_SECRET;
+const bearer = normalizeBearer(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
+const hmac = pickHmacSecret(r2Root);
 const anon = process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
 
-if (!bearer || !hmac) {
-  console.error('Need SUPABASE_SERVICE_ROLE_KEY and R2_SIGNAL_INGEST_HMAC_SECRET');
+if (diagnoseBearer(bearer) !== 'ok' || !hmac) {
+  console.error(
+    'Need Eigen service_role bearer + R2_SIGNAL_INGEST_HMAC_SECRET (op run --env-file=op.env)',
+  );
   process.exit(2);
 }
 
@@ -110,7 +88,7 @@ const probes = [
       actor_meg_entity_id: null,
       related_entity_ids: [],
       event_time: eventTime,
-      summary: 'Stream A closeout — Eigen ingest path verification',
+      summary: '[SMOKE] Stream A closeout — Eigen ingest path verification (not real app traffic)',
       raw_payload: {
         closeout: true,
         ingest_run: {
@@ -138,7 +116,8 @@ const probes = [
       actor_meg_entity_id: null,
       related_entity_ids: [],
       event_time: eventTime,
-      summary: 'Friction Zero closeout — dossier emit path verification',
+      summary:
+        '[SMOKE] Friction Zero closeout — dossier emit path verification (not real app traffic)',
       raw_payload: {
         closeout: true,
         collapse_thesis:
@@ -164,7 +143,7 @@ const probes = [
       actor_meg_entity_id: null,
       related_entity_ids: [],
       event_time: eventTime,
-      summary: 'IP closeout — non-smoke analysis-shaped envelope',
+      summary: '[SMOKE] IP closeout — analysis-shaped envelope (not real app traffic)',
       raw_payload: {
         closeout: true,
         analysis_id: `closeout-${runId}`,

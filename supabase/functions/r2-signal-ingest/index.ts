@@ -24,6 +24,7 @@ import {
 } from '../_shared/signal-utils.ts';
 import {
   SIGNAL_CONTRACT_VERSION,
+  normalizeR2SignalEnvelope,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
 } from '../../../packages/r2-signal-contract/src/index.ts';
@@ -149,7 +150,7 @@ Deno.serve(
       return errorResponse('Invalid JSON body', 400);
     }
 
-    const parsedEnvelope = validateR2SignalEnvelope(parsedBody);
+    const parsedEnvelope = validateR2SignalEnvelope(normalizeR2SignalEnvelope(parsedBody));
     if (!parsedEnvelope.ok) {
       return errorResponse(toValidationMessage({ error: parsedEnvelope.issues }), 400);
     }

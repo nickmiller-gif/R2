@@ -159,6 +159,11 @@ vite.config.ts.timestamp-*
 # Local agent scratch (not shipped)
 memory/
 
+# 1Password inject (see op.env.example)
+op.env
+.env.wave1.local
+.env.bridge-sync.local
+
 # Cursor rules/agents synced from umbrella (see AGENTS.md sync script)
 .cursor/
 

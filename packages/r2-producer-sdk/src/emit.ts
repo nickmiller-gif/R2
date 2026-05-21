@@ -1,4 +1,5 @@
 import {
+  normalizeR2SignalEnvelope,
   validateR2SignalEnvelope,
   type R2SignalEnvelope,
   type SignalValidationResult,
@@ -24,7 +25,7 @@ export function buildR2SignalRequest(
   envelope: R2SignalEnvelope,
   config: EmitR2SignalConfig,
 ): { headers: Record<string, string>; body: string } | { validation: SignalValidationResult } {
-  const validated = validateR2SignalEnvelope(envelope);
+  const validated = validateR2SignalEnvelope(normalizeR2SignalEnvelope(envelope));
   if (!validated.ok) return { validation: validated };
 
   const body = JSON.stringify(validated.data);

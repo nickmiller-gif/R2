@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Sync KB-four bridge secrets onto Eigen (continuity-ingest-signal bridge).
- * IP project (jgglfgzvjcbqvnonmldr) requires Dashboard/Lovable when CLI returns 403.
+ * Tower/CentralR2 (ukffrvqainkntdgjzyde) and IP (jgglfgzvjcbqvnonmldr) may require
+ * Dashboard/Lovable fallback when Supabase CLI returns 403 (not authorized).
  *
  * Requires:
  *   SUPABASE_ACCESS_TOKEN (sbp_…) in env — use umbrella .env, not wave1 invalid token
@@ -95,17 +96,41 @@ function setSecrets(projectRef, { bridge = true, ingest = false } = {}) {
 }
 
 function setTowerSecrets() {
-  return setSecrets(TOWER_REF, { bridge: false, ingest: true });
+  const args = [
+    'secrets',
+    'set',
+    '--project-ref',
+    TOWER_REF,
+    'ENABLE_R2_SIGNAL_INGEST=true',
+    `R2_SIGNAL_INGEST_URL=${ingestUrl}`,
+    `R2_SIGNAL_INGEST_BEARER=${bearer}`,
+    `R2_SIGNAL_INGEST_HMAC_SECRET=${hmac}`,
+  ];
+  const r = spawnSync('npx', ['--yes', 'supabase@2.89.0', ...args], {
+    stdio: 'pipe',
+    env: { ...process.env, SUPABASE_ACCESS_TOKEN: token },
+  });
+  const output = `${r.stdout?.toString() ?? ''}\n${r.stderr?.toString() ?? ''}`.trim();
+  const outputLower = output.toLowerCase();
+  const forbidden =
+    r.status !== 0 && (outputLower.includes('403') || outputLower.includes('not authorized'));
+  return { ok: r.status === 0, forbidden, output };
 }
 
 console.log('Setting KB-four bridge on Eigen…');
 if (!setSecrets(EIGEN_REF)) process.exit(1);
 console.log('Setting Stream A ingest on Tower (CentralR2)…');
-if (!setTowerSecrets()) {
-  console.warn(
-    'Tower secrets failed (403 expected) — set ENABLE_R2_SIGNAL_INGEST + ingest URL/bearer/HMAC in Lovable/Dashboard for',
-    TOWER_REF,
-  );
+const towerResult = setTowerSecrets();
+if (!towerResult.ok) {
+  if (towerResult.forbidden) {
+    console.warn(
+      'Tower secrets failed (403 expected) — set ENABLE_R2_SIGNAL_INGEST + ingest URL/bearer/HMAC in Lovable/Dashboard for',
+      TOWER_REF,
+    );
+  } else {
+    if (towerResult.output) console.error(towerResult.output);
+    process.exit(1);
+  }
 }
 console.log('Setting KB-four bridge on IP project…');
 if (!setSecrets(IP_REF, { bridge: true, ingest: true })) {

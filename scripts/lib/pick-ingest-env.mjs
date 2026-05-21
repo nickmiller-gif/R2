@@ -23,6 +23,7 @@ export function isValidHmacSecret(raw) {
 export function pickHmacSecret(r2Root) {
   const candidates = [
     readEnvKey(`${r2Root}/.env.wave1.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
+    readEnvKey(`${r2Root}/.env.bridge-sync.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
     process.env.R2_SIGNAL_INGEST_HMAC_SECRET,
     readEnvKey(`${r2Root}/.env.bridge-sync.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
   ];

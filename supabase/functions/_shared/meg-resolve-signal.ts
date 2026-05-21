@@ -532,7 +532,11 @@ function inferCentralr2StructuredResolves(
   if (row.source_system !== 'centralr2') return;
 
   const fn = pickPm(p, m, 'function_name');
-  if (fn === 'property-lookup' || fn === 'rental-analysis') {
+  if (
+    fn === 'property-lookup' ||
+    fn === 'rental-analysis' ||
+    row.source_event_type === 'mesh_signal_correlated'
+  ) {
     const ext = centralr2PropertyDedupeKey(p, m);
     if (ext) {
       const label = pickPm(p, m, 'address') ?? row.summary;

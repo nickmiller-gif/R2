@@ -75,14 +75,69 @@ function jsonByteLength(value: unknown): number {
   }
 }
 
+/** Event types and markers that are never operator-facing production traffic. */
+export const SYNTHETIC_SOURCE_EVENT_TYPES = [
+  'kb_four_smoke',
+  'stream_a_closeout',
+  'r2.signal.ingest.probe',
+] as const;
+
+function summaryLooksSynthetic(summary: string): boolean {
+  return summary.includes('[SMOKE]') || summary.includes('Connectivity verify');
+}
+
+/**
+ * Coerce producer JSON before validation so omitted keys (undefined dropped by
+ * JSON.stringify) do not fail contract checks — e.g. actor_meg_entity_id.
+ */
+export function normalizeR2SignalEnvelope(input: unknown): unknown {
+  if (!isObject(input)) return input;
+
+  const record: Record<string, unknown> = { ...input };
+
+  if (!('actor_meg_entity_id' in record) || record.actor_meg_entity_id === undefined) {
+    record.actor_meg_entity_id = null;
+  }
+
+  if (!Array.isArray(record.related_entity_ids)) {
+    record.related_entity_ids = [];
+  } else {
+    record.related_entity_ids = record.related_entity_ids.filter(isUuid);
+  }
+
+  if (!isObject(record.provenance)) {
+    record.provenance = {};
+  }
+
+  if (!isObject(record.raw_payload)) {
+    record.raw_payload = {};
+  }
+
+  const eventType = typeof record.source_event_type === 'string' ? record.source_event_type : '';
+  const summary = typeof record.summary === 'string' ? record.summary : '';
+  const prov = record.provenance as Record<string, unknown>;
+
+  if (
+    (SYNTHETIC_SOURCE_EVENT_TYPES as readonly string[]).includes(eventType) ||
+    summaryLooksSynthetic(summary) ||
+    prov.connectivity_verify === true ||
+    prov.closeout_smoke === true
+  ) {
+    record.provenance = { ...prov, is_synthetic: true };
+  }
+
+  return record;
+}
+
 export function validateR2SignalEnvelope(input: unknown): SignalValidationResult {
   const issues: SignalValidationIssue[] = [];
+  const normalized = normalizeR2SignalEnvelope(input);
 
-  if (!isObject(input)) {
+  if (!isObject(normalized)) {
     return { ok: false, issues: [{ path: '$', message: 'Envelope must be an object.' }] };
   }
 
-  const record = input;
+  const record = normalized;
 
   if (record.contract_version !== SIGNAL_CONTRACT_VERSION) {
     issues.push({

@@ -36,10 +36,11 @@ function loadEnvFile(path, { override = false } = {}) {
   }
 }
 
-// wave1 first, then bridge-sync (HMAC picked explicitly below)
+// wave1 / op.env first; bridge-sync fills gaps only (bad HMAC must not override 1Password)
 loadEnvFile(join(workspaceRoot, '.env'));
 loadEnvFile(join(r2Root, '.env.wave1.local'));
-loadEnvFile(join(r2Root, '.env.bridge-sync.local'), { override: true });
+if (existsSync(join(r2Root, 'op.env'))) loadEnvFile(join(r2Root, 'op.env'));
+loadEnvFile(join(r2Root, '.env.bridge-sync.local'));
 
 const EIGEN_REF = 'zudslxucibosjwefojtm';
 const TOWER_REF = 'ukffrvqainkntdgjzyde';
@@ -65,12 +66,12 @@ if (bearerDiag !== 'ok') {
 }
 if (!bearer || !hmac) {
   console.error(
-    'Need valid SUPABASE_SERVICE_ROLE_KEY (wave1) and 64-hex R2_SIGNAL_INGEST_HMAC_SECRET.',
+    'Need valid SUPABASE_SERVICE_ROLE_KEY (wave1/op) and R2_SIGNAL_INGEST_HMAC_SECRET (byte-identical to Eigen).',
   );
   process.exit(2);
 }
 console.log('Bearer diagnostic: ok (Eigen service_role ref)');
-console.log('HMAC: 64-hex selected from env files');
+console.log(`HMAC: selected (${hmac.length} chars, UTF-8 signing — not hex-decoded)`);
 
 function setSecrets(projectRef, { bridge = true, ingest = false } = {}) {
   const flags = [];

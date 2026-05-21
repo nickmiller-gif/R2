@@ -13,18 +13,24 @@ export function readEnvKey(path, key) {
   return undefined;
 }
 
+/** Legacy helper — Eigen/producers sign with raw UTF-8 secret; length need not be 64 hex. */
 export function isValidHmacSecret(raw) {
-  return /^[0-9a-f]{64}$/i.test(normalizeHmacSecret(raw ?? ''));
+  const n = normalizeHmacSecret(raw ?? '');
+  return n.length > 0 && !n.startsWith('op://');
 }
 
+/** Prefer wave1 / op-injected env over bridge-sync (invalid short HMAC poisoned smokes). */
 export function pickHmacSecret(r2Root) {
   const candidates = [
-    readEnvKey(`${r2Root}/.env.bridge-sync.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
     readEnvKey(`${r2Root}/.env.wave1.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
     process.env.R2_SIGNAL_INGEST_HMAC_SECRET,
-  ].filter(Boolean);
-  const picked = candidates.find(isValidHmacSecret);
-  return picked ? normalizeHmacSecret(picked) : '';
+    readEnvKey(`${r2Root}/.env.bridge-sync.local`, 'R2_SIGNAL_INGEST_HMAC_SECRET'),
+  ];
+  for (const raw of candidates) {
+    const n = normalizeHmacSecret(raw ?? '');
+    if (n.length > 0 && !n.startsWith('op://')) return n;
+  }
+  return '';
 }
 
 export function normalizeBearer(raw) {

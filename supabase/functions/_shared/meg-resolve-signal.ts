@@ -48,6 +48,52 @@ function clamp(s: string | null, max: number): string | null {
   return s.length <= max ? s : s.slice(0, max);
 }
 
+/** Strip ASCII NUL before RPC — some Postgres builds reject chr(0) in meg_resolve_or_create. */
+export function stripNulText(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const stripped = value.replace(/\0/g, '');
+  const t = stripped.trim();
+  return t.length > 0 ? t : null;
+}
+
+/** Normalize meg_resolve_or_create args for the Eigen RPC (bounds + NUL). */
+export function sanitizeMegResolveRpcArgs(args: MegResolveRpcArgs): MegResolveRpcArgs {
+  const entityType =
+    clamp(
+      stripNulText(args.p_entity_type) ?? args.p_entity_type,
+      MEG_RESOLVE_BOUNDS.entityTypeMaxLength,
+    ) ?? args.p_entity_type;
+  const nameRaw = stripNulText(args.p_canonical_name) ?? args.p_canonical_name;
+  return {
+    p_entity_type: entityType,
+    p_canonical_name: clamp(nameRaw, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) ?? '(unnamed)',
+    p_canonical_email: clamp(
+      stripNulText(args.p_canonical_email),
+      MEG_RESOLVE_BOUNDS.canonicalEmailMaxLength,
+    ),
+    p_canonical_external_id: clamp(
+      stripNulText(args.p_canonical_external_id),
+      MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength,
+    ),
+    p_source_system:
+      clamp(
+        stripNulText(args.p_source_system) ?? args.p_source_system,
+        MEG_RESOLVE_BOUNDS.sourceSystemMaxLength,
+      ) ?? args.p_source_system,
+    p_source_table:
+      clamp(
+        stripNulText(args.p_source_table) ?? args.p_source_table,
+        MEG_RESOLVE_BOUNDS.sourceTableMaxLength,
+      ) ?? args.p_source_table,
+    p_source_row_id:
+      clamp(
+        stripNulText(args.p_source_row_id) ?? args.p_source_row_id,
+        MEG_RESOLVE_BOUNDS.sourceRowIdMaxLength,
+      ) ?? args.p_source_row_id,
+    p_payload: args.p_payload,
+  };
+}
+
 function jsonByteLength(value: unknown): number {
   try {
     return new TextEncoder().encode(JSON.stringify(value ?? {})).length;
@@ -221,8 +267,9 @@ export function inferActorMegResolveArgs(row: FeedRowForMeg): MegResolveRpcArgs 
   );
 
   const rawEntityTypePick = pickPm(p, m, 'actor_entity_type', 'actorEntityType');
+  const summarySafe = stripNulText(row.summary) ?? row.summary;
   const canonicalName =
-    (nameFromPayload ?? row.summary).trim().slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) ||
+    (nameFromPayload ?? summarySafe).trim().slice(0, MEG_RESOLVE_BOUNDS.canonicalNameMaxLength) ||
     'unknown actor';
 
   const rawEntityType =

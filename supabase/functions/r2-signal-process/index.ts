@@ -17,6 +17,7 @@ import {
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
   isUuid,
+  sanitizeMegResolveRpcArgs,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
 
@@ -85,7 +86,10 @@ async function ensureActorMegEntityLinked(
   const args = inferActorMegResolveArgs(row);
   if (!args) return row;
 
-  const { data: megId, error } = await client.rpc('meg_resolve_or_create', args);
+  const { data: megId, error } = await client.rpc(
+    'meg_resolve_or_create',
+    sanitizeMegResolveRpcArgs(args),
+  );
   if (error) {
     throw new Error(`meg_resolve_or_create: ${error.message}`);
   }
@@ -128,7 +132,10 @@ async function ensureRelatedMegEntitiesLinked(
   const merged = new Set<string>(existing);
 
   for (const args of inferred) {
-    const { data: megId, error } = await client.rpc('meg_resolve_or_create', args);
+    const { data: megId, error } = await client.rpc(
+      'meg_resolve_or_create',
+      sanitizeMegResolveRpcArgs(args),
+    );
     if (error) {
       throw new Error(`meg_resolve_or_create related: ${error.message}`);
     }
@@ -161,7 +168,10 @@ async function resolveCoffeeCounterpartyMegEntityId(
 ): Promise<string | null> {
   const args = findCoffeeCounterpartyMegResolveArgs(toFeedRowForMeg(row));
   if (!args) return null;
-  const { data, error } = await client.rpc('meg_resolve_or_create', args);
+  const { data, error } = await client.rpc(
+    'meg_resolve_or_create',
+    sanitizeMegResolveRpcArgs(args),
+  );
   if (error) {
     throw new Error(`meg_resolve_or_create coffee counterparty: ${error.message}`);
   }

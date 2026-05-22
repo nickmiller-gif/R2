@@ -87,10 +87,10 @@ supabase db query --linked "select tablename from pg_tables where schemaname='pu
 supabase db query --linked "select policyname from pg_policies where schemaname='public' and tablename='eigen_governance_audit_log';"
 ```
 
-## Current known blocker
+## Recent resolved blocker / stale-note cleanup
 
-- `oracle-read-models` failed in CI deploy because Deno bundling could not resolve two `.js` imports from TypeScript source.
-- Fix has been added locally in this workspace by adding runtime-compatible module files under:
-  - `src/services/oracle/oracle-db-utils.js`
-  - `src/types/oracle/read-models.js`
-- Deploy will remain red on GitHub until this change is merged to the canonical `R2` remote branch.
+- The prior `oracle-read-models` Deno bundling issue appears resolved in current `main`.
+- Recent `Deploy to Supabase` and CI runs on `main` were green at the time of audit.
+- The `supabase/functions/oracle-read-models` entrypoint now imports `.ts` modules directly (and does not reference missing `.js` shim paths).
+- If the issue reappears, inspect the failing deploy log before adding `.js` shim files.
+- The next deploy-health action is to keep `npm run check` green and verify deploy workflow status before touching downstream consumer repos.

@@ -93,4 +93,4 @@ supabase db query --linked "select policyname from pg_policies where schemaname=
 - Recent `Deploy to Supabase` and CI runs on `main` were green at the time of audit.
 - The current source imports TypeScript modules directly and does not reference the missing `.js` shim files.
 - If the issue reappears, inspect the failing deploy log before adding `.js` shim files.
-- The next deploy-health action is to keep `npm run check` green and verify deploy workflow status before touching producer repos.
+- The next deploy-health action is to keep `npm run check` green and verify deploy workflow status before touching downstream consumer repos.

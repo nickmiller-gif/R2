@@ -4,11 +4,19 @@ import path from "node:path";
 const rootDir = process.cwd();
 const registryPath = path.join(rootDir, "config", "eigen-sites.json");
 
-const safeSiteId = /^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$/;
+const safeSiteId = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const safeHost = /^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i;
 
 function fail(message) {
   throw new Error(message);
+}
+
+function normalizeHost(value) {
+  return value.trim().toLowerCase();
+}
+
+function hostsOverlap(left, right) {
+  return left === right || left.endsWith(`.${right}`) || right.endsWith(`.${left}`);
 }
 
 function assertNonEmptyString(value, label) {
@@ -29,27 +37,40 @@ function assertStringArray(value, label) {
   });
 }
 
-function assertUniqueEntries(values, label) {
-  const seen = new Set();
+function assertUniqueEntries(values, label, normalize = (value) => value) {
+  const seen = new Map();
   values.forEach((value) => {
-    if (seen.has(value)) {
+    const normalizedValue = normalize(value);
+    if (seen.has(normalizedValue)) {
       fail(`${label} contains duplicate value "${value}".`);
     }
-    seen.add(value);
+    seen.set(normalizedValue, value);
   });
 }
 
 function assertHttpUrls(values, label) {
   values.forEach((value) => {
-    if (!/^https?:\/\//.test(value)) {
-      fail(`${label} entry "${value}" must be an http(s) URL.`);
+    let parsed;
+    try {
+      parsed = new URL(value);
+    } catch {
+      fail(`${label} entry "${value}" must be a valid http(s) URL.`);
+    }
+
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
+      fail(`${label} entry "${value}" must be a valid http(s) URL.`);
     }
   });
 }
 
 function assertHosts(values, label) {
   values.forEach((value) => {
-    if (!safeHost.test(value) || value.includes("/") || value.includes(":")) {
+    const normalizedValue = normalizeHost(value);
+    if (
+      !safeHost.test(normalizedValue) ||
+      normalizedValue.includes("/") ||
+      normalizedValue.includes(":")
+    ) {
       fail(`${label} entry "${value}" must be a bare host without protocol, port, or path.`);
     }
   });
@@ -80,7 +101,7 @@ let totalAllowlistHosts = 0;
 
 for (const [siteId, siteConfig] of siteEntries) {
   if (!safeSiteId.test(siteId)) {
-    fail(`Site id "${siteId}" must use lowercase letters, numbers, and hyphens only.`);
+    fail(`Site id "${siteId}" must use lowercase letters, numbers, and single hyphens only.`);
   }
 
   if (!siteConfig || typeof siteConfig !== "object" || Array.isArray(siteConfig)) {
@@ -95,7 +116,7 @@ for (const [siteId, siteConfig] of siteEntries) {
   assertStringArray(siteConfig.fetch_allowlist, `${siteId}.fetch_allowlist`);
   assertUniqueEntries(siteConfig.sitemaps, `${siteId}.sitemaps`);
   assertUniqueEntries(siteConfig.rss_feeds, `${siteId}.rss_feeds`);
-  assertUniqueEntries(siteConfig.fetch_allowlist, `${siteId}.fetch_allowlist`);
+  assertUniqueEntries(siteConfig.fetch_allowlist, `${siteId}.fetch_allowlist`, normalizeHost);
   assertHttpUrls(siteConfig.sitemaps, `${siteId}.sitemaps`);
   assertHttpUrls(siteConfig.rss_feeds, `${siteId}.rss_feeds`);
   assertHosts(siteConfig.fetch_allowlist, `${siteId}.fetch_allowlist`);
@@ -116,12 +137,17 @@ for (const [siteId, siteConfig] of siteEntries) {
   }
 
   for (const host of siteConfig.fetch_allowlist) {
-    if (seenAllowlistHosts.has(host)) {
-      fail(
-        `${siteId}.fetch_allowlist duplicates host "${host}" already claimed by ${seenAllowlistHosts.get(host)}.`
-      );
+    const normalizedHost = normalizeHost(host);
+
+    for (const [claimedHost, claimedSiteId] of seenAllowlistHosts.entries()) {
+      if (hostsOverlap(normalizedHost, claimedHost)) {
+        fail(
+          `${siteId}.fetch_allowlist host "${host}" overlaps "${claimedHost}" already claimed by ${claimedSiteId}.`
+        );
+      }
     }
-    seenAllowlistHosts.set(host, siteId);
+
+    seenAllowlistHosts.set(normalizedHost, siteId);
     totalAllowlistHosts += 1;
   }
 }

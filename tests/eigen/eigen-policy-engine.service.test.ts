@@ -36,16 +36,23 @@ function makeDb(rules: DbEigenPolicyRuleRow[]): EigenPolicyEngineDb {
 
 describe('Eigen policy engine service', () => {
   it('applies deny-over-allow when both match', async () => {
-    const service = createEigenPolicyEngineService(makeDb([
-      makeRow({ id: 'allow-1', policy_tag: 'eigenx', capability_tag_pattern: '*', effect: 'allow' }),
-      makeRow({
-        id: 'deny-1',
-        policy_tag: 'eigenx',
-        capability_tag_pattern: 'write:*',
-        effect: 'deny',
-        rationale: 'write operations require explicit approval',
-      }),
-    ]));
+    const service = createEigenPolicyEngineService(
+      makeDb([
+        makeRow({
+          id: 'allow-1',
+          policy_tag: 'eigenx',
+          capability_tag_pattern: '*',
+          effect: 'allow',
+        }),
+        makeRow({
+          id: 'deny-1',
+          policy_tag: 'eigenx',
+          capability_tag_pattern: 'write:*',
+          effect: 'deny',
+          rationale: 'write operations require explicit approval',
+        }),
+      ]),
+    );
 
     const result = await service.evaluate({
       policyTags: ['eigenx'],
@@ -60,15 +67,17 @@ describe('Eigen policy engine service', () => {
   });
 
   it('treats admin as satisfying operator required_role', async () => {
-    const service = createEigenPolicyEngineService(makeDb([
-      makeRow({
-        id: 'allow-write-operator',
-        policy_tag: 'eigenx',
-        capability_tag_pattern: 'write:*',
-        effect: 'allow',
-        required_role: 'operator',
-      }),
-    ]));
+    const service = createEigenPolicyEngineService(
+      makeDb([
+        makeRow({
+          id: 'allow-write-operator',
+          policy_tag: 'eigenx',
+          capability_tag_pattern: 'write:*',
+          effect: 'allow',
+          required_role: 'operator',
+        }),
+      ]),
+    );
 
     const result = await service.evaluate({
       policyTags: ['eigenx'],
@@ -80,14 +89,16 @@ describe('Eigen policy engine service', () => {
   });
 
   it('matches wildcard policy tags for user-scoped eigenx policies', async () => {
-    const service = createEigenPolicyEngineService(makeDb([
-      makeRow({
-        id: 'allow-user-scope',
-        policy_tag: 'eigenx:*',
-        capability_tag_pattern: 'read:*',
-        effect: 'allow',
-      }),
-    ]));
+    const service = createEigenPolicyEngineService(
+      makeDb([
+        makeRow({
+          id: 'allow-user-scope',
+          policy_tag: 'eigenx:*',
+          capability_tag_pattern: 'read:*',
+          effect: 'allow',
+        }),
+      ]),
+    );
 
     const result = await service.evaluate({
       policyTags: ['eigenx:user:1234'],
@@ -99,15 +110,64 @@ describe('Eigen policy engine service', () => {
     expect(result.matchedRuleIds).toEqual(['allow-user-scope']);
   });
 
+  it('passes isActive=true when evaluating so superseded rules cannot match', async () => {
+    // The migration 202604240006 supersede flow keeps retired rows in the
+    // table with is_active=false. evaluate() must request only active rules
+    // — otherwise a retracted deny would silently keep blocking traffic.
+    const seenFilters: Array<{ isActive?: boolean } | undefined> = [];
+    const activeAllow = makeRow({
+      id: 'allow-active',
+      policy_tag: 'eigenx',
+      capability_tag_pattern: 'ai:*',
+      effect: 'allow',
+    });
+    const supersededDeny = makeRow({
+      id: 'deny-superseded',
+      policy_tag: 'eigenx',
+      capability_tag_pattern: 'ai:*',
+      effect: 'deny',
+      rationale: 'Superseded incident-window deny; must not block.',
+    });
+    const db: EigenPolicyEngineDb = {
+      insertRule: async () => {
+        throw new Error('not implemented');
+      },
+      findRuleById: async () => null,
+      queryRules: async (filter) => {
+        seenFilters.push(filter);
+        // Emulate eigen_policy_rules_active_read_model: when callers ask for
+        // active rules, the superseded row is filtered out.
+        if (filter?.isActive === true) return [activeAllow];
+        return [activeAllow, supersededDeny];
+      },
+      updateRule: async () => {
+        throw new Error('not implemented');
+      },
+    };
+    const service = createEigenPolicyEngineService(db);
+
+    const result = await service.evaluate({
+      policyTags: ['eigenx'],
+      capabilityTags: ['ai:synthesis'],
+      callerRoles: ['member'],
+    });
+
+    expect(seenFilters).toEqual([{ isActive: true }]);
+    expect(result.allowed).toBe(true);
+    expect(result.matchedRuleIds).toEqual(['allow-active']);
+  });
+
   it('denies when no allow rule matches', async () => {
-    const service = createEigenPolicyEngineService(makeDb([
-      makeRow({
-        id: 'allow-read',
-        policy_tag: 'eigenx',
-        capability_tag_pattern: 'read:*',
-        effect: 'allow',
-      }),
-    ]));
+    const service = createEigenPolicyEngineService(
+      makeDb([
+        makeRow({
+          id: 'allow-read',
+          policy_tag: 'eigenx',
+          capability_tag_pattern: 'read:*',
+          effect: 'allow',
+        }),
+      ]),
+    );
 
     const result = await service.evaluate({
       policyTags: ['eigenx'],

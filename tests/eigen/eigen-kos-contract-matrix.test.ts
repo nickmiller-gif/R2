@@ -146,7 +146,20 @@ function makeStubClient(rules: SeedRule[]): SupabaseClient {
         throw new Error(`Unexpected table in KOS contract stub: ${table}`);
       }
       return {
-        select: () => Promise.resolve({ data: rules, error: null }),
+        select: () => ({
+          // The engine filters active rules via `.eq('is_active', true)`. The
+          // seeded fixture predates the versioning columns, so missing fields
+          // are treated as active to keep the matrix semantics stable.
+          eq: (column: string, value: unknown) =>
+            Promise.resolve({
+              data: rules.filter((row) => {
+                const actual = (row as unknown as Record<string, unknown>)[column];
+                if (actual === undefined && column === 'is_active') return value === true;
+                return actual === value;
+              }),
+              error: null,
+            }),
+        }),
       };
     },
   };

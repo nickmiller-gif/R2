@@ -261,7 +261,11 @@ export function createEigenPolicyEngineService(
     async evaluate(input) {
       assertEvaluateInputBounds(input);
       const startedAt = Date.now();
-      const rules = await this.listRules();
+      // Always evaluate against the active rule set. Superseded rows linger in
+      // the table after a supersede (migration 202604240006) so the operator
+      // can audit history, but they must not influence runtime decisions —
+      // under deny-over-allow a retracted deny would otherwise keep blocking.
+      const rules = await this.listRules({ isActive: true });
       const result = evaluateEigenPolicyRules(rules, input);
       const evaluationMs = Date.now() - startedAt;
 

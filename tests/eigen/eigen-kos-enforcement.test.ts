@@ -28,6 +28,7 @@ interface FakeRuleRow {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  is_active: boolean;
 }
 
 function makeRuleRow(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
@@ -41,26 +42,34 @@ function makeRuleRow(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
     metadata: overrides.metadata ?? {},
     created_at: overrides.created_at ?? '2026-04-24T00:00:00.000Z',
     updated_at: overrides.updated_at ?? '2026-04-24T00:00:00.000Z',
+    is_active: overrides.is_active ?? true,
   };
 }
 
 /**
- * Minimal Supabase client stub that answers the one query the helper runs:
- * `client.from('eigen_policy_rules').select(...)` returns the rule set.
+ * Minimal Supabase client stub. The helper runs
+ * `client.from('eigen_policy_rules').select(...).eq('is_active', true)` —
+ * stub supports that chain and applies the eq filter so versioning behavior
+ * (superseded rows hidden from the engine) can be verified end-to-end.
  */
 function makeFakeClient(rules: FakeRuleRow[]): SupabaseClient {
-  const selectResult = { data: rules, error: null };
   const fake = {
     from(table: string) {
       if (table !== 'eigen_policy_rules') {
         throw new Error(`Unexpected table in KOS enforcement stub: ${table}`);
       }
       return {
-        select: () => Promise.resolve(selectResult),
+        select: () => ({
+          eq: (column: keyof FakeRuleRow, value: unknown) =>
+            Promise.resolve({
+              data: rules.filter((row) => row[column] === value),
+              error: null,
+            }),
+        }),
       };
     },
   };
-  // The helper only touches `.from().select()`, so casting through `unknown` is safe
+  // The helper only touches `.from().select().eq()`, so casting through `unknown` is safe
   // for a contract-level stub.
   return fake as unknown as SupabaseClient;
 }
@@ -211,6 +220,65 @@ describe('enforceEigenKosCapabilityBundle', () => {
         ['read:knowledge', 'search'].sort(),
       );
     }
+  });
+
+  it('ignores superseded (is_active=false) rules so retracted denies stop blocking', async () => {
+    // Scenario: operator created a temporary deny during an incident, then
+    // superseded it. The new (active) rule should be evaluated alone; the
+    // superseded deny must not keep blocking under deny-over-allow.
+    const client = makeFakeClient([
+      makeRuleRow({
+        id: 'allow-ai-active',
+        policy_tag: 'eigenx',
+        capability_tag_pattern: 'ai:*',
+        effect: 'allow',
+        required_role: 'member',
+        is_active: true,
+      }),
+      makeRuleRow({
+        id: 'deny-ai-superseded',
+        policy_tag: 'eigenx',
+        capability_tag_pattern: 'ai:*',
+        effect: 'deny',
+        rationale: 'Incident window — superseded but still in the table.',
+        is_active: false,
+      }),
+    ]);
+    const result = await enforceEigenKosCapabilityBundle(client, {
+      policyTags: ['eigenx'],
+      requiredCapabilityTags: ['ai:synthesis'],
+      callerRoles: ['member'],
+      surface: 'eigen-chat',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.rulesConfigured).toBe(true);
+      expect(result.allowedCapabilityTags).toEqual(['ai:synthesis']);
+    }
+  });
+
+  it('short-circuits to rulesConfigured=false when only superseded rules remain', async () => {
+    // Edge case: every rule for the scope has been retracted. The active set
+    // is empty, so the helper must treat the scope as "no rules configured"
+    // and fall through the rollout backstop rather than blanket-denying.
+    const client = makeFakeClient([
+      makeRuleRow({
+        id: 'allow-read-superseded',
+        policy_tag: 'eigenx',
+        capability_tag_pattern: 'read:*',
+        effect: 'allow',
+        required_role: 'member',
+        is_active: false,
+      }),
+    ]);
+    const result = await enforceEigenKosCapabilityBundle(client, {
+      policyTags: ['eigenx'],
+      requiredCapabilityTags: ['read:knowledge'],
+      callerRoles: ['member'],
+      surface: 'eigen-retrieve',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rulesConfigured).toBe(false);
   });
 
   it('normalizes duplicate / whitespace-only required tags before evaluation', async () => {

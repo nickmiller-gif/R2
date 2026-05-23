@@ -48,12 +48,22 @@ function rowToRule(row: DbEigenPolicyRuleRow): EigenPolicyRule {
   };
 }
 
+/**
+ * The versioning slice (migration 202604240006) lets operators supersede a
+ * rule by inserting a new row with `version+1` and flipping the predecessor's
+ * `is_active` to false. Loading the full table would mean the runtime engine
+ * keeps evaluating retired rules — and under deny-over-allow semantics, a
+ * superseded deny would silently keep blocking traffic that a fresh allow
+ * was meant to permit. Mirror `eigen_policy_rules_active_read_model` here so
+ * runtime enforcement always tracks the operator-authoritative set.
+ */
 async function loadPolicyRules(client: SupabaseClient): Promise<EigenPolicyRule[]> {
   const query = await client
     .from('eigen_policy_rules')
     .select(
       'id,policy_tag,capability_tag_pattern,effect,required_role,rationale,metadata,created_at,updated_at',
-    );
+    )
+    .eq('is_active', true);
   if (query.error) throw new Error(query.error.message);
   const rows = (query.data ?? []) as DbEigenPolicyRuleRow[];
   return rows.map(rowToRule);

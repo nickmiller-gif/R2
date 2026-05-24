@@ -27,6 +27,7 @@ import {
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { logError } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 import {
   buildEigenKosCapabilityDenialBody,
   enforceEigenKosCapabilityBundle,
@@ -151,7 +152,7 @@ function parseRequest(value: unknown): ChatRequest {
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
     policy_scope: policyScopeList,
-    policy_scope_explicit: body.hasOwnProperty('policy_scope'),
+    policy_scope_explicit: Object.prototype.hasOwnProperty.call(body, 'policy_scope'),
     stream: body.stream === true,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: toList(body.site_source_systems),
@@ -191,6 +192,9 @@ Deno.serve(
   withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
 
     const auth = await guardAuth(req);
     if (!auth.ok) return auth.response;

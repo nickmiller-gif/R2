@@ -105,16 +105,22 @@ function normalizeCapabilityTags(values: string[]): string[] {
 function evaluateSubsetForCapability(
   rules: EigenPolicyRule[],
   capabilityTag: string,
-): { allowed: boolean; denyReasons: string[] } {
+): { allowed: boolean; denyReasons: string[]; matchedRuleIds: string[] } {
   const matching = rules.filter((rule) => matchWildcard(rule.capabilityTagPattern, capabilityTag));
+  const matchedRuleIds = matching.map((r) => r.id);
   const denying = matching.filter((rule) => rule.effect === 'deny');
   if (denying.length > 0) {
-    return { allowed: false, denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`) };
+    return {
+      allowed: false,
+      denyReasons: denying.map((r) => r.rationale ?? `Denied by ${r.id}`),
+      matchedRuleIds,
+    };
   }
   const allowing = matching.filter((rule) => rule.effect === 'allow');
   return {
     allowed: allowing.length > 0,
     denyReasons: allowing.length > 0 ? [] : ['No matching allow rule'],
+    matchedRuleIds,
   };
 }
 
@@ -122,6 +128,13 @@ export interface EvaluateEigenPolicyPerCapabilityResult {
   allowedCapabilityTags: string[];
   deniedCapabilityTags: string[];
   deniedReasonsByCapability: Record<string, string[]>;
+  /**
+   * Union of rule IDs that matched any capability under the resolved scope and
+   * role filter. Order is stable across capabilities; duplicates removed.
+   * Surfaced so the decision-audit recorder can persist `matched_rule_ids` on
+   * the `eigen_policy_decisions` row without a second pass.
+   */
+  matchedRuleIds: string[];
 }
 
 /**
@@ -136,7 +149,12 @@ export function evaluateEigenPolicyRulesPerCapability(
 ): EvaluateEigenPolicyPerCapabilityResult {
   const caps = normalizeCapabilityTags(capabilityTags);
   if (caps.length === 0) {
-    return { allowedCapabilityTags: [], deniedCapabilityTags: [], deniedReasonsByCapability: {} };
+    return {
+      allowedCapabilityTags: [],
+      deniedCapabilityTags: [],
+      deniedReasonsByCapability: {},
+      matchedRuleIds: [],
+    };
   }
 
   const policyNorm = Array.from(new Set(policyTags.map((t) => t.trim()).filter(Boolean)));
@@ -149,9 +167,11 @@ export function evaluateEigenPolicyRulesPerCapability(
   const allowedCapabilityTags: string[] = [];
   const deniedCapabilityTags: string[] = [];
   const deniedReasonsByCapability: Record<string, string[]> = {};
+  const matchedRuleIdSet = new Set<string>();
 
   for (const capabilityTag of caps) {
     const evaluation = evaluateSubsetForCapability(candidates, capabilityTag);
+    for (const id of evaluation.matchedRuleIds) matchedRuleIdSet.add(id);
     if (evaluation.allowed) {
       allowedCapabilityTags.push(capabilityTag);
     } else {
@@ -164,5 +184,6 @@ export function evaluateEigenPolicyRulesPerCapability(
     allowedCapabilityTags,
     deniedCapabilityTags,
     deniedReasonsByCapability,
+    matchedRuleIds: Array.from(matchedRuleIdSet),
   };
 }

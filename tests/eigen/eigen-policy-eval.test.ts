@@ -36,7 +36,12 @@ describe('evaluateEigenPolicyRulesPerCapability', () => {
     const capabilityTags = ['read:knowledge', 'write:tool-capability', 'search'];
     const callerRoles = ['operator'];
 
-    const batch = evaluateEigenPolicyRulesPerCapability(rules, policyTags, capabilityTags, callerRoles);
+    const batch = evaluateEigenPolicyRulesPerCapability(
+      rules,
+      policyTags,
+      capabilityTags,
+      callerRoles,
+    );
 
     const bruteAllowed: string[] = [];
     const bruteDenied: string[] = [];
@@ -57,6 +62,27 @@ describe('evaluateEigenPolicyRulesPerCapability', () => {
     expect(batch.allowedCapabilityTags).toEqual(bruteAllowed);
     expect(batch.deniedCapabilityTags).toEqual(bruteDenied);
     expect(batch.deniedReasonsByCapability).toEqual(bruteReasons);
+    // Both rules match at least one capability under the resolved scope/role,
+    // so both ids should appear (deduplicated) in matchedRuleIds.
+    expect(batch.matchedRuleIds.sort()).toEqual(['allow-1', 'deny-1']);
+  });
+
+  it('returns an empty matchedRuleIds when no rule matches any capability under scope', () => {
+    const rules: EigenPolicyRule[] = [
+      rule({
+        id: 'allow-other-scope',
+        policyTag: 'other-scope',
+        capabilityTagPattern: '*',
+      }),
+    ];
+    const batch = evaluateEigenPolicyRulesPerCapability(
+      rules,
+      ['eigenx'],
+      ['read:knowledge'],
+      ['member'],
+    );
+    expect(batch.matchedRuleIds).toEqual([]);
+    expect(batch.deniedCapabilityTags).toEqual(['read:knowledge']);
   });
 
   it('deny-over-allow and admin satisfies operator required_role', () => {
@@ -114,12 +140,19 @@ describe('evaluateEigenPolicyRulesPerCapability', () => {
       ['operator'],
     );
     expect(batch.deniedCapabilityTags).toEqual(['write:tool-capability']);
-    expect(batch.deniedReasonsByCapability['write:tool-capability']).toContain('No matching allow rule');
+    expect(batch.deniedReasonsByCapability['write:tool-capability']).toContain(
+      'No matching allow rule',
+    );
   });
 
   it('deduplicates capability tags', () => {
     const rules: EigenPolicyRule[] = [rule({ id: 'a', capabilityTagPattern: 'x' })];
-    const batch = evaluateEigenPolicyRulesPerCapability(rules, ['eigenx'], ['  x  ', 'x'], ['member']);
+    const batch = evaluateEigenPolicyRulesPerCapability(
+      rules,
+      ['eigenx'],
+      ['  x  ', 'x'],
+      ['member'],
+    );
     expect(batch.allowedCapabilityTags).toEqual(['x']);
   });
 });

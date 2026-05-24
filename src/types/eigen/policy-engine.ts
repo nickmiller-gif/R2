@@ -28,6 +28,12 @@ export interface CreateEigenPolicyRuleInput {
 export interface EigenPolicyRuleFilter {
   policyTag?: string;
   effect?: EigenPolicyEffect;
+  /**
+   * When set, restrict the result to rows matching `eigen_policy_rules.is_active`.
+   * `evaluate()` always passes `true` so superseded rules cannot affect runtime
+   * decisions; operator read paths leave it unset to see the full lineage.
+   */
+  isActive?: boolean;
 }
 
 export interface EvaluateEigenPolicyInput {

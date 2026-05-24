@@ -41,6 +41,11 @@ interface FakeRuleRow {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // PR #296 added `.eq('is_active', true)` to the engine's rule loader so
+  // superseded rows stop reaching the evaluator. The stub's `.eq()` filter
+  // (see makeRuleQuery) drops rows where this is undefined, so fixtures must
+  // default to active or every test would short-circuit to rulesConfigured=false.
+  is_active: boolean;
 }
 
 function makeRule(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
@@ -54,6 +59,7 @@ function makeRule(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
     metadata: overrides.metadata ?? {},
     created_at: overrides.created_at ?? '2026-04-24T00:00:00.000Z',
     updated_at: overrides.updated_at ?? '2026-04-24T00:00:00.000Z',
+    is_active: overrides.is_active ?? true,
   };
 }
 
@@ -66,11 +72,10 @@ interface RecordingClient {
 
 /**
  * Stub Supabase client that handles two tables:
- *   - `eigen_policy_rules` (read) — answers the `.select(...)` chain used
- *     by the engine. The chain is both directly awaitable (current main —
- *     `await client.from(...).select(...)`) and `.eq()`-chainable
- *     (post-PR #296 — adds `.eq('is_active', true)` before await), so the
- *     stub keeps working through that merge without test churn.
+ *   - `eigen_policy_rules` (read) — answers `.select(...).eq('is_active', true)`
+ *     as used by the engine post-#296. The chain stays thenable so the
+ *     stub also tolerates a plain `await client.from(...).select(...)` if a
+ *     caller ever drops the filter.
  *   - `eigen_policy_decisions` (write) — answers `.insert([...]).select('id').single()`
  *     and stores the inserted row so tests can assert on it.
  */

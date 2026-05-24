@@ -28,6 +28,13 @@ export interface ResolveEigenCapabilityAccessResult {
   deniedCapabilityTags: string[];
   rulesConfigured: boolean;
   deniedReasonsByCapability: Record<string, string[]>;
+  /**
+   * Rule IDs that matched the resolved scope+role filter (deduplicated union
+   * across capabilities). Empty when `rulesConfigured` is false. Carried so
+   * `enforceEigenKosCapabilityBundle` can record `matched_rule_ids` on the
+   * `eigen_policy_decisions` audit row.
+   */
+  matchedRuleIds: string[];
 }
 
 function normalizeTags(values: string[]): string[] {
@@ -81,6 +88,7 @@ export async function resolveEigenCapabilityAccess(
       deniedCapabilityTags: [],
       rulesConfigured: false,
       deniedReasonsByCapability: {},
+      matchedRuleIds: [],
     };
   }
 
@@ -91,10 +99,11 @@ export async function resolveEigenCapabilityAccess(
       deniedCapabilityTags: [],
       rulesConfigured: false,
       deniedReasonsByCapability: {},
+      matchedRuleIds: [],
     };
   }
 
-  const { allowedCapabilityTags, deniedCapabilityTags, deniedReasonsByCapability } =
+  const { allowedCapabilityTags, deniedCapabilityTags, deniedReasonsByCapability, matchedRuleIds } =
     evaluateEigenPolicyRulesPerCapability(rules, policyTags, capabilityTags, input.callerRoles);
 
   return {
@@ -102,5 +111,6 @@ export async function resolveEigenCapabilityAccess(
     deniedCapabilityTags,
     rulesConfigured: true,
     deniedReasonsByCapability,
+    matchedRuleIds,
   };
 }

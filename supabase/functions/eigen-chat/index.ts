@@ -27,6 +27,7 @@ import {
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import { logError } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 import {
   buildEigenKosCapabilityDenialBody,
   enforceEigenKosCapabilityBundle,
@@ -151,7 +152,7 @@ function parseRequest(value: unknown): ChatRequest {
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
     policy_scope: policyScopeList,
-    policy_scope_explicit: policyScopeList.length > 0,
+    policy_scope_explicit: Object.prototype.hasOwnProperty.call(body, 'policy_scope'),
     stream: body.stream === true,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: toList(body.site_source_systems),
@@ -188,9 +189,12 @@ function buildUserMessageWithContext(
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+    const idemError = requireIdempotencyKey(req);
+    if (idemError) return idemError;
 
     const auth = await guardAuth(req);
     if (!auth.ok) return auth.response;
@@ -214,11 +218,23 @@ Deno.serve(
       // Enforce the chat KOS capability bundle (search + read:knowledge + ai:synthesis)
       // for the caller's effective policy scope. Runs before the first retrieve so we
       // don't spend LLM tokens on a request that would fail at capability gating.
+      // Opt into decision-audit recording: the bundle outcome lands in
+      // `eigen_policy_decisions` so operators can answer "why was this chat
+      // request allowed/denied" later. Best-effort — failure cannot block chat.
       const kos = await enforceEigenKosCapabilityBundle(client, {
         policyTags: resolvedScope.effectivePolicyScope,
         requiredCapabilityTags: EIGEN_KOS_CAPABILITY.chat,
         callerRoles: roleCheck.roles,
         surface: 'eigen-chat',
+        audit: {
+          callerSubject: auth.claims.userId,
+          correlationId: meta.correlationId,
+          metadata: {
+            response_format: body.response_format,
+            session_provided: typeof body.session_id === 'string' && body.session_id.length > 0,
+            policy_scope_explicit: body.policy_scope_explicit,
+          },
+        },
       });
       if (!kos.ok) {
         return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {

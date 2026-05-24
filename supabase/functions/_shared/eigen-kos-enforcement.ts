@@ -29,6 +29,10 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // globals via supabase.ts).
 import type { CharterRole } from './roles.ts';
 import { resolveEigenCapabilityAccess } from './eigen-policy-engine.ts';
+import {
+  recordEigenPolicyBundleDecision,
+  type EigenPolicyDecisionAuditContext,
+} from './eigen-policy-decision-recorder.ts';
 
 export interface EnforceEigenKosCapabilityBundleInput {
   policyTags: string[];
@@ -36,6 +40,14 @@ export interface EnforceEigenKosCapabilityBundleInput {
   callerRoles: CharterRole[];
   /** Identifier used in 403 payloads so clients can correlate the failing endpoint. */
   surface: string;
+  /**
+   * When provided, the bundle outcome is recorded as one row in
+   * `eigen_policy_decisions` for operator audit. Recording is best-effort:
+   * a failure is swallowed and logged, never bubbled to the caller, so an
+   * audit-table outage cannot break enforcement. Omit to opt out (the
+   * rollout backstop while we wire callsites incrementally).
+   */
+  audit?: EigenPolicyDecisionAuditContext;
 }
 
 export interface EigenKosCapabilityDenial {
@@ -79,16 +91,21 @@ export async function enforceEigenKosCapabilityBundle(
     return { ok: true, rulesConfigured: false, allowedCapabilityTags: [] };
   }
 
+  const startedAt = Date.now();
   const access = await resolveEigenCapabilityAccess(client, {
     policyTags: input.policyTags,
     capabilityTags,
     callerRoles: input.callerRoles,
   });
+  const evaluationMs = Date.now() - startedAt;
 
   // Backwards-compatible: no rules configured for this scope → don't block yet.
   // Once the policy-rule rollout is complete the default can flip to
   // deny-on-missing-rules (tracked as a separate slice).
   if (!access.rulesConfigured) {
+    // Skip recording when the rollout backstop fires. There are no rules to
+    // attribute the allow to, so a decision row would just be noise — the
+    // operator audit story for unconfigured scopes is "no rules yet".
     return {
       ok: true,
       rulesConfigured: false,
@@ -96,7 +113,42 @@ export async function enforceEigenKosCapabilityBundle(
     };
   }
 
-  if (access.deniedCapabilityTags.length === 0) {
+  const allowed = access.deniedCapabilityTags.length === 0;
+  const denyReasons = allowed
+    ? []
+    : Array.from(
+        new Set(
+          access.deniedCapabilityTags.flatMap((cap) => access.deniedReasonsByCapability[cap] ?? []),
+        ),
+      );
+
+  if (input.audit) {
+    // Fire-and-forget but awaited so we can preserve the evaluation_ms
+    // signal in the row. The recorder swallows its own errors so this
+    // await cannot leak a recording failure into enforcement.
+    // Wrap with a bounded timeout (100ms) so a slow insert cannot block enforcement.
+    try {
+      await Promise.race([
+        recordEigenPolicyBundleDecision(client, {
+          allowed,
+          policyTags: input.policyTags,
+          capabilityTags,
+          callerRoles: input.callerRoles,
+          matchedRuleIds: access.matchedRuleIds,
+          denyReasons,
+          evaluationMs,
+          audit: input.audit,
+          surface: input.surface,
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
+      ]);
+    } catch (_err) {
+      // Swallow audit failures (timeout or other) so enforcement proceeds.
+      // The recorder already logs errors internally; nothing more needed here.
+    }
+  }
+
+  if (allowed) {
     return {
       ok: true,
       rulesConfigured: true,

@@ -151,7 +151,7 @@ function parseRequest(value: unknown): ChatRequest {
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
     policy_scope: policyScopeList,
-    policy_scope_explicit: policyScopeList.length > 0,
+    policy_scope_explicit: body.hasOwnProperty('policy_scope'),
     stream: body.stream === true,
     site_id: typeof body.site_id === 'string' ? body.site_id.trim() : undefined,
     site_source_systems: toList(body.site_source_systems),

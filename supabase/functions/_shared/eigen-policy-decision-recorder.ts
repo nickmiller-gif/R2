@@ -113,12 +113,20 @@ export async function recordEigenPolicyBundleDecision(
       .select('id')
       .single();
     if (error) {
-      onRecordError(error);
+      try {
+        onRecordError(error);
+      } catch (_) {
+        // Swallow any error from the sink so it cannot bubble up.
+      }
       return null;
     }
     return (data?.id as string | undefined) ?? null;
   } catch (err) {
-    onRecordError(err);
+    try {
+      onRecordError(err);
+    } catch (_) {
+      // Swallow any error from the sink so it cannot bubble up.
+    }
     return null;
   }
 }

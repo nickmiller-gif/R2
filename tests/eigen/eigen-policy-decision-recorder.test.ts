@@ -312,4 +312,43 @@ describe('enforceEigenKosCapabilityBundle recording wire-up', () => {
     expect(result.ok).toBe(true);
     expect(recording.inserted).toEqual([]);
   });
+
+  it('attributes the eigen-retrieve surface and its audit metadata on a recorded row', async () => {
+    // Locks in the retrieve-side wire-up: the index.ts handler passes
+    // `surface: 'eigen-retrieve'` plus retrieve-specific metadata
+    // (policy_scope_explicit, site_provided, entity_scope_size,
+    // outside_domain_intent). Operator queries filter by
+    // `metadata->>'surface'` so this row must surface under retrieve.
+    const recording = makeRecordingClient([memberRule]);
+    const result = await enforceEigenKosCapabilityBundle(recording.client, {
+      policyTags: ['eigenx'],
+      requiredCapabilityTags: ['read:knowledge'],
+      callerRoles: ['member'],
+      surface: 'eigen-retrieve',
+      audit: {
+        callerSubject: 'user-77',
+        correlationId: 'req-retrieve-1',
+        metadata: {
+          policy_scope_explicit: true,
+          site_provided: false,
+          entity_scope_size: 3,
+          outside_domain_intent: false,
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(recording.inserted).toHaveLength(1);
+    expect(recording.inserted[0]).toMatchObject({
+      allowed: true,
+      caller_subject: 'user-77',
+      correlation_id: 'req-retrieve-1',
+      metadata: {
+        surface: 'eigen-retrieve',
+        policy_scope_explicit: true,
+        site_provided: false,
+        entity_scope_size: 3,
+        outside_domain_intent: false,
+      },
+    });
+  });
 });

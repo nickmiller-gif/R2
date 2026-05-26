@@ -30,14 +30,16 @@ Anonymous / pre-login chat (`eigen-chat-public`) retrieves only chunks whose **`
 
 Used by tooling/tests and future server paths; they call `createEigenIngestClient` with explicit `policy_tags` / `visibilityPolicyTags`:
 
-| Adapter                                                   | Default visibility / tags                                                                  |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `r2app/eigen-r2app-adapter.ts`                            | Default **`public`** → **`eigen_public`** (Ray's Retreat Lovable repo — optional KB path). |
-| `raysretreat/eigen-raysretreat-adapter.ts`                | Default **`public`** → **`eigen_public`**.                                                 |
-| `health-supplement-tr/eigen-health-supplement-adapter.ts` | Default **`public`** (pass **`eigenx`** for operator-only).                                |
-| `smartplrx-trend-tracker/eigen-smartplrx-adapter.ts`      | Default **`public`**; same visibility switch as health supplement.                         |
-| `centralr2-core/eigen-centralr2-adapter.ts`               | **`eigenx`** (internal narratives).                                                        |
-| `ip-insights-hub/eigen-ip-adapter.ts`                     | IP-internal tags; optional `defaultPolicyTags` merge.                                      |
+| Adapter                                                   | Default visibility / tags                                                                                                                                                                                  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `r2app/eigen-r2app-adapter.ts`                            | Default **`public`** → **`eigen_public`** for R2 App conversation transcripts.                                                                                                                             |
+| `raysretreat/eigen-raysretreat-adapter.ts`                | Default **`public`** → **`eigen_public`**; emits `site_id` **`raysretreat`** for the Ray's Retreat surface, while `source_system` remains **`rays_retreat`** pending secrets-backed contract verification. |
+| `health-supplement-tr/eigen-health-supplement-adapter.ts` | Default **`public`** (pass **`eigenx`** for operator-only).                                                                                                                                                |
+| `smartplrx-trend-tracker/eigen-smartplrx-adapter.ts`      | Default **`public`**; same visibility switch as health supplement.                                                                                                                                         |
+| `centralr2-core/eigen-centralr2-adapter.ts`               | **`eigenx`** (internal narratives).                                                                                                                                                                        |
+| `ip-insights-hub/eigen-ip-adapter.ts`                     | IP-internal tags; optional `defaultPolicyTags` merge.                                                                                                                                                      |
+
+The Ray's Retreat app smoke check in `ray-s-retreat/scripts/smoke-eigen-public.mjs` already targets `site_id: "raysretreat"`; keep three pieces aligned on that same string: the adapter's emitted `site_id`, the site key in `config/eigen-sites.json`, and the smoke script target. Separately verify during secrets-backed testing that the adapter's `source_system` `rays_retreat` still matches any production filtering, and that `EIGEN_FETCH_ALLOWLIST` includes `raysretreat.com` before fetch ingest is enabled.
 
 ## Operational check
 

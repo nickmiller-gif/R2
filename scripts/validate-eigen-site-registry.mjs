@@ -12,7 +12,7 @@ function fail(message) {
 }
 
 function normalizeHost(value) {
-  return value.trim().toLowerCase();
+  return value.toLowerCase();
 }
 
 function hostsOverlap(left, right) {
@@ -65,6 +65,10 @@ function assertHttpUrls(values, label) {
 
 function assertHosts(values, label) {
   values.forEach((value) => {
+    if (value !== value.trim() || /\s/.test(value)) {
+      fail(`${label} entry "${value}" must not include whitespace.`);
+    }
+
     const normalizedValue = normalizeHost(value);
     if (
       !safeHost.test(normalizedValue) ||

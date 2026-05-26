@@ -41,7 +41,13 @@ Used by tooling/tests and future server paths; they call `createEigenIngestClien
 
 The Ray's Retreat app smoke check in `ray-s-retreat/scripts/smoke-eigen-public.mjs` already targets `site_id: "raysretreat"`; keep three pieces aligned on that same string: the adapter's emitted `site_id`, the site key in `config/eigen-sites.json`, and the smoke script target. Separately verify during secrets-backed testing that the adapter's `source_system` `rays_retreat` still matches any production filtering, and that `EIGEN_FETCH_ALLOWLIST` includes `raysretreat.com` before fetch ingest is enabled.
 
-## Operational check
+## Operational checks
+
+Before changing `site_id`, `files_dir`, sitemap URLs, RSS URLs, or `fetch_allowlist` hosts in `config/eigen-sites.json`, run the registry validator so publication-boundary drift fails fast in CI and local checks:
+
+```bash
+npm run lint:eigen-sites
+```
 
 From `R2/` with `SUPABASE_SERVICE_ROLE_KEY` in `.env.supabase.local`:
 

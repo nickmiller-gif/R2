@@ -21,11 +21,12 @@
     "lint:supabase:drift": "bash scripts/check-supabase-migration-drift.sh",
     "lint:supabase:types": "bash scripts/check-supabase-generated-types.sh",
     "lint:correlation": "bash scripts/check-correlation-wrap.sh",
+    "lint:eigen-sites": "node scripts/validate-eigen-site-registry.mjs",
     "security:scan": "node scripts/security-scan.mjs",
     "verify:post-hardening": "node scripts/post-hardening-prod-verify.mjs",
     "test:edge-authz-contract": "node scripts/edge-authz-contract-test.mjs",
     "verify:kb-four": "node scripts/kb-four-bridge-verify.mjs",
-    "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation && npm run security:scan"
+    "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation && npm run lint:eigen-sites && npm run security:scan"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [

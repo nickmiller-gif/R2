@@ -81,7 +81,12 @@ function assertHosts(values, label) {
 }
 
 const rawRegistry = fs.readFileSync(registryPath, 'utf8');
-const parsedRegistry = JSON.parse(rawRegistry);
+let parsedRegistry;
+try {
+  parsedRegistry = JSON.parse(rawRegistry);
+} catch (error) {
+  fail(`${registryPath} contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+}
 
 if (!parsedRegistry || typeof parsedRegistry !== 'object' || Array.isArray(parsedRegistry)) {
   fail('config/eigen-sites.json must parse to an object.');

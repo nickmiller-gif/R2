@@ -12,7 +12,7 @@ import {
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -25,6 +25,8 @@ Deno.serve(
     try {
       const client = getServiceClient();
       let payload = parseEigenRetrieveRequest(await req.json());
+      const explicitScopeProvided =
+        Array.isArray(payload.policy_scope) && payload.policy_scope.length > 0;
       const resolvedScope = await resolveEffectiveEigenxScope({
         client,
         userId: auth.claims.userId,
@@ -44,6 +46,13 @@ Deno.serve(
         requiredCapabilityTags: EIGEN_KOS_CAPABILITY.retrieve,
         callerRoles: roleCheck.roles,
         surface: 'eigen-retrieve',
+        audit: {
+          callerSubject: auth.claims.userId,
+          correlationId: meta.correlationId,
+          metadata: {
+            explicit_scope: explicitScopeProvided,
+          },
+        },
       });
       if (!kos.ok) {
         return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {

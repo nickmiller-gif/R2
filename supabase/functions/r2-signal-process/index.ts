@@ -131,11 +131,10 @@ async function ensureRelatedMegEntitiesLinked(
   const inferred = inferRelatedMegResolveArgsList(row);
   const merged = new Set<string>(existing);
 
-  for (const args of inferred) {
-    const { data: megId, error } = await client.rpc(
-      'meg_resolve_or_create',
-      sanitizeMegResolveRpcArgs(args),
-    );
+  const resolved = await Promise.all(
+    inferred.map((args) => client.rpc('meg_resolve_or_create', sanitizeMegResolveRpcArgs(args))),
+  );
+  for (const { data: megId, error } of resolved) {
     if (error) {
       throw new Error(`meg_resolve_or_create related: ${error.message}`);
     }

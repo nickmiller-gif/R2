@@ -213,7 +213,7 @@ async function synthesize(
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     const rawOrigin = req.headers.get('origin');
     if (req.method === 'OPTIONS') return reflectedCorsResponse(rawOrigin);
     if (req.method !== 'POST') return reflectedErrorResponse(rawOrigin, 'Method not allowed', 405);
@@ -258,6 +258,16 @@ Deno.serve(
           requiredCapabilityTags: EIGEN_KOS_CAPABILITY.chat,
           callerRoles: roleCheck.roles,
           surface: 'eigen-widget-chat.eigenx',
+          audit: {
+            callerSubject: claims.user_id,
+            correlationId: meta.correlationId,
+            metadata: {
+              mode: claims.mode,
+              site_id: claims.site_id,
+              response_format: body.response_format,
+              conversation_intent: body.conversation_intent,
+            },
+          },
         });
         if (!kos.ok) {
           return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {

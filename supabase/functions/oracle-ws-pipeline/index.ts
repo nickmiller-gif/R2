@@ -563,6 +563,13 @@ async function computeEvaluation(
       .limit(1000),
   ]);
 
+  if (hypothesesRes.error) {
+    throw new Error(`Failed to fetch hypotheses for evaluation: ${hypothesesRes.error.message}`);
+  }
+  if (verificationRes.error) {
+    throw new Error(`Failed to fetch verification rows: ${verificationRes.error.message}`);
+  }
+
   const hypotheses = hypothesesRes.data;
   const verificationRows = verificationRes.data;
 

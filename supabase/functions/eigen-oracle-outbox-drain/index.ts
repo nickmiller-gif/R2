@@ -104,8 +104,7 @@ Deno.serve(
           .from('asset_registry')
           .select('id, ref_id')
           .eq('kind', 'governance_entity')
-          .in('ref_id', entityIds)
-          .limit(entityIds.length);
+          .in('ref_id', entityIds);
         if (assets.error) {
           await client
             .from('eigen_oracle_outbox')
@@ -117,7 +116,8 @@ Deno.serve(
           // Preserve original priority: first refId in entityIds wins.
           const byRef = new Map<string, string>();
           for (const a of assets.data as Array<{ id: string; ref_id: string }>) {
-            byRef.set(String(a.ref_id), String(a.id));
+            const refId = String(a.ref_id);
+            if (!byRef.has(refId)) byRef.set(refId, String(a.id));
           }
           for (const refId of entityIds) {
             const found = byRef.get(refId);

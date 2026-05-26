@@ -11,6 +11,7 @@ import {
   inferRelatedMegResolveArgsList,
   isCoffeePairingSignal,
   isUuid,
+  sanitizeMegResolveRpcArgs,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
 
@@ -318,16 +319,7 @@ async function backfillRelatedAndCoffeeForFeedRow(
   const relatedArgsList = inferRelatedMegResolveArgsList(feedForInfer);
   const relatedResults = await Promise.all(
     relatedArgsList.map((rArgs) =>
-      client.rpc('meg_resolve_or_create', {
-        p_entity_type: rArgs.p_entity_type,
-        p_canonical_name: rArgs.p_canonical_name,
-        p_canonical_email: rArgs.p_canonical_email,
-        p_canonical_external_id: rArgs.p_canonical_external_id,
-        p_source_system: rArgs.p_source_system,
-        p_source_table: rArgs.p_source_table,
-        p_source_row_id: rArgs.p_source_row_id,
-        p_payload: rArgs.p_payload,
-      }),
+      client.rpc('meg_resolve_or_create', sanitizeMegResolveRpcArgs(rArgs)),
     ),
   );
   for (const { data: rid, error: relErr } of relatedResults) {

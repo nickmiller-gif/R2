@@ -105,7 +105,7 @@ function parseRequest(value: unknown): FetchIngestRequest {
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -124,6 +124,10 @@ Deno.serve(
       requiredCapabilityTags: EIGEN_KOS_CAPABILITY.ingest,
       callerRoles: roleCheck.roles,
       surface: 'eigen-fetch-ingest',
+      audit: {
+        callerSubject: auth.claims.userId,
+        correlationId: meta.correlationId,
+      },
     });
     if (!kos.ok) {
       return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {

@@ -478,6 +478,15 @@ Deno.serve(
           requiredCapabilityTags: EIGEN_KOS_CAPABILITY.ingest,
           callerRoles: kosCallerRoles,
           surface: 'eigen-ingest',
+          audit: {
+            callerSubject: ownerUserId,
+            correlationId: requestMeta.correlationId,
+            metadata: {
+              source_system: requestBody.source_system,
+              chunking_mode: requestBody.chunking_mode ?? 'hierarchical',
+              has_idempotency_key: req.headers.get('x-idempotency-key') !== null,
+            },
+          },
         });
         if (!kos.ok) {
           return new Response(JSON.stringify(buildEigenKosCapabilityDenialBody(kos.denial)), {

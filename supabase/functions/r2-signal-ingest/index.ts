@@ -187,7 +187,7 @@ Deno.serve(
       .select('id')
       .single();
 
-    let signalId: string | null = null;
+    let signalId: string;
     if (!insertResult.error && insertResult.data?.id) {
       signalId = insertResult.data.id as string;
     } else if (insertResult.error && (insertResult.error as { code?: string }).code === '23505') {

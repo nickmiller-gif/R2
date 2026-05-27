@@ -1,0 +1,166 @@
+-- Optional document tag match mode: 'any' (array overlap) vs 'all' (every filter tag on document).
+
+DROP FUNCTION IF EXISTS public.match_knowledge_chunks(double precision[], integer, text[], text[], timestamptz, text[]);
+
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks(
+  query_embedding double precision[],
+  ann_limit integer,
+  filter_entity_ids text[] DEFAULT NULL,
+  filter_policy_tags text[] DEFAULT NULL,
+  valid_at timestamptz DEFAULT now(),
+  filter_document_tags text[] DEFAULT NULL,
+  filter_document_tag_match text DEFAULT 'any'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, extensions
+AS $$
+DECLARE
+  payload jsonb;
+  tag_mode text;
+BEGIN
+  tag_mode := lower(trim(both from coalesce(filter_document_tag_match, 'any')));
+  IF tag_mode IS NULL OR tag_mode = '' THEN
+    tag_mode := 'any';
+  END IF;
+
+  WITH ann AS (
+    SELECT
+      k.id,
+      k.document_id,
+      k.chunk_level,
+      k.heading_path,
+      k.entity_ids,
+      k.policy_tags,
+      k.valid_from,
+      k.valid_to,
+      k.authority_score,
+      k.freshness_score,
+      k.provenance_completeness,
+      k.content,
+      k.ingestion_run_id,
+      k.oracle_signal_id,
+      k.oracle_relevance_score,
+      d.source_system,
+      d.tags AS document_tags,
+      (1 - (k.embedding <=> query_embedding::extensions.vector(1536)))::double precision AS similarity
+    FROM public.knowledge_chunks k
+    INNER JOIN public.documents d ON d.id = k.document_id
+    WHERE k.embedding IS NOT NULL
+      AND (k.valid_from IS NULL OR k.valid_from <= valid_at)
+      AND (k.valid_to IS NULL OR k.valid_to >= valid_at)
+    ORDER BY k.embedding <=> query_embedding::extensions.vector(1536)
+    LIMIT ann_limit
+  ),
+  stats AS (
+    SELECT COUNT(*)::integer AS ann_row_count FROM ann
+  ),
+  passed AS (
+    SELECT
+      a.id,
+      a.document_id,
+      a.chunk_level,
+      a.heading_path,
+      a.entity_ids,
+      a.policy_tags,
+      a.valid_from,
+      a.valid_to,
+      a.authority_score,
+      a.freshness_score,
+      a.provenance_completeness,
+      a.content,
+      a.ingestion_run_id,
+      a.oracle_signal_id,
+      a.oracle_relevance_score,
+      a.source_system,
+      a.similarity
+    FROM ann a
+    WHERE
+      (
+        filter_policy_tags IS NULL
+        OR COALESCE(array_length(filter_policy_tags, 1), 0) = 0
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(a.policy_tags) AS pt(tag)
+          WHERE pt.tag = ANY (filter_policy_tags)
+        )
+      )
+      AND (
+        filter_entity_ids IS NULL
+        OR COALESCE(array_length(filter_entity_ids, 1), 0) = 0
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(a.entity_ids) AS eid(val)
+          WHERE eid.val = ANY (filter_entity_ids)
+        )
+      )
+      AND (
+        filter_document_tags IS NULL
+        OR COALESCE(array_length(filter_document_tags, 1), 0) = 0
+        OR (
+          a.document_tags IS NOT NULL
+          AND (
+            (tag_mode <> 'all' AND a.document_tags && filter_document_tags)
+            OR (
+              tag_mode = 'all'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM unnest(filter_document_tags) AS ft(tag)
+                WHERE NOT (ft.tag = ANY (a.document_tags))
+              )
+            )
+          )
+        )
+      )
+  ),
+  pass_count AS (
+    SELECT COUNT(*)::integer AS passed_row_count FROM passed
+  ),
+  ordered AS (
+    SELECT * FROM passed ORDER BY similarity DESC
+  )
+  SELECT jsonb_build_object(
+    'ann_row_count', (SELECT s.ann_row_count FROM stats s),
+    'passed_row_count', (SELECT p.passed_row_count FROM pass_count p),
+    'chunks',
+    COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id', o.id,
+            'document_id', o.document_id,
+            'chunk_level', o.chunk_level,
+            'heading_path', o.heading_path,
+            'entity_ids', o.entity_ids,
+            'policy_tags', o.policy_tags,
+            'valid_from', o.valid_from,
+            'valid_to', o.valid_to,
+            'authority_score', o.authority_score,
+            'freshness_score', o.freshness_score,
+            'provenance_completeness', o.provenance_completeness,
+            'content', o.content,
+            'ingestion_run_id', o.ingestion_run_id,
+            'oracle_signal_id', o.oracle_signal_id,
+            'oracle_relevance_score', o.oracle_relevance_score,
+            'source_system', o.source_system,
+            'similarity', o.similarity
+          )
+          ORDER BY o.similarity DESC
+        )
+        FROM ordered o
+      ),
+      '[]'::jsonb
+    )
+  )
+  INTO payload;
+
+  RETURN payload;
+END;
+$$;
+
+COMMENT ON FUNCTION public.match_knowledge_chunks IS
+  'Cosine ANN over knowledge_chunks.embedding (HNSW), temporal bounds, entity/policy overlap, optional documents.tags overlap (any or all); includes oracle_signal_id / oracle_relevance_score for ranking.';
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks(double precision[], integer, text[], text[], timestamptz, text[], text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks(double precision[], integer, text[], text[], timestamptz, text[], text) TO service_role;;

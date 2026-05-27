@@ -4,6 +4,8 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { recalibrateAfterEvidenceLink } from '../_shared/oracle-thesis-confidence-db.ts';
+import type { OracleThesisEvidenceRole } from '../../../src/types/oracle/shared.ts';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -55,6 +57,25 @@ Deno.serve(
 
         if (error) {
           return errorResponse(error.message, 400);
+        }
+
+        // O1 wiring: recalibrate the thesis's confidence now that a new link
+        // exists. Fail-soft — confidence reweighting is a derived signal; a
+        // failure here must not surface to the operator who just created the
+        // link.
+        if (
+          data &&
+          typeof data.thesis_id === 'string' &&
+          typeof data.evidence_item_id === 'string' &&
+          typeof data.role === 'string'
+        ) {
+          await recalibrateAfterEvidenceLink(client, {
+            thesisId: data.thesis_id,
+            evidenceItemId: data.evidence_item_id,
+            role: data.role as OracleThesisEvidenceRole,
+            actor: auth.claims.userId,
+            reason: 'evidence_link_created',
+          });
         }
 
         return jsonResponse(data, 201);

@@ -22,6 +22,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { recalibrateAfterOutcome } from '../_shared/oracle-thesis-confidence-db.ts';
 
 // Explicit projections for the whitespace pipeline read paths so schema
 // additions don't leak through `select('*')` (advisor lint 0022).
@@ -1137,6 +1138,21 @@ Deno.serve(
             ]);
           if (calibrationErr)
             throw new Error(`Failed to write calibration log: ${calibrationErr.message}`);
+
+          // O1 wiring: recalibrate the thesis's stored confidence and append
+          // an audit row. Fail-soft — calibration log + audit event are the
+          // contractual outputs of this endpoint, reweighting is derived.
+          const recalibration = await recalibrateAfterOutcome(serviceClient, {
+            thesisId: body.data.thesisId,
+            outcomeId: outcome!.id,
+            actor: auth.claims.userId,
+            reason: 'outcome_recorded',
+            metadata: {
+              verdict: body.data.verdict,
+              pipeline_accuracy_score: accuracyScore,
+            },
+          });
+
           await serviceClient.from('eigen_governance_audit_log').insert([
             {
               event_type: 'outcome_recorded',
@@ -1149,6 +1165,15 @@ Deno.serve(
                 accuracy_score: accuracyScore,
                 calibration_error: calibrationError,
                 confidence_delta: confidenceDelta,
+                recalibration: recalibration.ok
+                  ? {
+                      recalibrated: recalibration.result.recalibrated,
+                      prior_confidence: recalibration.result.entry.priorConfidence,
+                      new_confidence: recalibration.result.entry.newConfidence,
+                      delta: recalibration.result.entry.delta,
+                      method: recalibration.result.entry.recalibrationMethod,
+                    }
+                  : { error: recalibration.error },
               },
             },
           ]);
@@ -1159,6 +1184,15 @@ Deno.serve(
               accuracy_score: accuracyScore,
               calibration_error: calibrationError,
               confidence_delta: confidenceDelta,
+              recalibration: recalibration.ok
+                ? {
+                    recalibrated: recalibration.result.recalibrated,
+                    prior_confidence: recalibration.result.entry.priorConfidence,
+                    new_confidence: recalibration.result.entry.newConfidence,
+                    delta: recalibration.result.entry.delta,
+                    history_id: recalibration.result.entry.id,
+                  }
+                : { error: recalibration.error },
             },
             201,
           );

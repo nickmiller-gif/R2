@@ -15,6 +15,7 @@ const files = [
   'supabase/functions/_shared/supabase.ts',
   'supabase/functions/_shared/signal-utils.ts',
   'supabase/functions/_shared/auth.ts',
+  'supabase/functions/_shared/meg-bridge-policy.ts',
 ].map((rel) => {
   const abs = path.join(root, rel);
   const content = fs.readFileSync(abs, 'utf8');

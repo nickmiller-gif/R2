@@ -20,6 +20,12 @@ import {
   sanitizeMegResolveRpcArgs,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
+import {
+  applyEntityFieldUpdateFromFeedRow,
+  emitEntityUpdatedProjection,
+  isEntityFieldUpdateEvent,
+  isEntityUpdatedProjectionEvent,
+} from '../_shared/entity-sync.ts';
 
 const SERVICE_ROLE_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_BATCH_LIMIT = 15;
@@ -27,6 +33,51 @@ const DEFAULT_BATCH_LIMIT = 15;
 const MAX_BATCH_LIMIT = 25;
 /** Must match `max_attempts` in `claim_platform_feed_items` (signal_contract migrations). */
 const MAX_SIGNAL_PROCESS_ATTEMPTS = 10;
+
+type AutonomyActionClass = 'observe' | 'propose' | 'act' | 'irreversible';
+type AutonomyDecision = 'auto_publish' | 'needs_review' | 'blocked';
+
+type SignalConfidencePolicy = {
+  actionClass: AutonomyActionClass;
+  minConfidence: number;
+  allowAutonomous: boolean;
+  requireOperatorReview: boolean;
+};
+
+type AutonomyEvaluation = {
+  actionClass: AutonomyActionClass;
+  decision: AutonomyDecision;
+  threshold: number;
+  confidence: number;
+  reason: string;
+};
+
+const DEFAULT_SIGNAL_CONFIDENCE_POLICIES: Record<AutonomyActionClass, SignalConfidencePolicy> = {
+  observe: {
+    actionClass: 'observe',
+    minConfidence: 0.4,
+    allowAutonomous: true,
+    requireOperatorReview: false,
+  },
+  propose: {
+    actionClass: 'propose',
+    minConfidence: 0.65,
+    allowAutonomous: true,
+    requireOperatorReview: false,
+  },
+  act: {
+    actionClass: 'act',
+    minConfidence: 0.85,
+    allowAutonomous: true,
+    requireOperatorReview: false,
+  },
+  irreversible: {
+    actionClass: 'irreversible',
+    minConfidence: 0.95,
+    allowAutonomous: false,
+    requireOperatorReview: true,
+  },
+};
 
 /** True when `x-r2-signal-process-token` matches configured `R2_SIGNAL_PROCESS_TOKEN`. */
 function resolveTrustedProcessCaller(req: Request): boolean {
@@ -52,6 +103,7 @@ type FeedRow = {
   id: string;
   source_system: string;
   source_event_type: string;
+  source_signal_key?: string;
   summary: string;
   payload: Record<string, unknown>;
   confidence: number | null;
@@ -61,6 +113,148 @@ type FeedRow = {
   routing_targets: string[];
   actor_meg_entity_id?: string | null;
 };
+
+function normalizeConfidence(value: number | null): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function inferAutonomyActionClass(row: FeedRow): AutonomyActionClass {
+  const targets = row.routing_targets ?? [];
+  const publishAdjacent = row.privacy_level === 'public' || targets.includes('commons_publish');
+  if (publishAdjacent) return 'irreversible';
+  if (targets.includes('charter') || targets.includes('oracle')) return 'act';
+  if (targets.includes('operator_workbench')) return 'propose';
+  return 'observe';
+}
+
+function resolvePolicy(
+  actionClass: AutonomyActionClass,
+  policies: Map<AutonomyActionClass, SignalConfidencePolicy>,
+): SignalConfidencePolicy {
+  return policies.get(actionClass) ?? DEFAULT_SIGNAL_CONFIDENCE_POLICIES[actionClass];
+}
+
+function evaluateAutonomy(
+  row: FeedRow,
+  policies: Map<AutonomyActionClass, SignalConfidencePolicy>,
+): AutonomyEvaluation {
+  const actionClass = inferAutonomyActionClass(row);
+  const policy = resolvePolicy(actionClass, policies);
+  const confidence = normalizeConfidence(row.confidence);
+  if (confidence < policy.minConfidence) {
+    return {
+      actionClass,
+      decision: 'blocked',
+      threshold: policy.minConfidence,
+      confidence,
+      reason: `confidence ${confidence.toFixed(3)} below ${actionClass} threshold ${policy.minConfidence.toFixed(3)}`,
+    };
+  }
+  if (!policy.allowAutonomous || policy.requireOperatorReview) {
+    return {
+      actionClass,
+      decision: 'needs_review',
+      threshold: policy.minConfidence,
+      confidence,
+      reason: `${actionClass} class requires operator review`,
+    };
+  }
+  return {
+    actionClass,
+    decision: 'auto_publish',
+    threshold: policy.minConfidence,
+    confidence,
+    reason: `${actionClass} class passed confidence boundary`,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function parseAutonomyActionClass(value: unknown): AutonomyActionClass | null {
+  if (value === 'observe' || value === 'propose' || value === 'act' || value === 'irreversible') {
+    return value;
+  }
+  return null;
+}
+
+function parseCalibrationDirection(value: unknown): 'tighten' | 'loosen' | 'none' | null {
+  if (value === 'tighten' || value === 'loosen' || value === 'none') return value;
+  return null;
+}
+
+async function maybeApplyAutonomyFeedbackCalibration(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+  policies: Map<AutonomyActionClass, SignalConfidencePolicy>,
+): Promise<void> {
+  if (
+    row.source_system !== 'operator_workbench' ||
+    row.source_event_type !== 'operator_decision_feedback'
+  ) {
+    return;
+  }
+  const payload = asRecord(row.payload);
+  if (!payload) return;
+
+  const actionClass = parseAutonomyActionClass(payload.target_autonomy_action_class);
+  if (!actionClass) return;
+  const direction = parseCalibrationDirection(payload.calibration_direction);
+  if (!direction || direction === 'none') return;
+
+  const current = resolvePolicy(actionClass, policies);
+  const step = 0.01;
+  const candidate =
+    direction === 'tighten'
+      ? Math.min(1, current.minConfidence + step)
+      : Math.max(0, current.minConfidence - step);
+  if (candidate === current.minConfidence) return;
+
+  const update = await client
+    .from('signal_confidence_policies')
+    .update({
+      min_confidence: candidate,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('action_class', actionClass);
+  if (update.error) {
+    throw new Error(`signal_confidence_policies update failed: ${update.error.message}`);
+  }
+
+  policies.set(actionClass, { ...current, minConfidence: candidate });
+}
+
+async function loadSignalConfidencePolicies(
+  client: ReturnType<typeof getServiceClient>,
+): Promise<Map<AutonomyActionClass, SignalConfidencePolicy>> {
+  const policies = new Map<AutonomyActionClass, SignalConfidencePolicy>();
+  (['observe', 'propose', 'act', 'irreversible'] as AutonomyActionClass[]).forEach(
+    (actionClass) => {
+      policies.set(actionClass, DEFAULT_SIGNAL_CONFIDENCE_POLICIES[actionClass]);
+    },
+  );
+  const res = await client
+    .from('signal_confidence_policies')
+    .select('action_class, min_confidence, allow_autonomous, require_operator_review');
+  if (res.error) {
+    return policies;
+  }
+  for (const row of res.data ?? []) {
+    const actionClass = String(row.action_class) as AutonomyActionClass;
+    if (!policies.has(actionClass)) continue;
+    const next: SignalConfidencePolicy = {
+      actionClass,
+      minConfidence: normalizeConfidence(Number(row.min_confidence)),
+      allowAutonomous: Boolean(row.allow_autonomous),
+      requireOperatorReview: Boolean(row.require_operator_review),
+    };
+    policies.set(actionClass, next);
+  }
+  return policies;
+}
 
 function toFeedRowForMeg(row: FeedRow): FeedRowForMeg {
   return {
@@ -267,8 +461,65 @@ async function markSignalFailed(signalId: string, message: string): Promise<void
     .eq('id', signalId);
 }
 
+/**
+ * Fast path for cross-site entity sync: apply projection patches or acknowledge
+ * projection emits without full embedding pipeline.
+ */
+async function maybeProcessEntitySyncSignal(
+  client: ReturnType<typeof getServiceClient>,
+  row: FeedRow,
+  policies: Map<AutonomyActionClass, SignalConfidencePolicy>,
+): Promise<boolean> {
+  if (isEntityUpdatedProjectionEvent(row.source_event_type)) {
+    const autonomy = evaluateAutonomy(row, policies);
+    await persistAutonomyDecision(client, row.id, autonomy, 'published');
+    return true;
+  }
+
+  if (!isEntityFieldUpdateEvent(row.source_event_type)) {
+    return false;
+  }
+
+  const applyResult = await applyEntityFieldUpdateFromFeedRow(client, row);
+  if (applyResult.applied && applyResult.megEntityId && applyResult.fields) {
+    await emitEntityUpdatedProjection(client, row, applyResult.megEntityId, applyResult.fields);
+  }
+
+  const autonomy = evaluateAutonomy(row, policies);
+  await persistAutonomyDecision(client, row.id, autonomy, 'published');
+  return true;
+}
+
+async function persistAutonomyDecision(
+  client: ReturnType<typeof getServiceClient>,
+  signalId: string,
+  evaluation: AutonomyEvaluation,
+  processingStatus: 'scored' | 'published',
+): Promise<void> {
+  const update = await client
+    .from('platform_feed_items')
+    .update({
+      autonomy_action_class: evaluation.actionClass,
+      autonomy_decision: evaluation.decision,
+      autonomy_threshold: evaluation.threshold,
+      autonomy_reason: evaluation.reason,
+      autonomy_decided_at: new Date().toISOString(),
+      processing_status: processingStatus,
+      processed_at: new Date().toISOString(),
+      error: null,
+    })
+    .eq('id', signalId);
+  if (update.error) {
+    throw new Error(update.error.message);
+  }
+}
+
 /** Chunks signal content, embeds, writes document + ingestion run + evidence, marks published. */
-async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promise<void> {
+async function processOneSignal(
+  row: FeedRow,
+  evidenceProfileId: string,
+  autonomy: AutonomyEvaluation,
+): Promise<void> {
   const client = getServiceClient();
   const signalRef = `platform_feed_items:${row.id}`;
   const documentTitle = `Signal ${row.source_system}:${row.source_event_type}`;
@@ -294,6 +545,9 @@ async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promis
           source_event_type: row.source_event_type,
           privacy_level: row.privacy_level,
           routing_targets: row.routing_targets,
+          autonomy_action_class: autonomy.actionClass,
+          autonomy_decision: autonomy.decision,
+          autonomy_threshold: autonomy.threshold,
         },
       },
       { onConflict: 'source_system,source_ref' },
@@ -394,6 +648,9 @@ async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promis
         source_event_type: row.source_event_type,
         privacy_level: row.privacy_level,
         routing_targets: row.routing_targets,
+        autonomy_action_class: autonomy.actionClass,
+        autonomy_decision: autonomy.decision,
+        autonomy_threshold: autonomy.threshold,
       },
     })
     .select('id')
@@ -416,18 +673,14 @@ async function processOneSignal(row: FeedRow, evidenceProfileId: string): Promis
     throw new Error(finalizeRun.error.message);
   }
 
+  await persistAutonomyDecision(client, row.id, autonomy, 'published');
   const finalizeSignal = await client
     .from('platform_feed_items')
     .update({
       evidence_item_id: evidenceInsert.data.id,
-      processing_status: 'published',
-      error: null,
-      processed_at: new Date().toISOString(),
     })
     .eq('id', row.id);
-  if (finalizeSignal.error) {
-    throw new Error(finalizeSignal.error.message);
-  }
+  if (finalizeSignal.error) throw new Error(finalizeSignal.error.message);
 }
 
 /**
@@ -520,6 +773,7 @@ Deno.serve(
       return errorResponse(message, 500);
     }
 
+    const policies = await loadSignalConfidencePolicies(client);
     let processed = 0;
     let failed = 0;
     for (const row of rows) {
@@ -528,7 +782,18 @@ Deno.serve(
         rowReady = await ensureRelatedMegEntitiesLinked(client, rowReady);
         await maybeRecordCoffeePairingEdge(client, rowReady);
         await syncCoffeeMatchesMegIds(client, rowReady);
-        await processOneSignal(rowReady, evidenceProfileId);
+        await maybeApplyAutonomyFeedbackCalibration(client, rowReady, policies);
+        if (await maybeProcessEntitySyncSignal(client, rowReady, policies)) {
+          processed += 1;
+          continue;
+        }
+        const autonomy = evaluateAutonomy(rowReady, policies);
+        if (autonomy.decision !== 'auto_publish') {
+          await persistAutonomyDecision(client, rowReady.id, autonomy, 'scored');
+          processed += 1;
+          continue;
+        }
+        await processOneSignal(rowReady, evidenceProfileId, autonomy);
         processed += 1;
       } catch (error) {
         failed += 1;

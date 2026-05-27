@@ -179,4 +179,45 @@ describe('runRerankerWithTimeout', () => {
     const result = await runRerankerWithTimeout(port, sampleInput, 100);
     expect(result).toBeNull();
   });
+
+  it('aborts the input signal when the timeout fires', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const port: RerankerPort = {
+      rerank: (input) =>
+        new Promise((_resolve, reject) => {
+          receivedSignal = input.signal;
+          input.signal?.addEventListener('abort', () => {
+            reject(new Error('aborted'));
+          });
+        }),
+    };
+
+    const result = await runRerankerWithTimeout(port, sampleInput, 50);
+    expect(result).toBeNull();
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it('does not surface a late rejection as an unhandled error', async () => {
+    let rejectLater: ((err: Error) => void) | undefined;
+    const port: RerankerPort = {
+      rerank: () =>
+        new Promise((_resolve, reject) => {
+          rejectLater = reject;
+        }),
+    };
+
+    const unhandled: unknown[] = [];
+    const handler = (err: unknown) => unhandled.push(err);
+    process.on('unhandledRejection', handler);
+    try {
+      const result = await runRerankerWithTimeout(port, sampleInput, 30);
+      expect(result).toBeNull();
+
+      rejectLater?.(new Error('late failure'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', handler);
+    }
+  });
 });

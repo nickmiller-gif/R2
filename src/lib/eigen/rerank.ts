@@ -20,6 +20,12 @@ export interface RerankInput {
   documents: RerankInputDocument[];
   /** Caller's preferred top_k; the port may cap it for cost reasons. */
   top_k?: number;
+  /**
+   * Cancellation signal. `runRerankerWithTimeout` wires this up so that when
+   * the timeout fires the port can abort the underlying HTTP request rather
+   * than letting it continue consuming edge resources.
+   */
+  signal?: AbortSignal;
 }
 
 export interface RerankScore {
@@ -179,23 +185,34 @@ export function selectRerankBatch<T extends RerankableCandidate>(
 /**
  * Race a reranker call against a timeout. Returns null on timeout, throw, or
  * empty output — caller treats null as "fail open, keep original order".
+ *
+ * When the timeout fires we abort the input signal so the port can cancel
+ * its underlying HTTP request. The rerank promise is also `.catch`ed inline
+ * so that a late rejection arriving after the timeout has won does not
+ * surface as an unhandled rejection.
  */
 export async function runRerankerWithTimeout(
   port: RerankerPort,
   input: RerankInput,
   timeoutMs: number,
 ): Promise<RerankOutput | null> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), timeoutMs);
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(null);
+    }, timeoutMs);
   });
+
+  const rerank = port.rerank({ ...input, signal: controller.signal }).catch(() => null);
+
   try {
-    const result = await Promise.race([port.rerank(input), timeout]);
+    const result = await Promise.race([rerank, timeout]);
     if (!result) return null;
     if (!Array.isArray(result.scores) || result.scores.length === 0) return null;
     return result;
-  } catch {
-    return null;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

@@ -101,6 +101,7 @@ async function callVoyageRerank(
       model: config.model,
       top_k: input.top_k ?? documents.length,
     }),
+    signal: input.signal,
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -129,6 +130,7 @@ async function callCohereRerank(
       model: config.model,
       top_n: input.top_k ?? documents.length,
     }),
+    signal: input.signal,
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');

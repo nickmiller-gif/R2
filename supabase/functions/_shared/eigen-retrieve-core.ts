@@ -678,10 +678,26 @@ export async function executeEigenRetrieve(
   }
 }
 
+// Module-scope cache: provider config is stable per deployment, so resolving
+// the port (and reading env) once per cold-start matches how the other env
+// reads in this file are cached. Tests inject via `deps.rerankerPort` and
+// therefore bypass this cache entirely.
+let _cachedEdgeReranker: RerankerPort | null | undefined;
+
+function getCachedEdgeReranker(): RerankerPort | null {
+  if (_cachedEdgeReranker === undefined) {
+    _cachedEdgeReranker = createEdgeReranker();
+  }
+  return _cachedEdgeReranker;
+}
+
 /**
- * Stage-2 cross-encoder rerank. Pure-ish wrapper: it has the I/O side effect
- * of calling the reranker port, but its only effect on the candidate list is
- * reordering + attaching `rerank_score`. Fails open on any failure path.
+ * Stage-2 cross-encoder rerank. Has the I/O side effect of calling the
+ * reranker port. When reranking succeeds the candidate list is reordered AND
+ * each reranked candidate's `composite_score` is replaced by the fused score
+ * (`(1 - w) * composite + w * rerank`) so downstream stages (ratio limiter,
+ * token budget) and the API response reflect the rerank-influenced ranking.
+ * `rerank_score` is attached for caller visibility. Fails open on any failure.
  */
 async function applyRerankStage<
   C extends {
@@ -698,7 +714,7 @@ async function applyRerankStage<
   if (candidates.length === 0) return { candidates, dropped_reason: null };
   if (!payload.enable_reranking) return { candidates, dropped_reason: null };
 
-  const port = deps.rerankerPort === undefined ? createEdgeReranker() : deps.rerankerPort;
+  const port = deps.rerankerPort === undefined ? getCachedEdgeReranker() : deps.rerankerPort;
   if (!port) {
     return { candidates, dropped_reason: 'reranker_skipped: provider not configured' };
   }

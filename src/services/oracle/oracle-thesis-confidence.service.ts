@@ -30,7 +30,13 @@ import type { OracleThesisEvidenceRole } from '../../types/oracle/shared.ts';
 
 export interface RecalibrateForEvidenceInput {
   thesisId: string;
-  evidenceLinkId: string;
+  /**
+   * Evidence item the link points at. Paired with `role` this identifies the
+   * specific `oracle_thesis_evidence_links` row, which has a composite PK and
+   * no surrogate id.
+   */
+  evidenceItemId: string;
+  role: OracleThesisEvidenceRole;
   /** Optional UUID of the operator / service that triggered the recalibration. */
   actor?: string | null;
   /** Free-form reason captured in the audit row. */
@@ -65,7 +71,8 @@ export interface DbOracleThesisConfidenceHistoryRow {
   prior_confidence: number;
   new_confidence: number;
   delta: number;
-  evidence_link_id: string | null;
+  evidence_item_id: string | null;
+  evidence_role: OracleThesisEvidenceRole | null;
   outcome_id: string | null;
   recalibration_method: string;
   log_odds_shift: number;
@@ -81,7 +88,6 @@ export interface DbOracleThesisLite {
 }
 
 export interface DbOracleThesisEvidenceLinkLite {
-  id: string;
   thesis_id: string;
   evidence_item_id: string;
   role: OracleThesisEvidenceRole;
@@ -104,15 +110,20 @@ export interface DbOracleOutcomeLite {
 export interface OracleThesisConfidenceDb {
   findThesisById(id: string): Promise<DbOracleThesisLite | null>;
   updateThesisConfidence(id: string, confidence: number, updatedAt: string): Promise<void>;
-  findEvidenceLinkById(id: string): Promise<DbOracleThesisEvidenceLinkLite | null>;
+  findEvidenceLink(
+    thesisId: string,
+    evidenceItemId: string,
+    role: OracleThesisEvidenceRole,
+  ): Promise<DbOracleThesisEvidenceLinkLite | null>;
   findEvidenceItemById(id: string): Promise<DbOracleEvidenceItemLite | null>;
   findOutcomeById(id: string): Promise<DbOracleOutcomeLite | null>;
   insertHistory(
     row: DbOracleThesisConfidenceHistoryRow,
   ): Promise<DbOracleThesisConfidenceHistoryRow>;
-  findHistoryByEvidenceLink(
+  findHistoryByEvidence(
     thesisId: string,
-    evidenceLinkId: string,
+    evidenceItemId: string,
+    role: OracleThesisEvidenceRole,
   ): Promise<DbOracleThesisConfidenceHistoryRow | null>;
   findHistoryByOutcome(
     thesisId: string,
@@ -122,7 +133,7 @@ export interface OracleThesisConfidenceDb {
 }
 
 function rowToEntry(row: DbOracleThesisConfidenceHistoryRow): OracleThesisConfidenceHistoryEntry {
-  const source: RecalibrationSource = row.evidence_link_id !== null ? 'evidence_link' : 'outcome';
+  const source: RecalibrationSource = row.evidence_item_id !== null ? 'evidence_link' : 'outcome';
   return {
     id: row.id,
     thesisId: row.thesis_id,
@@ -130,7 +141,8 @@ function rowToEntry(row: DbOracleThesisConfidenceHistoryRow): OracleThesisConfid
     newConfidence: Number(row.new_confidence),
     delta: Number(row.delta),
     source,
-    evidenceLinkId: row.evidence_link_id,
+    evidenceItemId: row.evidence_item_id,
+    evidenceRole: row.evidence_role,
     outcomeId: row.outcome_id,
     recalibrationMethod: row.recalibration_method,
     logOddsShift: Number(row.log_odds_shift),
@@ -146,7 +158,11 @@ export function createOracleThesisConfidenceService(
 ): OracleThesisConfidenceService {
   return {
     async recalibrateForEvidence(input) {
-      const existing = await db.findHistoryByEvidenceLink(input.thesisId, input.evidenceLinkId);
+      const existing = await db.findHistoryByEvidence(
+        input.thesisId,
+        input.evidenceItemId,
+        input.role,
+      );
       if (existing) {
         return { entry: rowToEntry(existing), recalibrated: false };
       }
@@ -156,19 +172,16 @@ export function createOracleThesisConfidenceService(
         throw new Error(`OracleThesis not found: ${input.thesisId}`);
       }
 
-      const link = await db.findEvidenceLinkById(input.evidenceLinkId);
+      const link = await db.findEvidenceLink(input.thesisId, input.evidenceItemId, input.role);
       if (!link) {
-        throw new Error(`OracleThesisEvidenceLink not found: ${input.evidenceLinkId}`);
-      }
-      if (link.thesis_id !== input.thesisId) {
         throw new Error(
-          `Evidence link ${input.evidenceLinkId} belongs to a different thesis (${link.thesis_id})`,
+          `OracleThesisEvidenceLink not found: (${input.thesisId}, ${input.evidenceItemId}, ${input.role})`,
         );
       }
 
-      const evidence = await db.findEvidenceItemById(link.evidence_item_id);
+      const evidence = await db.findEvidenceItemById(input.evidenceItemId);
       if (!evidence) {
-        throw new Error(`OracleEvidenceItem not found: ${link.evidence_item_id}`);
+        throw new Error(`OracleEvidenceItem not found: ${input.evidenceItemId}`);
       }
 
       const result = computeEvidenceRecalibration(thesis.confidence, {
@@ -181,7 +194,8 @@ export function createOracleThesisConfidenceService(
       return persistRecalibration(db, {
         thesisId: input.thesisId,
         result,
-        evidenceLinkId: input.evidenceLinkId,
+        evidenceItemId: input.evidenceItemId,
+        evidenceRole: input.role,
         outcomeId: null,
         actor: input.actor ?? null,
         reason: input.reason ?? null,
@@ -223,7 +237,8 @@ export function createOracleThesisConfidenceService(
       return persistRecalibration(db, {
         thesisId: input.thesisId,
         result,
-        evidenceLinkId: null,
+        evidenceItemId: null,
+        evidenceRole: null,
         outcomeId: input.outcomeId,
         actor: input.actor ?? null,
         reason: input.reason ?? null,
@@ -241,7 +256,8 @@ export function createOracleThesisConfidenceService(
 interface PersistArgs {
   thesisId: string;
   result: RecalibrationResult;
-  evidenceLinkId: string | null;
+  evidenceItemId: string | null;
+  evidenceRole: OracleThesisEvidenceRole | null;
   outcomeId: string | null;
   actor: string | null;
   reason: string | null;
@@ -264,7 +280,8 @@ async function persistRecalibration(
     prior_confidence: args.result.priorConfidence,
     new_confidence: args.result.newConfidence,
     delta: args.result.delta,
-    evidence_link_id: args.evidenceLinkId,
+    evidence_item_id: args.evidenceItemId,
+    evidence_role: args.evidenceRole,
     outcome_id: args.outcomeId,
     recalibration_method: args.result.method ?? RECALIBRATION_METHOD_BAYESIAN_V1,
     log_odds_shift: args.result.logOddsShift,

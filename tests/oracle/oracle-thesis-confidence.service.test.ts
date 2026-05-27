@@ -8,6 +8,7 @@ import {
   type DbOracleThesisLite,
   type OracleThesisConfidenceDb,
 } from '../../src/services/oracle/oracle-thesis-confidence.service.js';
+import type { OracleThesisEvidenceRole } from '../../src/types/oracle/shared.js';
 
 interface MockState {
   theses: DbOracleThesisLite[];
@@ -38,8 +39,13 @@ function makeDb(seed: Partial<MockState> = {}): OracleThesisConfidenceDb & { sta
       const idx = state.theses.findIndex((t) => t.id === id);
       if (idx >= 0) state.theses[idx] = { ...state.theses[idx]!, confidence };
     },
-    async findEvidenceLinkById(id) {
-      return state.links.find((l) => l.id === id) ?? null;
+    async findEvidenceLink(thesisId, evidenceItemId, role) {
+      return (
+        state.links.find(
+          (l) =>
+            l.thesis_id === thesisId && l.evidence_item_id === evidenceItemId && l.role === role,
+        ) ?? null
+      );
     },
     async findEvidenceItemById(id) {
       return state.evidence.find((e) => e.id === id) ?? null;
@@ -51,10 +57,13 @@ function makeDb(seed: Partial<MockState> = {}): OracleThesisConfidenceDb & { sta
       state.history.push(row);
       return row;
     },
-    async findHistoryByEvidenceLink(thesisId, evidenceLinkId) {
+    async findHistoryByEvidence(thesisId, evidenceItemId, role) {
       return (
         state.history.find(
-          (h) => h.thesis_id === thesisId && h.evidence_link_id === evidenceLinkId,
+          (h) =>
+            h.thesis_id === thesisId &&
+            h.evidence_item_id === evidenceItemId &&
+            h.evidence_role === role,
         ) ?? null
       );
     },
@@ -70,9 +79,10 @@ function makeDb(seed: Partial<MockState> = {}): OracleThesisConfidenceDb & { sta
 }
 
 const THESIS_ID = 't-1';
-const LINK_ID = 'l-1';
 const EVIDENCE_ID = 'e-1';
 const OUTCOME_ID = 'o-1';
+const VALIDATION: OracleThesisEvidenceRole = 'validation';
+const INSPIRATION: OracleThesisEvidenceRole = 'inspiration';
 
 describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
   let db: ReturnType<typeof makeDb>;
@@ -82,10 +92,9 @@ describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
       theses: [{ id: THESIS_ID, confidence: 50 }],
       links: [
         {
-          id: LINK_ID,
           thesis_id: THESIS_ID,
           evidence_item_id: EVIDENCE_ID,
-          role: 'validation',
+          role: VALIDATION,
           weight: 1,
         },
       ],
@@ -97,14 +106,16 @@ describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
     const svc = createOracleThesisConfidenceService(db);
     const outcome = await svc.recalibrateForEvidence({
       thesisId: THESIS_ID,
-      evidenceLinkId: LINK_ID,
+      evidenceItemId: EVIDENCE_ID,
+      role: VALIDATION,
     });
 
     expect(outcome.recalibrated).toBe(true);
     expect(outcome.entry.priorConfidence).toBe(50);
     expect(outcome.entry.newConfidence).toBeGreaterThan(50);
     expect(outcome.entry.source).toBe('evidence_link');
-    expect(outcome.entry.evidenceLinkId).toBe(LINK_ID);
+    expect(outcome.entry.evidenceItemId).toBe(EVIDENCE_ID);
+    expect(outcome.entry.evidenceRole).toBe(VALIDATION);
     expect(outcome.entry.outcomeId).toBeNull();
     expect(outcome.entry.recalibrationMethod).toBe('bayesian-v1');
     expect(db.state.history).toHaveLength(1);
@@ -112,15 +123,17 @@ describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
     expect(db.state.thesisUpdates[0]?.confidence).toBe(outcome.entry.newConfidence);
   });
 
-  it('is idempotent: a second call for the same link returns the existing row without writing', async () => {
+  it('is idempotent: a second call for the same (thesis, evidence, role) tuple returns the existing row', async () => {
     const svc = createOracleThesisConfidenceService(db);
     const first = await svc.recalibrateForEvidence({
       thesisId: THESIS_ID,
-      evidenceLinkId: LINK_ID,
+      evidenceItemId: EVIDENCE_ID,
+      role: VALIDATION,
     });
     const second = await svc.recalibrateForEvidence({
       thesisId: THESIS_ID,
-      evidenceLinkId: LINK_ID,
+      evidenceItemId: EVIDENCE_ID,
+      role: VALIDATION,
     });
 
     expect(second.recalibrated).toBe(false);
@@ -130,11 +143,12 @@ describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
   });
 
   it('does not update the thesis confidence for an inspiration-role link', async () => {
-    db.state.links[0]!.role = 'inspiration';
+    db.state.links[0]!.role = INSPIRATION;
     const svc = createOracleThesisConfidenceService(db);
     const outcome = await svc.recalibrateForEvidence({
       thesisId: THESIS_ID,
-      evidenceLinkId: LINK_ID,
+      evidenceItemId: EVIDENCE_ID,
+      role: INSPIRATION,
     });
     expect(outcome.entry.delta).toBe(0);
     expect(db.state.thesisUpdates).toHaveLength(0);
@@ -145,16 +159,24 @@ describe('createOracleThesisConfidenceService.recalibrateForEvidence', () => {
     db.state.theses = [];
     const svc = createOracleThesisConfidenceService(db);
     await expect(
-      svc.recalibrateForEvidence({ thesisId: THESIS_ID, evidenceLinkId: LINK_ID }),
+      svc.recalibrateForEvidence({
+        thesisId: THESIS_ID,
+        evidenceItemId: EVIDENCE_ID,
+        role: VALIDATION,
+      }),
     ).rejects.toThrow(/OracleThesis not found/);
   });
 
-  it('throws when the link points at a different thesis', async () => {
-    db.state.links[0]!.thesis_id = 'other-thesis';
+  it('throws when the (thesis, evidence, role) link does not exist', async () => {
+    db.state.links = [];
     const svc = createOracleThesisConfidenceService(db);
     await expect(
-      svc.recalibrateForEvidence({ thesisId: THESIS_ID, evidenceLinkId: LINK_ID }),
-    ).rejects.toThrow(/different thesis/);
+      svc.recalibrateForEvidence({
+        thesisId: THESIS_ID,
+        evidenceItemId: EVIDENCE_ID,
+        role: VALIDATION,
+      }),
+    ).rejects.toThrow(/OracleThesisEvidenceLink not found/);
   });
 });
 
@@ -181,7 +203,8 @@ describe('createOracleThesisConfidenceService.recalibrateForOutcome', () => {
     expect(outcome.entry.newConfidence).toBeGreaterThan(40);
     expect(outcome.entry.source).toBe('outcome');
     expect(outcome.entry.outcomeId).toBe(OUTCOME_ID);
-    expect(outcome.entry.evidenceLinkId).toBeNull();
+    expect(outcome.entry.evidenceItemId).toBeNull();
+    expect(outcome.entry.evidenceRole).toBeNull();
     expect(db.state.thesisUpdates[0]?.confidence).toBe(outcome.entry.newConfidence);
   });
 
@@ -251,8 +274,8 @@ describe('createOracleThesisConfidenceService.listHistory', () => {
         { id: 'b', confidence: 50 },
       ],
       links: [
-        { id: 'la', thesis_id: 'a', evidence_item_id: 'ea', role: 'validation', weight: 1 },
-        { id: 'lb', thesis_id: 'b', evidence_item_id: 'eb', role: 'validation', weight: 1 },
+        { thesis_id: 'a', evidence_item_id: 'ea', role: VALIDATION, weight: 1 },
+        { thesis_id: 'b', evidence_item_id: 'eb', role: VALIDATION, weight: 1 },
       ],
       evidence: [
         { id: 'ea', confidence: 60, evidence_strength: 60 },
@@ -260,8 +283,16 @@ describe('createOracleThesisConfidenceService.listHistory', () => {
       ],
     });
     const svc = createOracleThesisConfidenceService(db);
-    await svc.recalibrateForEvidence({ thesisId: 'a', evidenceLinkId: 'la' });
-    await svc.recalibrateForEvidence({ thesisId: 'b', evidenceLinkId: 'lb' });
+    await svc.recalibrateForEvidence({
+      thesisId: 'a',
+      evidenceItemId: 'ea',
+      role: VALIDATION,
+    });
+    await svc.recalibrateForEvidence({
+      thesisId: 'b',
+      evidenceItemId: 'eb',
+      role: VALIDATION,
+    });
 
     const onlyA = await svc.listHistory('a');
     expect(onlyA).toHaveLength(1);

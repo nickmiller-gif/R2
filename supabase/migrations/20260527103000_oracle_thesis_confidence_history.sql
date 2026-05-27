@@ -5,9 +5,14 @@
 -- outcome. The service layer ('src/services/oracle/oracle-thesis-confidence
 -- .service.ts') is the sole writer; this table is the audit trail.
 --
--- Idempotency: a (thesis_id, evidence_link_id) or (thesis_id, outcome_id)
--- pair can only appear once -- the service treats a repeat call as a no-op
--- so re-runs of the outbox or pipeline don't double-count.
+-- Why the evidence side is denormalised: oracle_thesis_evidence_links has a
+-- composite PK (thesis_id, evidence_item_id, role) and no surrogate id, so
+-- we can't FK by a single uuid. We store the evidence_item_id + role pair
+-- instead -- it's the same identity, just expressed directly.
+--
+-- Idempotency: a (thesis_id, evidence_item_id, role) or (thesis_id,
+-- outcome_id) tuple can only appear once -- the service treats a repeat call
+-- as a no-op so re-runs of the outbox or pipeline don't double-count.
 --
 -- Additive migration. Existing thesis rows are unaffected at apply time.
 
@@ -17,7 +22,8 @@ CREATE TABLE IF NOT EXISTS public.oracle_thesis_confidence_history (
   prior_confidence numeric NOT NULL,
   new_confidence numeric NOT NULL,
   delta numeric NOT NULL,
-  evidence_link_id uuid REFERENCES public.oracle_thesis_evidence_links(id) ON DELETE SET NULL,
+  evidence_item_id uuid REFERENCES public.oracle_evidence_items(id) ON DELETE SET NULL,
+  evidence_role public.oracle_thesis_evidence_role,
   outcome_id uuid REFERENCES public.oracle_outcomes(id) ON DELETE SET NULL,
   recalibration_method text NOT NULL DEFAULT 'bayesian-v1',
   log_odds_shift numeric NOT NULL DEFAULT 0,
@@ -26,7 +32,10 @@ CREATE TABLE IF NOT EXISTS public.oracle_thesis_confidence_history (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT oracle_thesis_confidence_history_source_present
-    CHECK (evidence_link_id IS NOT NULL OR outcome_id IS NOT NULL)
+    CHECK (
+      (evidence_item_id IS NOT NULL AND evidence_role IS NOT NULL)
+      OR outcome_id IS NOT NULL
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_oracle_thesis_confidence_history_thesis
@@ -39,8 +48,8 @@ CREATE INDEX IF NOT EXISTS idx_oracle_thesis_confidence_history_method
 -- multiple NULL slots on either side. PostgreSQL treats NULLs as distinct in
 -- regular unique indexes; a WHERE clause keeps the constraint scoped.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_oracle_thesis_confidence_history_evidence
-  ON public.oracle_thesis_confidence_history (thesis_id, evidence_link_id)
-  WHERE evidence_link_id IS NOT NULL;
+  ON public.oracle_thesis_confidence_history (thesis_id, evidence_item_id, evidence_role)
+  WHERE evidence_item_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_oracle_thesis_confidence_history_outcome
   ON public.oracle_thesis_confidence_history (thesis_id, outcome_id)
@@ -52,6 +61,8 @@ COMMENT ON COLUMN public.oracle_thesis_confidence_history.recalibration_method I
   'Formula version tag. Lets us A/B alternate weighting schemes without rewriting historic rows.';
 COMMENT ON COLUMN public.oracle_thesis_confidence_history.log_odds_shift IS
   'Bayesian-v1: signed shift applied to logit(confidence/100). Stored for debuggability.';
+COMMENT ON COLUMN public.oracle_thesis_confidence_history.evidence_item_id IS
+  'Set when this recalibration was triggered by a thesis-evidence link. Pair with evidence_role to identify the specific link (composite PK on oracle_thesis_evidence_links).';
 
 ALTER TABLE public.oracle_thesis_confidence_history ENABLE ROW LEVEL SECURITY;
 

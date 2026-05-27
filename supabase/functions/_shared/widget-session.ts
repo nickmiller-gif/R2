@@ -124,7 +124,7 @@ export async function verifyWidgetSessionToken(token: string): Promise<WidgetSes
       functionName: 'widget-session',
       error: message,
     });
-    throw new Error('Invalid widget session token payload', { cause: error });
+    throw new Error('Invalid widget session token payload');
   }
   const now = Math.floor(Date.now() / 1000);
   if (!claims.exp || claims.exp < now) throw new Error('Widget session token expired');

@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS public.friction_dossiers (
   friction_collapse_score numeric(5,2) CHECK (friction_collapse_score IS NULL OR (friction_collapse_score >= 0 AND friction_collapse_score <= 100)),
   status public.friction_dossier_status NOT NULL DEFAULT 'draft',
   outbound_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  oracle_opportunity_id uuid REFERENCES public.oracle_opportunities(id) ON DELETE SET NULL,
+  -- FK to public.oracle_opportunities(id) is added in a later migration so that
+  -- this file can run independently in fresh environments (Supabase Preview).
+  -- See 20260526190000_friction_dossiers_oracle_opportunity_fk.sql.
+  oracle_opportunity_id uuid,
   created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()

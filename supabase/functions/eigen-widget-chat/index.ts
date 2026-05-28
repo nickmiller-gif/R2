@@ -44,7 +44,10 @@ import {
   fetchMegEntityContextForChat,
   resolveChatEntityScope,
 } from '../_shared/chat-entity-context.ts';
-import type { EntityScopeMode } from '../../../src/lib/eigen/chat-entity-resolver.ts';
+import {
+  sanitizeEntityLabel,
+  type EntityScopeMode,
+} from '../../../src/lib/eigen/chat-entity-resolver.ts';
 import { requireRole } from '../_shared/rbac.ts';
 
 interface WidgetChatRequest {
@@ -85,7 +88,9 @@ function parseRequest(value: unknown): WidgetChatRequest {
     entity_scope: Array.isArray(body.entity_scope)
       ? body.entity_scope.map((item) => String(item))
       : [],
-    entity_label: typeof body.entity_label === 'string' ? body.entity_label.trim() : undefined,
+    entity_label: sanitizeEntityLabel(
+      typeof body.entity_label === 'string' ? body.entity_label : undefined,
+    ),
     entity_scope_mode:
       body.entity_scope_mode === 'boost' || body.entity_scope_mode === 'filter'
         ? body.entity_scope_mode
@@ -300,6 +305,7 @@ Deno.serve(
 
       let effectiveEntityScope = claims.mode === 'eigenx' ? (body.entity_scope ?? []) : [];
       let entityScopeMode: EntityScopeMode = body.entity_scope_mode ?? 'filter';
+      let entityResolutionSources: Array<'explicit' | 'label' | 'message'> = [];
       if (claims.mode === 'eigenx') {
         const resolvedEntityScope = await resolveChatEntityScope(client, {
           message: body.message,
@@ -314,6 +320,7 @@ Deno.serve(
         }));
         effectiveEntityScope = resolvedEntityScope.entityIds;
         entityScopeMode = resolvedEntityScope.scopeMode;
+        entityResolutionSources = [...resolvedEntityScope.resolutionSources];
       }
 
       const retrieveResult = await executeEigenRetrieve(client, {
@@ -377,6 +384,7 @@ Deno.serve(
         entity_context_count: entityContext.length,
         entity_scope_applied: claims.mode === 'eigenx' ? effectiveEntityScope : [],
         entity_scope_mode: claims.mode === 'eigenx' ? entityScopeMode : null,
+        entity_resolution_sources: claims.mode === 'eigenx' ? entityResolutionSources : [],
         llm_provider: body.llm_provider ?? 'openai',
         llm_model: body.llm_model ?? null,
         llm_critic_used: synthesis.critic_used,

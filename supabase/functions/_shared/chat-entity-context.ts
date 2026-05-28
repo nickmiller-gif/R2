@@ -6,9 +6,12 @@ import {
 } from '../../../src/lib/eigen/chat-entity-context.ts';
 import {
   collectEntityLookupHints,
+  escapeIlikePattern,
+  filterEntityLookupHitsByMinScore,
   mergeExplicitAndResolvedScope,
   rankEntityLookupHits,
   resolveEntityScopeMode,
+  sanitizeEntityLabel,
   scoreEntityLookupHit,
   type EntityLookupHit,
   type EntityScopeMode,
@@ -57,6 +60,17 @@ export interface ResolveChatEntityScopeResult extends ResolvedChatEntityScope {
   scopeMode: EntityScopeMode;
 }
 
+const MAX_MERGE_HOPS = 4;
+const MAX_NEIGHBOR_IDS = 16;
+const MAX_EDGES_PER_ENTITY = 8;
+
+const SIDECAR_SELECT: Record<string, string> = {
+  meg_company_sidecar: 'legal_name,domain,industry,size_band,hq_city,hq_state,founded_year',
+  meg_property_sidecar:
+    'parcel_id,address_line_1,address_line_2,city,state,postal_code,county,property_type,acreage',
+  meg_person_contact_sidecar: 'primary_email,primary_phone,title',
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -93,8 +107,8 @@ async function followMergedIntoIds(
   let pending = [...ids];
   const seen = new Set<string>();
 
-  for (let hop = 0; hop < 3 && pending.length > 0; hop++) {
-    const batch = pending.filter((id) => !seen.has(id));
+  for (let hop = 0; hop < MAX_MERGE_HOPS && pending.length > 0; hop++) {
+    const batch = pending.filter((id) => isValidMegEntityId(id) && !seen.has(id));
     pending = [];
     if (batch.length === 0) break;
 
@@ -110,7 +124,9 @@ async function followMergedIntoIds(
       const id = String(row.id);
       const status = String(row.status);
       const mergedInto =
-        typeof row.merged_into_id === 'string' && row.merged_into_id.length > 0
+        typeof row.merged_into_id === 'string' &&
+        isValidMegEntityId(row.merged_into_id) &&
+        row.merged_into_id !== id
           ? row.merged_into_id
           : null;
 
@@ -129,6 +145,12 @@ async function followMergedIntoIds(
   return redirect;
 }
 
+function isValidMegEntityId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value.trim(),
+  );
+}
+
 async function lookupEntityHitsByHint(
   client: SupabaseClient,
   hint: string,
@@ -136,6 +158,8 @@ async function lookupEntityHitsByHint(
 ): Promise<EntityLookupHit[]> {
   const trimmed = hint.trim();
   if (trimmed.length < 2) return [];
+
+  const fuzzyPattern = `%${escapeIlikePattern(trimmed)}%`;
 
   const [aliasExact, nameExact, aliasFuzzy, nameFuzzy] = await Promise.all([
     client
@@ -153,7 +177,7 @@ async function lookupEntityHitsByHint(
       ? client
           .from('meg_entity_aliases')
           .select('meg_entity_id, alias_value, confidence')
-          .ilike('alias_value', `%${trimmed}%`)
+          .ilike('alias_value', fuzzyPattern)
           .limit(8)
       : Promise.resolve({ data: [], error: null }),
     trimmed.length >= 3
@@ -161,7 +185,7 @@ async function lookupEntityHitsByHint(
           .from('meg_entities')
           .select('id, canonical_name')
           .eq('status', 'active')
-          .ilike('canonical_name', `%${trimmed}%`)
+          .ilike('canonical_name', fuzzyPattern)
           .limit(8)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -211,28 +235,31 @@ export async function resolveChatEntityScope(
   client: SupabaseClient,
   input: ResolveChatEntityScopeInput,
 ): Promise<ResolveChatEntityScopeResult> {
-  const hints = collectEntityLookupHints(input.message, input.entityLabel);
-  const resolvedHits: EntityLookupHit[] = [];
+  const safeLabel = sanitizeEntityLabel(input.entityLabel);
+  const hints = collectEntityLookupHints(input.message, safeLabel);
+  const maxEntities = Math.min(Math.max(input.maxEntities ?? 8, 1), 8);
 
-  for (const hint of hints) {
-    const source: EntityLookupHit['source'] =
-      input.entityLabel && hint.trim().toLowerCase() === input.entityLabel.trim().toLowerCase()
-        ? 'label'
-        : 'message';
-    const hits = await lookupEntityHitsByHint(client, hint, source);
-    resolvedHits.push(...hits);
-  }
+  const hintResults = await Promise.all(
+    hints.map(async (hint) => {
+      const source: EntityLookupHit['source'] =
+        safeLabel && hint.trim().toLowerCase() === safeLabel.trim().toLowerCase()
+          ? 'label'
+          : 'message';
+      return lookupEntityHitsByHint(client, hint, source);
+    }),
+  );
+  const resolvedHits = filterEntityLookupHitsByMinScore(hintResults.flat());
 
   const merged = mergeExplicitAndResolvedScope(
     input.explicitScope,
-    rankEntityLookupHits(resolvedHits, input.maxEntities ?? 8),
-    input.maxEntities ?? 8,
+    rankEntityLookupHits(resolvedHits, maxEntities),
+    maxEntities,
   );
 
   const redirect = await followMergedIntoIds(client, merged.entityIds);
   const entityIds = normalizeEntityScopeIds(
     merged.entityIds.map((id) => redirect.get(id) ?? id),
-    input.maxEntities ?? 8,
+    maxEntities,
   );
 
   return {
@@ -250,15 +277,15 @@ async function loadSidecarFields(
   const table = sidecarTableForEntityType(entityType);
   if (!table) return {};
 
+  const columns = SIDECAR_SELECT[table];
   const { data, error } = await client
     .from(table)
-    .select('*')
+    .select(columns ?? 'meg_entity_id')
     .eq('meg_entity_id', entityId)
     .maybeSingle();
   if (error || !data) return {};
 
-  const { meg_entity_id: _id, updated_at: _updatedAt, ...rest } = data as Record<string, unknown>;
-  return rest;
+  return asRecord(data);
 }
 
 function mapEdgesToRelationships(
@@ -267,6 +294,7 @@ function mapEdgesToRelationships(
 ): ChatEntityRelationship[] {
   return edges
     .filter((edge) => typeof edge.other_meg_entity_id === 'string')
+    .slice(0, MAX_EDGES_PER_ENTITY)
     .map((edge) => {
       const otherId = edge.other_meg_entity_id as string;
       const neighbor = neighborById.get(otherId);
@@ -345,7 +373,7 @@ export async function fetchMegEntityContextForChat(
           .filter((id): id is string => typeof id === 'string' && id.length > 0),
       ),
     ),
-  ];
+  ].slice(0, MAX_NEIGHBOR_IDS);
 
   const neighborResult =
     neighborIds.length > 0

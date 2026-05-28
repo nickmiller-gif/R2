@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   collectEntityLookupHints,
+  escapeIlikePattern,
+  filterEntityLookupHitsByMinScore,
   mergeExplicitAndResolvedScope,
   rankEntityLookupHits,
   resolveEntityScopeMode,
+  sanitizeEntityLabel,
   scoreEntityLookupHit,
 } from '../../src/lib/eigen/chat-entity-resolver.ts';
 
@@ -66,5 +69,42 @@ describe('chat-entity-resolver', () => {
     expect(
       resolveEntityScopeMode([SAMPLE_ID], 'boost', mergeExplicitAndResolvedScope([SAMPLE_ID], [])),
     ).toBe('boost');
+  });
+
+  it('escapes ilike metacharacters in user hints', () => {
+    expect(escapeIlikePattern('100% Acme')).toBe('100\\% Acme');
+    expect(escapeIlikePattern('foo_bar')).toBe('foo\\_bar');
+  });
+
+  it('sanitizes entity labels and rejects empty values', () => {
+    expect(sanitizeEntityLabel('  Acme Corp  ')).toBe('Acme Corp');
+    expect(sanitizeEntityLabel('a')).toBeUndefined();
+    expect(sanitizeEntityLabel('x'.repeat(200))?.length).toBe(120);
+  });
+
+  it('drops weak fuzzy message matches below the score floor', () => {
+    const kept = filterEntityLookupHitsByMinScore([
+      {
+        id: SAMPLE_ID,
+        score: 0.55,
+        source: 'message',
+        matchedText: 'Acme Holdings LLC',
+      },
+    ]);
+    expect(kept).toHaveLength(0);
+
+    const strong = filterEntityLookupHitsByMinScore([
+      {
+        id: SAMPLE_ID,
+        score: 0.95,
+        source: 'label',
+        matchedText: 'Acme Corp',
+      },
+    ]);
+    expect(strong).toHaveLength(1);
+  });
+
+  it('ignores null bytes and non-alphanumeric-only hints', () => {
+    expect(collectEntityLookupHints('%%\0%%', undefined)).toEqual([]);
   });
 });

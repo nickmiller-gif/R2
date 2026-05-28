@@ -24,6 +24,36 @@ export interface ResolvedChatEntityScope {
 
 const MIN_HINT_LENGTH = 2;
 const MAX_HINT_LENGTH = 120;
+const MAX_ENTITY_LABEL_LENGTH = 120;
+const MAX_RESOLVE_HINTS = 4;
+
+/** Minimum match score to auto-apply a resolved entity (avoids weak fuzzy injection). */
+export const MIN_ENTITY_RESOLVE_SCORE = {
+  label: 0.72,
+  message: 0.88,
+  explicit: 0,
+} as const;
+
+const ILIKE_ESCAPE_RE = /[%_\\]/g;
+
+/** Escape user-derived fragments before embedding in PostgREST ilike patterns. */
+export function escapeIlikePattern(value: string): string {
+  return value.replace(ILIKE_ESCAPE_RE, (ch) => `\\${ch}`);
+}
+
+export function sanitizeEntityLabel(raw: string | undefined): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const cleaned = raw.replace(/\0/g, '').replace(/\s+/g, ' ').trim();
+  if (cleaned.length < MIN_HINT_LENGTH) return undefined;
+  return cleaned.slice(0, MAX_ENTITY_LABEL_LENGTH);
+}
+
+function isUsableHint(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed.length < MIN_HINT_LENGTH || trimmed.length > MAX_HINT_LENGTH) return false;
+  if (!/[A-Za-z0-9]/.test(trimmed)) return false;
+  return true;
+}
 
 /** Collect human-readable strings worth querying against MEG aliases / canonical names. */
 export function collectEntityLookupHints(message: string, entityLabel?: string): string[] {
@@ -31,29 +61,30 @@ export function collectEntityLookupHints(message: string, entityLabel?: string):
   const seen = new Set<string>();
 
   const push = (raw: string | undefined) => {
-    const trimmed = raw?.replace(/\s+/g, ' ').trim();
-    if (!trimmed || trimmed.length < MIN_HINT_LENGTH || trimmed.length > MAX_HINT_LENGTH) return;
-    const key = trimmed.toLowerCase();
+    const trimmed = raw?.replace(/\0/g, '').replace(/\s+/g, ' ').trim();
+    if (!isUsableHint(trimmed ?? '')) return;
+    const key = trimmed!.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    hints.push(trimmed);
+    hints.push(trimmed!);
   };
 
-  push(entityLabel);
+  push(sanitizeEntityLabel(entityLabel));
 
-  for (const match of message.matchAll(/"([^"]{2,80})"|'([^']{2,80})'/g)) {
+  const safeMessage = message.replace(/\0/g, '').slice(0, 8_000);
+  for (const match of safeMessage.matchAll(/"([^"]{2,80})"|'([^']{2,80})'/g)) {
     push(match[1] ?? match[2]);
   }
 
-  if (entityLabel) return hints.slice(0, 4);
+  if (entityLabel) return hints.slice(0, MAX_RESOLVE_HINTS);
 
-  const withoutUrls = message.replace(/https?:\/\/\S+/gi, ' ');
+  const withoutUrls = safeMessage.replace(/https?:\/\/\S+/gi, ' ');
   const capitalPhrase = withoutUrls.match(
     /\b([A-Z][A-Za-z0-9&.'-]+(?:\s+[A-Z][A-Za-z0-9&.'-]+){0,4})\b/,
   );
   if (capitalPhrase?.[1]) push(capitalPhrase[1]);
 
-  return hints.slice(0, 4);
+  return hints.slice(0, MAX_RESOLVE_HINTS);
 }
 
 export function scoreEntityLookupHit(input: {
@@ -85,6 +116,15 @@ export function rankEntityLookupHits(hits: EntityLookupHit[], max = 8): EntityLo
   return [...byId.values()].sort((a, b) => b.score - a.score).slice(0, max);
 }
 
+export function filterEntityLookupHitsByMinScore(hits: EntityLookupHit[]): EntityLookupHit[] {
+  return hits.filter((hit) => {
+    if (hit.source === 'explicit') return true;
+    const floor =
+      hit.source === 'label' ? MIN_ENTITY_RESOLVE_SCORE.label : MIN_ENTITY_RESOLVE_SCORE.message;
+    return hit.score >= floor;
+  });
+}
+
 export function mergeExplicitAndResolvedScope(
   explicitScope: string[],
   resolvedHits: EntityLookupHit[],
@@ -105,7 +145,7 @@ export function mergeExplicitAndResolvedScope(
     };
   }
 
-  const ranked = rankEntityLookupHits(resolvedHits, max);
+  const ranked = rankEntityLookupHits(filterEntityLookupHitsByMinScore(resolvedHits), max);
   const entityIds = ranked.map((hit) => hit.id);
   const resolutionSources = [
     ...new Set(ranked.map((hit) => hit.source)),

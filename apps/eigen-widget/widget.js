@@ -1,10 +1,8 @@
 /* ============================================================
    R2 · Eigen / EigenX widget runtime
-   Matches the R2-Demo.html look: twin dock, morph-to-workspace,
-   singleton shell with identity swap. Preserves all backend
-   behavior — SSE streaming, auth handshake, feedback, citations,
-   idempotency, parent-origin validation.
    ============================================================ */
+
+import { renderAssistantMarkdown } from './widget-markdown.js';
 
 const params = new URLSearchParams(window.location.search);
 const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
@@ -27,6 +25,8 @@ const wsTitleName = document.getElementById('ws-title-name');
 const wsTitleSub = document.getElementById('ws-title-sub');
 const wsMode = document.getElementById('ws-mode');
 const wsEntityScope = document.getElementById('ws-entity-scope');
+const wsEntityRibbon = document.getElementById('ws-entity-ribbon');
+const wsQuickPrompts = document.getElementById('ws-quick-prompts');
 const wsClose = document.getElementById('ws-close');
 const wsBody = document.getElementById('ws-body');
 const wsForm = document.getElementById('ws-form');
@@ -41,6 +41,8 @@ let authBearer = '';
 let allowedParentOrigin = '';
 let widgetEntityScope = [];
 let widgetEntityLabel = '';
+let welcomeHeroEl = null;
+let userHasSentMessage = false;
 let morphRaf = 0;
 let systemThemeMqListener = null; // matchMedia listener active when theme === 'system'
 
@@ -111,6 +113,9 @@ function setAppIdentity(app) {
 
   // Composer placeholder
   if (wsInput) wsInput.placeholder = id.placeholder;
+
+  renderQuickPrompts();
+  if (!userHasSentMessage) renderWelcomeHero();
 
   // Body mode class (drives amber accents in EigenX)
   document.body.classList.toggle('mode-eigenx', id.app === 'eigenx');
@@ -213,6 +218,7 @@ function updateEntityScopeBadge() {
   if (widgetEntityScope.length === 0) {
     wsEntityScope.hidden = true;
     wsEntityScope.textContent = '';
+    if (wsEntityRibbon) wsEntityRibbon.hidden = true;
     return;
   }
   wsEntityScope.hidden = false;
@@ -221,6 +227,85 @@ function updateEntityScopeBadge() {
     `${widgetEntityScope.length} scoped entit${widgetEntityScope.length === 1 ? 'y' : 'ies'}`;
   wsEntityScope.textContent = label;
   wsEntityScope.title = widgetEntityScope.join(', ');
+  if (wsEntityRibbon) {
+    wsEntityRibbon.hidden = false;
+    wsEntityRibbon.textContent = `Live context: ${label} — answers prioritize this client, property, or person.`;
+  }
+  renderQuickPrompts();
+}
+
+function quickPromptsForMode() {
+  if (activeMode === 'eigenx') {
+    if (widgetEntityLabel) {
+      return [
+        `What should I know about ${widgetEntityLabel}?`,
+        `Who are the key people at ${widgetEntityLabel}?`,
+        `Summarize open items for ${widgetEntityLabel}`,
+      ];
+    }
+    return [
+      'Who are our active clients?',
+      'Tell me about a property in the portfolio',
+      'Who should I talk to about this deal?',
+    ];
+  }
+  return ['What is Rays Retreat?', 'Who is Ray?', 'What programs are available?'];
+}
+
+function renderQuickPrompts() {
+  if (!wsQuickPrompts) return;
+  wsQuickPrompts.innerHTML = '';
+  for (const prompt of quickPromptsForMode()) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-prompt';
+    btn.textContent = prompt;
+    btn.addEventListener('click', () => {
+      if (!wsInput) return;
+      wsInput.value = prompt;
+      wsInput.focus();
+    });
+    wsQuickPrompts.appendChild(btn);
+  }
+}
+
+function dismissWelcomeHero() {
+  if (welcomeHeroEl?.parentNode) welcomeHeroEl.remove();
+  welcomeHeroEl = null;
+}
+
+function renderWelcomeHero() {
+  if (userHasSentMessage || welcomeHeroEl) return;
+  const id = identityFor(activeApp);
+  const hero = document.createElement('div');
+  hero.className = 'welcome-hero';
+  hero.innerHTML = `
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <h2>${id.name}</h2>
+      <p>${id.intro}</p>
+    </div>
+  `;
+  wsBody?.prepend(hero);
+  welcomeHeroEl = hero;
+}
+
+function setAssistantContent(msgEl, text, asMarkdown = true) {
+  if (!msgEl) return;
+  if (asMarkdown && text.trim()) {
+    msgEl.classList.add('md');
+    msgEl.innerHTML = renderAssistantMarkdown(text);
+  } else {
+    msgEl.classList.remove('md');
+    msgEl.textContent = text;
+  }
+}
+
+function showTypingIndicator(msgEl) {
+  if (!msgEl) return;
+  msgEl.classList.remove('md');
+  msgEl.innerHTML =
+    '<span class="typing-indicator" aria-label="Thinking"><span></span><span></span><span></span></span>';
 }
 
 function makeTurn(role, text) {
@@ -453,9 +538,12 @@ function downgradeToPublic() {
 }
 
 async function submitMessage(message) {
+  userHasSentMessage = true;
+  dismissWelcomeHero();
   const userTurn = makeTurn('user', message);
   const assistantTurn = makeTurn('assistant', '');
   assistantTurn.turn.classList.add('streaming');
+  showTypingIndicator(assistantTurn.msg);
   pendingAssistant = assistantTurn;
   wsSubmit.disabled = true;
 
@@ -482,7 +570,8 @@ async function submitMessage(message) {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
       const payload = await response.json();
-      assistantTurn.msg.textContent = payload.response || 'No response generated.';
+      const answer = payload.response || 'No response generated.';
+      setAssistantContent(assistantTurn.msg, answer);
       addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
       addCitations(assistantTurn.turn, payload.citations);
       addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
@@ -500,6 +589,7 @@ async function submitMessage(message) {
         } catch {
           deltaText = body;
         }
+        assistantTurn.msg.classList.remove('md');
         assistantTurn.msg.textContent += deltaText;
         wsBody.scrollTop = wsBody.scrollHeight;
       } else if (event === 'final') {
@@ -510,9 +600,8 @@ async function submitMessage(message) {
           payload = null;
         }
         if (payload) {
-          if (!assistantTurn.msg.textContent.trim()) {
-            assistantTurn.msg.textContent = payload.response || 'No response generated.';
-          }
+          const finalText = assistantTurn.msg.textContent.trim() || payload.response || '';
+          if (finalText) setAssistantContent(assistantTurn.msg, finalText);
           addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
           addCitations(assistantTurn.turn, payload.citations);
           addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
@@ -738,7 +827,8 @@ if (isEmbedded) {
   openApp(bootApp, { silent: true });
 }
 
-makeTurn('assistant', identityFor(bootApp).intro);
+renderWelcomeHero();
+renderQuickPrompts();
 
 try {
   // Only broadcast ready to the validated parent origin. If we don't have

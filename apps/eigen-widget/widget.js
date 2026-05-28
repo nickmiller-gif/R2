@@ -1,10 +1,8 @@
 /* ============================================================
    R2 · Eigen / EigenX widget runtime
-   Matches the R2-Demo.html look: twin dock, morph-to-workspace,
-   singleton shell with identity swap. Preserves all backend
-   behavior — SSE streaming, auth handshake, feedback, citations,
-   idempotency, parent-origin validation.
    ============================================================ */
+
+import { renderAssistantMarkdown } from './widget-markdown.js';
 
 const params = new URLSearchParams(window.location.search);
 const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
@@ -26,6 +24,9 @@ const wsLogo = document.getElementById('ws-logo');
 const wsTitleName = document.getElementById('ws-title-name');
 const wsTitleSub = document.getElementById('ws-title-sub');
 const wsMode = document.getElementById('ws-mode');
+const wsEntityScope = document.getElementById('ws-entity-scope');
+const wsEntityRibbon = document.getElementById('ws-entity-ribbon');
+const wsQuickPrompts = document.getElementById('ws-quick-prompts');
 const wsClose = document.getElementById('ws-close');
 const wsBody = document.getElementById('ws-body');
 const wsForm = document.getElementById('ws-form');
@@ -38,7 +39,10 @@ let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
 let allowedParentOrigin = '';
-let pendingAssistant = null;
+let widgetEntityScope = [];
+let widgetEntityLabel = '';
+let welcomeHeroEl = null;
+let userHasSentMessage = false;
 let morphRaf = 0;
 let systemThemeMqListener = null; // matchMedia listener active when theme === 'system'
 
@@ -70,18 +74,18 @@ const EIGEN_IDENTITY = {
   symbolId: '#eigen-mark',
   placeholder: 'Ask the commons…',
   intro:
-    'Ask a question. Answers draw from public evidence in the R2 commons. Citations show the evidence tier for each source.',
+    'Hi — I’m Eigen. Ask me about people, clients, properties, or anything in the public commons. I’ll answer conversationally and cite what I know.',
 };
 const EIGENX_IDENTITY = {
   app: 'eigenx',
   name: 'EigenX',
-  sub: 'operator console',
+  sub: 'domain intelligence',
   modeLabel: 'EigenX',
   modeClass: 'active-eigenx',
   symbolId: '#eigenx-mark',
-  placeholder: 'Run an operator query…',
+  placeholder: 'Ask about a client, property, or person…',
   intro:
-    'EigenX runs in authenticated scope. Retrieval follows your policy scope; results cite the evidence tier for each source.',
+    'Hi — I’m EigenX. I can pull live client, property, and people context when you scope a MEG entity, then answer like a knowledgeable assistant.',
 };
 
 function identityFor(app) {
@@ -109,6 +113,9 @@ function setAppIdentity(app) {
 
   // Composer placeholder
   if (wsInput) wsInput.placeholder = id.placeholder;
+
+  renderQuickPrompts();
+  if (!userHasSentMessage) renderWelcomeHero();
 
   // Body mode class (drives amber accents in EigenX)
   document.body.classList.toggle('mode-eigenx', id.app === 'eigenx');
@@ -206,19 +213,131 @@ function closeApp() {
 }
 
 /* ---------- Chat primitives ---------- */
+function updateEntityScopeBadge() {
+  if (!wsEntityScope) return;
+  if (widgetEntityScope.length === 0) {
+    wsEntityScope.hidden = true;
+    wsEntityScope.textContent = '';
+    if (wsEntityRibbon) wsEntityRibbon.hidden = true;
+    return;
+  }
+  wsEntityScope.hidden = false;
+  const label =
+    widgetEntityLabel?.trim() ||
+    `${widgetEntityScope.length} scoped entit${widgetEntityScope.length === 1 ? 'y' : 'ies'}`;
+  wsEntityScope.textContent = label;
+  wsEntityScope.title = widgetEntityScope.join(', ');
+  if (wsEntityRibbon) {
+    wsEntityRibbon.hidden = false;
+    wsEntityRibbon.textContent = `Live context: ${label} — answers prioritize this client, property, or person.`;
+  }
+  renderQuickPrompts();
+}
+
+function quickPromptsForMode() {
+  if (activeMode === 'eigenx') {
+    if (widgetEntityLabel) {
+      return [
+        `What should I know about ${widgetEntityLabel}?`,
+        `Who are the key people at ${widgetEntityLabel}?`,
+        `Summarize open items for ${widgetEntityLabel}`,
+      ];
+    }
+    return [
+      'Who are our active clients?',
+      'Tell me about a property in the portfolio',
+      'Who should I talk to about this deal?',
+    ];
+  }
+  return ['What is Rays Retreat?', 'Who is Ray?', 'What programs are available?'];
+}
+
+function renderQuickPrompts() {
+  if (!wsQuickPrompts) return;
+  wsQuickPrompts.innerHTML = '';
+  for (const prompt of quickPromptsForMode()) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-prompt';
+    btn.textContent = prompt;
+    btn.addEventListener('click', () => {
+      if (!wsInput) return;
+      wsInput.value = prompt;
+      wsInput.focus();
+    });
+    wsQuickPrompts.appendChild(btn);
+  }
+}
+
+function dismissWelcomeHero() {
+  if (welcomeHeroEl?.parentNode) welcomeHeroEl.remove();
+  welcomeHeroEl = null;
+}
+
+function renderWelcomeHero() {
+  if (userHasSentMessage || welcomeHeroEl) return;
+  const id = identityFor(activeApp);
+  const hero = document.createElement('div');
+  hero.className = 'welcome-hero';
+  hero.innerHTML = `
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <h2>${id.name}</h2>
+      <p>${id.intro}</p>
+    </div>
+  `;
+  wsBody?.prepend(hero);
+  welcomeHeroEl = hero;
+}
+
+function setAssistantContent(msgEl, text, asMarkdown = true) {
+  if (!msgEl) return;
+  if (asMarkdown && text.trim()) {
+    msgEl.classList.add('md');
+    msgEl.innerHTML = renderAssistantMarkdown(text);
+  } else {
+    msgEl.classList.remove('md');
+    msgEl.textContent = text;
+  }
+}
+
+function showTypingIndicator(msgEl) {
+  if (!msgEl) return;
+  msgEl.classList.remove('md');
+  msgEl.innerHTML =
+    '<span class="typing-indicator" aria-label="Thinking"><span></span><span></span><span></span></span>';
+}
+
 function makeTurn(role, text) {
   const turn = document.createElement('article');
   turn.className = `turn ${role}`;
 
+  const row = document.createElement('div');
+  row.className = 'turn-row';
+
+  if (role === 'assistant' || role === 'user') {
+    const avatar = document.createElement('div');
+    avatar.className = `turn-avatar ${role}`;
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = role === 'user' ? 'You' : activeApp === 'eigenx' ? 'X' : 'E';
+    row.appendChild(avatar);
+  }
+
+  const content = document.createElement('div');
+  content.className = 'turn-content';
+
   const msg = document.createElement('div');
   msg.className = 'msg';
   msg.textContent = text;
-  turn.appendChild(msg);
+  content.appendChild(msg);
 
   const meta = document.createElement('div');
   meta.className = 'turn-meta';
   meta.textContent = timestampNow();
-  turn.appendChild(meta);
+  content.appendChild(meta);
+
+  row.appendChild(content);
+  turn.appendChild(row);
 
   wsBody.appendChild(turn);
   wsBody.scrollTop = wsBody.scrollHeight;
@@ -419,9 +538,12 @@ function downgradeToPublic() {
 }
 
 async function submitMessage(message) {
+  userHasSentMessage = true;
+  dismissWelcomeHero();
   const userTurn = makeTurn('user', message);
   const assistantTurn = makeTurn('assistant', '');
   assistantTurn.turn.classList.add('streaming');
+  showTypingIndicator(assistantTurn.msg);
   pendingAssistant = assistantTurn;
   wsSubmit.disabled = true;
 
@@ -437,6 +559,7 @@ async function submitMessage(message) {
       body: JSON.stringify({
         widget_token: token,
         message,
+        entity_scope: activeMode === 'eigenx' ? widgetEntityScope : [],
         response_format: 'structured',
         conversation_intent: resolveConversationIntent(),
         stream: true,
@@ -447,7 +570,8 @@ async function submitMessage(message) {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
       const payload = await response.json();
-      assistantTurn.msg.textContent = payload.response || 'No response generated.';
+      const answer = payload.response || 'No response generated.';
+      setAssistantContent(assistantTurn.msg, answer);
       addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
       addCitations(assistantTurn.turn, payload.citations);
       addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
@@ -465,6 +589,7 @@ async function submitMessage(message) {
         } catch {
           deltaText = body;
         }
+        assistantTurn.msg.classList.remove('md');
         assistantTurn.msg.textContent += deltaText;
         wsBody.scrollTop = wsBody.scrollHeight;
       } else if (event === 'final') {
@@ -475,9 +600,8 @@ async function submitMessage(message) {
           payload = null;
         }
         if (payload) {
-          if (!assistantTurn.msg.textContent.trim()) {
-            assistantTurn.msg.textContent = payload.response || 'No response generated.';
-          }
+          const finalText = assistantTurn.msg.textContent.trim() || payload.response || '';
+          if (finalText) setAssistantContent(assistantTurn.msg, finalText);
           addToolDisclosure(assistantTurn.turn, payload.retrieval_plan);
           addCitations(assistantTurn.turn, payload.citations);
           addFeedbackControls(assistantTurn.turn, payload.conversation_turn_id);
@@ -655,6 +779,17 @@ window.addEventListener('message', (event) => {
       if (ctx.module_scope && wsTitleSub) {
         wsTitleSub.textContent = `${ctx.module_scope}`;
       }
+      if (Array.isArray(ctx.entity_scope)) {
+        widgetEntityScope = ctx.entity_scope.map((item) => String(item)).filter(Boolean);
+      } else if (typeof ctx.meg_entity_id === 'string' && ctx.meg_entity_id.trim()) {
+        widgetEntityScope = [ctx.meg_entity_id.trim()];
+      }
+      if (typeof ctx.entity_label === 'string') {
+        widgetEntityLabel = ctx.entity_label.trim();
+      } else if (typeof ctx.client_name === 'string') {
+        widgetEntityLabel = ctx.client_name.trim();
+      }
+      updateEntityScopeBadge();
     } catch {
       /* ignore */
     }
@@ -692,7 +827,8 @@ if (isEmbedded) {
   openApp(bootApp, { silent: true });
 }
 
-makeTurn('assistant', identityFor(bootApp).intro);
+renderWelcomeHero();
+renderQuickPrompts();
 
 try {
   // Only broadcast ready to the validated parent origin. If we don't have

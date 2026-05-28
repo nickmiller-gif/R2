@@ -11,6 +11,7 @@ import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
+  defaultEigenxSystemPrompt,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
@@ -33,11 +34,19 @@ import {
   enforceEigenKosCapabilityBundle,
 } from '../_shared/eigen-kos-enforcement.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
+import {
+  buildUserMessageWithEntityAndRetrievalContext,
+  EIGEN_ENTITY_CONTEXT_INTRO,
+  formatEntityContextForLlm,
+  type ChatEntityForPrompt,
+} from '../../../src/lib/eigen/chat-entity-context.ts';
+import { fetchMegEntityContextForChat } from '../_shared/chat-entity-context.ts';
 import { requireRole } from '../_shared/rbac.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
   message: string;
+  entity_scope?: string[];
   response_format?: 'structured' | 'freeform';
   conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
   llm_provider?: LlmProvider;
@@ -67,6 +76,9 @@ function parseRequest(value: unknown): WidgetChatRequest {
   return {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
+    entity_scope: Array.isArray(body.entity_scope)
+      ? body.entity_scope.map((item) => String(item))
+      : [],
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     conversation_intent:
       body.conversation_intent === 'retreat_content' || body.conversation_intent === 'event_ops'
@@ -103,7 +115,7 @@ function readWidgetTemperature(mode: 'public' | 'eigenx'): number {
     mode === 'public'
       ? Deno.env.get('EIGEN_WIDGET_PUBLIC_TEMPERATURE')
       : Deno.env.get('EIGEN_WIDGET_EIGENX_TEMPERATURE');
-  const fallback = mode === 'public' ? '0.38' : '0.28';
+  const fallback = mode === 'public' ? '0.38' : '0.32';
   const raw =
     (specific && specific.trim()) || Deno.env.get('EIGEN_WIDGET_CHAT_TEMPERATURE') || fallback;
   const n = Number.parseFloat(raw);
@@ -118,7 +130,7 @@ function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolea
         "You are Public Eigen, Ray's public-facing assistant.",
         'Retrieved context is public-facing material only; do not infer or disclose internal tools, dashboards, credentials, or non-public operations.',
         'Mention tools, products, or services only when they clearly appear in the retrieved text as public-site content.',
-        'Use retrieved context as the source of truth for anything specific to Rays Retreat, R2, products, policies, people, or offerings.',
+        'Use retrieved context as the source of truth for anything specific to Rays Retreat, R2, products, policies, people, clients, properties, or offerings.',
         'Write in a natural, conversational tone (warm, direct, founder-like).',
         'When context is strong, weave facts in smoothly; when it is thin or off-topic, still reply helpfully,',
         'but clearly separate what comes from the materials versus general guidance, and do not invent numbers, dates, or commitments.',
@@ -128,24 +140,12 @@ function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolea
     return [
       "You are Public Eigen, Ray's public-facing assistant.",
       'No retrieved documents matched this turn yet.',
-      'Reply in a warm, conversational way. Do not invent specific facts about Rays Retreat, R2, products, prices, policies, or people.',
+      'Reply in a warm, conversational way. Do not invent specific facts about Rays Retreat, R2, products, prices, policies, people, clients, or properties.',
       'Do not describe internal tools or non-public systems; only public-site information belongs in answers once context exists.',
       'You may offer general encouragement, clarify what they need, or suggest topics they could ask about once content is available.',
     ].join(' ');
   }
-  if (hasContext) {
-    return [
-      'You are EigenX, the internal assistant.',
-      'Prioritize retrieved context for factual claims about the organization and internal materials.',
-      'Be conversational and concise; explain uncertainty when context is partial.',
-      'Do not fabricate sensitive specifics; ask a clarifying question when needed.',
-    ].join(' ');
-  }
-  return [
-    'You are EigenX. No retrieved context was returned for this message.',
-    'Respond conversationally without inventing internal or confidential specifics.',
-    'Offer to help once they point you at a document, area, or clearer question.',
-  ].join(' ');
+  return defaultEigenxSystemPrompt(hasContext);
 }
 
 async function synthesize(
@@ -154,6 +154,7 @@ async function synthesize(
   policyScope: string[],
   message: string,
   chunks: EigenRetrieveChunk[],
+  entityContext: ChatEntityForPrompt[],
   format: 'structured' | 'freeform',
   llmProvider: LlmProvider | undefined,
   llmModel: string | undefined,
@@ -164,7 +165,7 @@ async function synthesize(
   critic_provider?: LlmProvider;
   critic_model?: string;
 }> {
-  const hasContext = chunks.length > 0;
+  const hasContext = chunks.length > 0 || entityContext.length > 0;
 
   const envPrompt =
     mode === 'public'
@@ -186,9 +187,14 @@ async function synthesize(
     .filter(Boolean)
     .join('\n\n');
 
-  const labeled = formatRetrievalContextForLlm(chunks);
   const userContent = hasContext
-    ? `User message: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
+    ? buildUserMessageWithEntityAndRetrievalContext({
+        message: `User message: ${message}`,
+        entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
+        entityBlock: formatEntityContextForLlm(entityContext),
+        retrievalIntro: EIGEN_RETRIEVED_CONTEXT_INTRO,
+        retrievalBlock: formatRetrievalContextForLlm(chunks),
+      })
     : `User message: ${message}`;
 
   const result = await completeLlmChat({
@@ -283,6 +289,7 @@ Deno.serve(
 
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
+        entity_scope: claims.mode === 'eigenx' ? (body.entity_scope ?? []) : [],
         policy_scope: effectivePolicyScope,
         site_id: claims.site_id,
         site_source_systems: claims.site_source_systems,
@@ -317,12 +324,17 @@ Deno.serve(
 
       const citations = buildCitations(retrieveResult.body.chunks);
       const confidence = buildCompositeConfidence(citations);
+      const entityContext =
+        claims.mode === 'eigenx'
+          ? await fetchMegEntityContextForChat(client, body.entity_scope ?? []).catch(() => [])
+          : [];
       const synthesis = await synthesize(
         client,
         claims.mode,
         effectivePolicyScope,
         body.message,
         retrieveResult.body.chunks,
+        entityContext,
         body.response_format ?? 'structured',
         body.llm_provider,
         body.llm_model,
@@ -332,6 +344,8 @@ Deno.serve(
         response: synthesis.text,
         citations,
         confidence,
+        entity_context_count: entityContext.length,
+        entity_scope_applied: claims.mode === 'eigenx' ? (body.entity_scope ?? []) : [],
         llm_provider: body.llm_provider ?? 'openai',
         llm_model: body.llm_model ?? null,
         llm_critic_used: synthesis.critic_used,

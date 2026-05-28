@@ -6,6 +6,8 @@ import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
+  EIGENX_DEFAULT_NO_CONTEXT_RESPONSE,
+  defaultEigenxSystemPrompt,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
@@ -32,6 +34,14 @@ import {
   buildEigenKosCapabilityDenialBody,
   enforceEigenKosCapabilityBundle,
 } from '../_shared/eigen-kos-enforcement.ts';
+import {
+  buildUserMessageWithEntityAndRetrievalContext,
+  EIGEN_ENTITY_CONTEXT_INTRO,
+  formatEntityContextForLlm,
+  type ChatEntityForPrompt,
+} from '../../../src/lib/eigen/chat-entity-context.ts';
+import { fetchMegEntityContextForChat } from '../_shared/chat-entity-context.ts';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
 interface ChatRequest {
@@ -86,24 +96,19 @@ function readMaxHistoryTurns(): number {
 }
 
 function readNoContextResponse(): string {
-  return (
-    Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() ||
-    'I do not have enough grounded knowledge to answer that yet.'
-  );
+  return Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() || EIGENX_DEFAULT_NO_CONTEXT_RESPONSE;
 }
 
-function readSystemPrompt(
-  format: 'structured' | 'freeform',
-  voiceAddendum = '',
-  retrievalAppend = '',
-): string {
+function readEigenChatTemperature(): number {
+  const raw = Deno.env.get('EIGEN_CHAT_TEMPERATURE') ?? '0.32';
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return 0.32;
+  return Math.min(1.2, Math.max(0, n));
+}
+
+function readSystemPrompt(hasContext: boolean, voiceAddendum = '', retrievalAppend = ''): string {
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
-  const base =
-    fromEnv && fromEnv.length > 0
-      ? fromEnv
-      : format === 'structured'
-        ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
-        : 'You are EigenX. Provide a concise grounded answer using only provided context.';
+  const base = fromEnv && fromEnv.length > 0 ? fromEnv : defaultEigenxSystemPrompt(hasContext);
   return [
     withEigenChatProseStyle(base),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
@@ -183,9 +188,36 @@ function buildContextHandlesMessage(body: ChatRequest): string {
 function buildUserMessageWithContext(
   message: string,
   chunks: EigenRetrieveChunk[],
+  entityContext: ChatEntityForPrompt[],
   body: ChatRequest,
 ): string {
-  return `Question: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${formatRetrievalContextForLlm(chunks)}${buildContextHandlesMessage(body)}`;
+  return buildUserMessageWithEntityAndRetrievalContext({
+    message,
+    entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
+    entityBlock: formatEntityContextForLlm(entityContext),
+    retrievalIntro: EIGEN_RETRIEVED_CONTEXT_INTRO,
+    retrievalBlock: formatRetrievalContextForLlm(chunks),
+    suffix: buildContextHandlesMessage(body),
+  });
+}
+
+async function hydrateEntityScopeFromSession(
+  client: SupabaseClient,
+  sessionId: string | undefined,
+  ownerId: string,
+  entityScope: string[],
+): Promise<string[]> {
+  if (entityScope.length > 0 || !sessionId) return entityScope;
+  const { data, error } = await client
+    .from('eigen_chat_sessions')
+    .select('entity_scope')
+    .eq('id', sessionId)
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+  if (error || !data?.entity_scope) return entityScope;
+  return Array.isArray(data.entity_scope)
+    ? data.entity_scope.map((item) => String(item))
+    : entityScope;
 }
 
 Deno.serve(
@@ -272,9 +304,16 @@ Deno.serve(
         }
       }
 
+      body.entity_scope = await hydrateEntityScopeFromSession(
+        client,
+        sessionId,
+        auth.claims.userId,
+        body.entity_scope ?? [],
+      );
+
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
-        entity_scope: body.entity_scope ?? [],
+        entity_scope: body.entity_scope,
         policy_scope: body.policy_scope ?? [],
         site_id: body.site_id,
         site_source_systems: body.site_source_systems ?? [],
@@ -297,15 +336,25 @@ Deno.serve(
       const retrievedChunks = retrieveResult.body.chunks;
       const citations = buildCitations(retrievedChunks);
       const confidence = buildCompositeConfidence(citations);
-      const voiceStyleAddendum = await fetchRayVoiceStyleAddendum(client, {
-        message: body.message,
-        includePrivate: true,
-        policyScope: resolvedScope.effectivePolicyScope,
-      });
+      const [voiceStyleAddendum, entityContext] = await Promise.all([
+        fetchRayVoiceStyleAddendum(client, {
+          message: body.message,
+          includePrivate: true,
+          policyScope: resolvedScope.effectivePolicyScope,
+        }),
+        fetchMegEntityContextForChat(client, body.entity_scope).catch((err) => {
+          logError('fetchMegEntityContextForChat failed', {
+            functionName: 'eigen-chat',
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return [] as ChatEntityForPrompt[];
+        }),
+      ]);
       const retrievalQualityAppend = eigenRetrievalQualityAppend(
         retrievedChunks,
         confidence.overall,
       );
+      const hasAnswerContext = retrievedChunks.length > 0 || entityContext.length > 0;
 
       const maxHistoryTurns = readMaxHistoryTurns();
       let conversationHistory: ConversationTurn[] = [];
@@ -321,7 +370,12 @@ Deno.serve(
 
       if (body.stream) {
         const encoder = new TextEncoder();
-        const streamUserContent = buildUserMessageWithContext(body.message, retrievedChunks, body);
+        const streamUserContent = buildUserMessageWithContext(
+          body.message,
+          retrievedChunks,
+          entityContext,
+          body,
+        );
         const sseHeaders = {
           ...corsHeaders,
           'Content-Type': 'text/event-stream; charset=utf-8',
@@ -344,7 +398,7 @@ Deno.serve(
               let criticModel: string | undefined;
 
               const generationStartedAt = Date.now();
-              if (retrievedChunks.length === 0) {
+              if (retrievedChunks.length === 0 && entityContext.length === 0) {
                 fullText = readNoContextResponse();
                 send({ text: fullText });
               } else {
@@ -352,14 +406,14 @@ Deno.serve(
                   provider: body.llm_provider,
                   model: body.llm_model,
                   systemPrompt: readSystemPrompt(
-                    body.response_format ?? 'structured',
+                    hasAnswerContext,
                     voiceStyleAddendum,
                     retrievalQualityAppend,
                   ),
                   userContent: streamUserContent,
                   conversationHistory,
                   maxTokens: readMaxCompletionTokens(),
-                  temperature: 0.1,
+                  temperature: readEigenChatTemperature(),
                   critic: {
                     enabled: true,
                     confidence_label: confidence.overall,
@@ -422,7 +476,7 @@ Deno.serve(
                 return;
               }
 
-              const usedLlmForTurn = retrievedChunks.length !== 0;
+              const usedLlmForTurn = hasAnswerContext;
               const resolvedLlmProvider = usedLlmForTurn
                 ? (providerUsed ?? body.llm_provider ?? 'openai')
                 : null;
@@ -490,21 +544,26 @@ Deno.serve(
       let llmCriticModel: string | null = null;
 
       const nonStreamGenerationStartedAt = Date.now();
-      if (retrievedChunks.length === 0) {
+      if (retrievedChunks.length === 0 && entityContext.length === 0) {
         responseText = readNoContextResponse();
       } else {
         const llmResult = await completeLlmChat({
           provider: body.llm_provider,
           model: body.llm_model,
           systemPrompt: readSystemPrompt(
-            body.response_format ?? 'structured',
+            hasAnswerContext,
             voiceStyleAddendum,
             retrievalQualityAppend,
           ),
-          userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
+          userContent: buildUserMessageWithContext(
+            body.message,
+            retrievedChunks,
+            entityContext,
+            body,
+          ),
           conversationHistory,
           maxTokens: readMaxCompletionTokens(),
-          temperature: 0.1,
+          temperature: readEigenChatTemperature(),
           critic: {
             enabled: true,
             confidence_label: confidence.overall,
@@ -561,10 +620,13 @@ Deno.serve(
         retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
         citations,
         confidence,
-        llmProvider: retrievedChunks.length === 0 ? null : llmProvider,
-        llmModel: retrievedChunks.length === 0 ? null : llmModel,
-        llmFallbackUsed: retrievedChunks.length === 0 ? false : llmFallbackUsed,
-        llmCriticUsed: retrievedChunks.length === 0 ? false : llmCriticUsed,
+        llmProvider:
+          retrievedChunks.length === 0 && entityContext.length === 0 ? null : llmProvider,
+        llmModel: retrievedChunks.length === 0 && entityContext.length === 0 ? null : llmModel,
+        llmFallbackUsed:
+          retrievedChunks.length === 0 && entityContext.length === 0 ? false : llmFallbackUsed,
+        llmCriticUsed:
+          retrievedChunks.length === 0 && entityContext.length === 0 ? false : llmCriticUsed,
         latencyMs: nonStreamTurnLatencyMs,
       });
       if (!persistNonStream.ok) {

@@ -224,8 +224,11 @@ Deno.serve(
 
     const auth = await guardAuth(req);
     if (!auth.ok) return auth.response;
-    const roleCheck = await requireRole(auth.claims.userId, 'member');
-    if (!roleCheck.ok) return roleCheck.response;
+    const isServiceRole = auth.claims.role === 'service_role';
+    if (!isServiceRole) {
+      const roleCheck = await requireRole(auth.claims.userId, 'member');
+      if (!roleCheck.ok) return roleCheck.response;
+    }
 
     const idemError = requireIdempotencyKey(req);
     if (idemError) return idemError;

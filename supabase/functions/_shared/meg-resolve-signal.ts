@@ -551,6 +551,26 @@ function inferCentralr2StructuredResolves(
     }
   }
 
+  const criTypes = new Set(['centralr2_cri_rescore', 'centralr2_cri_verdict_committed']);
+  if (criTypes.has(row.source_event_type)) {
+    const propertyId = pickPm(p, m, 'property_id');
+    if (propertyId) {
+      const ext =
+        centralr2PropertyDedupeKey(p, m) ??
+        propertyId.slice(0, MEG_RESOLVE_BOUNDS.canonicalExternalIdMaxLength);
+      pushRelatedResolve(out, seen, row, 'centralr2:cri_property', {
+        entityType: 'meg:property',
+        externalId: ext,
+        name: row.summary,
+        payloadSlice: {
+          centralr2_cri: true,
+          source_event_type: row.source_event_type,
+          property_id: propertyId,
+        },
+      });
+    }
+  }
+
   const kind = pickPm(p, m, 'kind');
   if (kind === 'valuation_scenario' || pickPm(p, m, 'scenarioId', 'scenario_id')) {
     const towerId = pickPm(p, m, 'towerAssetId', 'tower_asset_id');

@@ -10,13 +10,19 @@ on:
     branches: [main]
     paths:
       - 'packages/r2-eval/**'
+      - 'packages/r2-steward/**'
       - 'tests/r2-eval/**'
+      - 'tests/steward-*.test.ts'
+      - 'supabase/functions/_shared/autonomous-*.ts'
       - '.github/workflows/r2-eval-harness.yml'
   pull_request:
     branches: [main]
     paths:
       - 'packages/r2-eval/**'
+      - 'packages/r2-steward/**'
       - 'tests/r2-eval/**'
+      - 'tests/steward-*.test.ts'
+      - 'supabase/functions/_shared/autonomous-*.ts'
       - '.github/workflows/r2-eval-harness.yml'
 
 permissions:
@@ -42,5 +48,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run r2-eval Vitest slice
+      - name: Run r2-eval Vitest slice (includes Op#5 85% pass-rate gate)
         run: npm run test -- tests/r2-eval/

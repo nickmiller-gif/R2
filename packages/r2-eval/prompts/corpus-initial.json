@@ -146,6 +146,48 @@
       "prompt": "What is the canonical source_event_type for futuristic upgrade proposals emitted by autonomous-upgrade-scout? Reply with the literal only.",
       "tags": ["upgrade_scout", "signal-contract"],
       "expect_substrings": ["futuristic_upgrade_scouted"]
+    },
+    {
+      "id": "eval-023-revolutionary-mesh-event-type",
+      "domain": "autonomous_ops",
+      "prompt": "What source_event_type does autonomous-revolutionary-mesh emit when a full KB-four mesh cycle completes? Reply with the literal only.",
+      "tags": ["revolutionary_mesh", "signal-contract"],
+      "expect_substrings": ["revolutionary_mesh_cycle_completed"]
+    },
+    {
+      "id": "eval-024-revolutionary-mesh-min-domains",
+      "domain": "autonomous_ops",
+      "prompt": "Each revolutionary mesh pattern must span at least how many domains? Reply with a short phrase including the number.",
+      "tags": ["revolutionary_mesh", "cross_domain"],
+      "expect_substrings": ["two domains"]
+    },
+    {
+      "id": "eval-025-revolutionary-mesh-route",
+      "domain": "autonomous_ops",
+      "prompt": "Revolutionary mesh cycle signals route only to which routing_targets surface? Reply with the source_system token only.",
+      "tags": ["revolutionary_mesh", "routing"],
+      "expect_substrings": ["operator_workbench"]
+    },
+    {
+      "id": "eval-026-bot-finding-information-audit",
+      "domain": "autonomous_ops",
+      "prompt": "What source_event_type do information-gap audit bots publish on Eigen? Reply with the literal only.",
+      "tags": ["bot_finding", "information_audit"],
+      "expect_substrings": ["bot_finding_published"]
+    },
+    {
+      "id": "eval-027-steward-brief-event-type",
+      "domain": "autonomous_ops",
+      "prompt": "What source_event_type does Eigen Steward publish for cross-domain KB-four pattern briefs? Reply with the literal only.",
+      "tags": ["steward", "signal-contract"],
+      "expect_substrings": ["steward_brief_published"]
+    },
+    {
+      "id": "eval-028-steward-min-domains",
+      "domain": "autonomous_ops",
+      "prompt": "Eigen Steward only emits a pattern brief when at least how many distinct KB-four drivers are represented? Reply with a short phrase including the number.",
+      "tags": ["steward", "kb_four"],
+      "expect_substrings": ["3"]
     }
   ]
 }

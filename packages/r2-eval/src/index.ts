@@ -13,4 +13,12 @@ export type {
   DeterministicHarnessSummary,
 } from './runner/deterministic.ts';
 
-export const R2_EVAL_VERSION = '0.0.2' as const;
+export { scoreUpgradeScoutJson } from './scorers/upgrade-scout.ts';
+export type { UpgradeScoutScore } from './scorers/upgrade-scout.ts';
+export { scoreRevolutionaryMeshJson } from './scorers/revolutionary-mesh.ts';
+export type { RevolutionaryMeshScore } from './scorers/revolutionary-mesh.ts';
+export { scoreStewardBriefJson } from './scorers/steward-brief.ts';
+export type { StewardBriefScore } from './scorers/steward-brief.ts';
+
+export const R2_EVAL_VERSION = '0.0.3' as const;
+export const OP5_PASS_RATE_THRESHOLD = 0.85 as const;

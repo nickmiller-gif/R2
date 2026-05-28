@@ -279,6 +279,27 @@ describe('inferRelatedMegResolveArgsList', () => {
     expect(matter!.p_entity_type).toBe('meg:ip_matter');
   });
 
+  it('resolves R2Chart workspace_id from continuity ingest probe payload', () => {
+    const list = inferRelatedMegResolveArgsList({
+      id: 's-r2chart',
+      source_system: 'r2chart',
+      source_event_type: 'ingest_probe',
+      summary: 'Continuity ingest probe',
+      payload: {
+        workspace_id: '11111111-1111-4111-8111-111111111111',
+        continuity_signal_id: 'a63ddbe7-337c-42c8-bb87-f4113ecd978e',
+      },
+    });
+    const ws = list.find((x) => x.p_source_row_id.includes('r2chart:workspace'));
+    const sig = list.find((x) => x.p_source_row_id.includes('r2chart:continuity_signal'));
+    expect(ws?.p_canonical_external_id).toBe(
+      'r2chart:workspace:11111111-1111-4111-8111-111111111111',
+    );
+    expect(sig?.p_canonical_external_id).toBe(
+      'r2chart:signal:a63ddbe7-337c-42c8-bb87-f4113ecd978e',
+    );
+  });
+
   it('infers coffee counterparty from attendee_b_external_id', () => {
     const a = 'aaaaaaaa-bbbb-4ccc-8eee-111111111111';
     const b = 'bbbbbbbb-bbbb-4ccc-8eee-222222222222';

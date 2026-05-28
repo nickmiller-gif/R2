@@ -7,8 +7,10 @@
  *   node scripts/run-autonomous-scout-drivers.mjs --driver centralr2
  *   node scripts/run-autonomous-scout-drivers.mjs --all
  *
- * Requires EIGEN_SUPABASE_URL (or SUPABASE_URL) in env. Optional AUTONOMOUS_NEWS_CRON_TOKEN.
+ * Requires EIGEN_SUPABASE_URL (or SUPABASE_URL) in env.
  */
+
+import { resolveBotServiceToken } from './lib/resolve-bot-service-token.mjs';
 
 const EIGEN_URL =
   process.env.EIGEN_SUPABASE_URL?.replace(/\/+$/, '') ??
@@ -37,8 +39,11 @@ async function triggerDriver(driver) {
   const url = new URL(`${EIGEN_URL}/functions/v1/autonomous-news-rss-cron`);
   url.searchParams.set('driver', driver);
   const headers = { 'content-type': 'application/json' };
-  const token = process.env.AUTONOMOUS_NEWS_CRON_TOKEN?.trim();
-  if (token) headers.authorization = `Bearer ${token}`;
+  const resolved = resolveBotServiceToken(
+    'AUTONOMOUS_NEWS_CRON_TOKEN',
+    'AUTONOMOUS_UPGRADE_SCOUT_SERVICE_TOKEN',
+  );
+  if (resolved) headers.authorization = `Bearer ${resolved.token}`;
 
   const res = await fetch(url.toString(), { method: 'POST', headers });
   const body = await res.text();

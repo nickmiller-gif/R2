@@ -3,7 +3,6 @@
    ============================================================ */
 
 import { renderAssistantMarkdown } from './widget-markdown.js';
-import { mountCosmicAmbient } from './widget-ambient.js';
 
 const params = new URLSearchParams(window.location.search);
 const apiBase = (params.get('api_base') || '').replace(/\/+$/, '') || '';
@@ -29,9 +28,7 @@ const wsEntityScope = document.getElementById('ws-entity-scope');
 const wsEntityRibbon = document.getElementById('ws-entity-ribbon');
 const wsQuickPrompts = document.getElementById('ws-quick-prompts');
 const wsClose = document.getElementById('ws-close');
-const wsBody = document.getElementById('ws-body-inner') || document.getElementById('ws-body');
-const wsAmbientCanvas = document.getElementById('ws-ambient');
-const wsComposer = document.querySelector('.ws-composer');
+const wsBody = document.getElementById('ws-body');
 const wsForm = document.getElementById('ws-form');
 const wsInput = document.getElementById('ws-input');
 const wsSubmit = document.getElementById('ws-submit');
@@ -47,27 +44,6 @@ let widgetEntityLabel = '';
 let welcomeHeroEl = null;
 let userHasSentMessage = false;
 let morphRaf = 0;
-let teardownAmbient = null;
-
-function scrollChatToBottom() {
-  const scrollEl = document.getElementById('ws-body-inner') || wsBody;
-  if (!scrollEl) return;
-  scrollEl.scrollTop = scrollEl.scrollHeight;
-}
-
-function ensureAmbientRunning() {
-  if (teardownAmbient || !wsAmbientCanvas) return;
-  teardownAmbient = mountCosmicAmbient(wsAmbientCanvas);
-}
-
-function pulseComposer() {
-  if (!wsComposer) return;
-  wsComposer.classList.remove('send-pulse');
-  // Force reflow so repeated sends retrigger the animation.
-  void wsComposer.offsetWidth;
-  wsComposer.classList.add('send-pulse');
-  window.setTimeout(() => wsComposer.classList.remove('send-pulse'), 560);
-}
 let systemThemeMqListener = null; // matchMedia listener active when theme === 'system'
 
 if (parentOriginParam) {
@@ -209,7 +185,6 @@ function openApp(app, options = {}) {
   wsShell?.offsetWidth;
   morphRaf = requestAnimationFrame(() => {
     workspace?.classList.add('open');
-    ensureAmbientRunning();
     if (!silent) setTimeout(() => wsInput?.focus({ preventScroll: true }), 120);
   });
 
@@ -306,19 +281,9 @@ function renderWelcomeHero() {
   hero.className = 'welcome-hero';
   hero.innerHTML = `
     <div class="hero-glow" aria-hidden="true"></div>
-    <div class="hero-orbs" aria-hidden="true">
-      <span class="orb orb-1"></span>
-      <span class="orb orb-2"></span>
-      <span class="orb orb-3"></span>
-    </div>
     <div class="hero-inner">
       <h2>${id.name}</h2>
       <p>${id.intro}</p>
-      <div class="hero-capabilities">
-        <span>Clients</span>
-        <span>Properties</span>
-        <span>People</span>
-      </div>
     </div>
   `;
   wsBody?.prepend(hero);
@@ -345,7 +310,7 @@ function showTypingIndicator(msgEl) {
 
 function makeTurn(role, text) {
   const turn = document.createElement('article');
-  turn.className = `turn turn-enter ${role}`;
+  turn.className = `turn ${role}`;
 
   const row = document.createElement('div');
   row.className = 'turn-row';
@@ -375,7 +340,7 @@ function makeTurn(role, text) {
   turn.appendChild(row);
 
   wsBody.appendChild(turn);
-  scrollChatToBottom();
+  wsBody.scrollTop = wsBody.scrollHeight;
   return { turn, msg, meta };
 }
 
@@ -384,7 +349,7 @@ function appendBanner(text) {
   banner.className = 'state-banner';
   banner.textContent = text;
   wsBody.appendChild(banner);
-  scrollChatToBottom();
+  wsBody.scrollTop = wsBody.scrollHeight;
 }
 
 function tierClass(tier) {
@@ -575,7 +540,6 @@ function downgradeToPublic() {
 async function submitMessage(message) {
   userHasSentMessage = true;
   dismissWelcomeHero();
-  pulseComposer();
   const userTurn = makeTurn('user', message);
   const assistantTurn = makeTurn('assistant', '');
   assistantTurn.turn.classList.add('streaming');
@@ -596,6 +560,7 @@ async function submitMessage(message) {
         widget_token: token,
         message,
         entity_scope: activeMode === 'eigenx' ? widgetEntityScope : [],
+        entity_label: activeMode === 'eigenx' && widgetEntityLabel ? widgetEntityLabel : undefined,
         response_format: 'structured',
         conversation_intent: resolveConversationIntent(),
         stream: true,
@@ -627,7 +592,7 @@ async function submitMessage(message) {
         }
         assistantTurn.msg.classList.remove('md');
         assistantTurn.msg.textContent += deltaText;
-        scrollChatToBottom();
+        wsBody.scrollTop = wsBody.scrollHeight;
       } else if (event === 'final') {
         let payload = null;
         try {
@@ -861,7 +826,6 @@ if (bootBtn) writeMorphOrigin(bootBtn.getBoundingClientRect());
 
 if (isEmbedded) {
   openApp(bootApp, { silent: true });
-  ensureAmbientRunning();
 }
 
 renderWelcomeHero();

@@ -1,7 +1,6 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef } from 'react';
 import type { ChatMessage, ChatTier, LlmProvider } from '../chatTypes';
 import { CitationsPanel } from './CitationsPanel';
-import { CosmicAmbient } from './CosmicAmbient';
 import { MarkdownContent } from './MarkdownContent';
 
 interface ChatViewProps {
@@ -60,11 +59,6 @@ function WelcomeHero({ tier }: { tier: ChatTier }) {
   return (
     <div className="welcome-hero mx-auto max-w-lg text-center">
       <div className="hero-glow pointer-events-none" aria-hidden />
-      <div className="hero-orbs pointer-events-none" aria-hidden>
-        <span className="orb orb-1" />
-        <span className="orb orb-2" />
-        <span className="orb orb-3" />
-      </div>
       <div className="relative z-[1]">
         <h2 className="hero-title">{tier === 'eigenx' ? 'EigenX Intelligence' : 'Public Eigen'}</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-muted">
@@ -72,16 +66,6 @@ function WelcomeHero({ tier }: { tier: ChatTier }) {
             ? 'Scope a client, property, or person — I inject live MEG context and answer like a knowledgeable assistant.'
             : 'Warm, conversational answers from public material about people, programs, and the community.'}
         </p>
-        <div className="hero-capabilities mt-4 flex flex-wrap justify-center gap-2">
-          {['Clients', 'Properties', 'People'].map((label) => (
-            <span
-              key={label}
-              className="rounded-full border border-border/70 bg-elevated/50 px-3 py-1.5 text-[11px] uppercase tracking-[0.08em] text-muted"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -110,7 +94,6 @@ export function ChatView({
   onClearChat,
 }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [composerPulse, setComposerPulse] = useState(false);
   const scopedEntityCount = entityScope
     .split(',')
     .map((item) => item.trim())
@@ -137,21 +120,8 @@ export function ChatView({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isLoading]);
 
-  useEffect(() => {
-    if (!isLoading) return;
-    setComposerPulse(true);
-    const timer = window.setTimeout(() => setComposerPulse(false), 560);
-    return () => window.clearTimeout(timer);
-  }, [isLoading]);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    setComposerPulse(true);
-    onSubmit(event);
-  };
-
   return (
     <div className="chat-shell-v2 relative flex h-[min(80vh,760px)] flex-col overflow-hidden rounded-[24px]">
-      <CosmicAmbient />
       <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-surface/70 px-5 py-4 backdrop-blur-xl">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -212,18 +182,17 @@ export function ChatView({
             {messages.map((m) => (
               <li
                 key={m.id}
-                className={`turn-enter flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
               >
                 {m.role === 'user' || m.role === 'assistant' ? (
                   <MessageAvatar role={m.role} tier={chatTier} />
                 ) : null}
                 <div
                   className={[
-                    'message-bubble relative max-w-[min(100%,680px)] overflow-hidden rounded-[20px] px-4 py-3.5 text-[15px] leading-relaxed',
+                    'message-bubble max-w-[min(100%,680px)] rounded-[20px] px-4 py-3.5 text-[15px] leading-relaxed',
                     m.role === 'user'
                       ? 'rounded-br-md bg-elevated/95 text-fg shadow-[0_12px_32px_oklch(0_0_0/0.10)]'
                       : 'rounded-bl-md border border-border/60 bg-surface/95 text-fg shadow-[0_14px_36px_oklch(0_0_0/0.10)]',
-                    m.streaming ? 'streaming-shimmer' : '',
                   ].join(' ')}
                 >
                   {m.role === 'user' ? (
@@ -266,7 +235,7 @@ export function ChatView({
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} className="space-y-3">
           {chatTier === 'eigenx' ? (
             <details className="rounded-xl border border-border/80 bg-elevated/50 px-3 py-2 text-[13px]">
               <summary className="cursor-pointer text-[11px] uppercase tracking-[0.14em] text-accent">
@@ -299,12 +268,7 @@ export function ChatView({
             Stream response (SSE)
           </label>
 
-          <div
-            className={[
-              'composer-v2 flex items-end gap-3 rounded-[20px] border border-border/80 bg-elevated/80 p-3 shadow-[inset_0_1px_0_oklch(1_0_0/0.05),0_16px_40px_oklch(0_0_0/0.12)] backdrop-blur-md',
-              composerPulse ? 'send-pulse' : '',
-            ].join(' ')}
-          >
+          <div className="composer-v2 flex items-end gap-3 rounded-[20px] border border-border/80 bg-elevated/80 p-3 shadow-[inset_0_1px_0_oklch(1_0_0/0.05),0_16px_40px_oklch(0_0_0/0.12)] backdrop-blur-md">
             <textarea
               value={message}
               onChange={(e) => onMessageChange(e.target.value)}

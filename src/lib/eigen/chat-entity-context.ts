@@ -6,6 +6,15 @@
 export const EIGEN_ENTITY_CONTEXT_INTRO =
   'Canonical entity context (MEG facts about clients, properties, and people; prefer over generic corpus when they conflict):';
 
+export interface ChatEntityRelationship {
+  edgeType: string;
+  direction: 'out' | 'in';
+  otherEntityId: string;
+  otherEntityName?: string;
+  otherEntityType?: string;
+  confidence?: number | null;
+}
+
 export interface ChatEntityForPrompt {
   id: string;
   entityType: string;
@@ -14,6 +23,8 @@ export interface ChatEntityForPrompt {
   fields: Record<string, unknown>;
   attributes: Record<string, unknown>;
   enrichmentConsensus: Record<string, unknown>;
+  sidecarFields?: Record<string, unknown>;
+  relationships?: ChatEntityRelationship[];
   lastSourceSystem?: string;
   lastUpdatedAt?: string;
   sourceLabels?: string[];
@@ -112,6 +123,19 @@ function orderedFieldEntries(fields: Record<string, unknown>): [string, unknown]
   return [...prioritized, ...remainder].slice(0, 12);
 }
 
+function formatRelationshipLines(relationships: ChatEntityRelationship[] = []): string[] {
+  return relationships.slice(0, 8).map((edge) => {
+    const arrow = edge.direction === 'out' ? '→' : '←';
+    const name = edge.otherEntityName?.trim() || edge.otherEntityId;
+    const typeSuffix = edge.otherEntityType ? ` (${edge.otherEntityType})` : '';
+    const confidence =
+      typeof edge.confidence === 'number' && Number.isFinite(edge.confidence)
+        ? ` · conf ${edge.confidence}`
+        : '';
+    return `Relationship ${arrow} ${edge.edgeType}: ${name}${typeSuffix}${confidence}`;
+  });
+}
+
 function formatConsensusLines(consensus: Record<string, unknown>): string[] {
   const lines: string[] = [];
   for (const [path, payload] of Object.entries(consensus).slice(0, 6)) {
@@ -132,7 +156,10 @@ function formatSingleEntity(entity: ChatEntityForPrompt, index: number): string 
   lines.push(`Type: ${formatEntityTypeLabel(entity.entityType, entity.sourceLabels)}`);
   lines.push(`Status: ${entity.status}`);
 
-  const merged = mergeEntityFieldMaps(entity.attributes, entity.fields);
+  const merged = mergeEntityFieldMaps(
+    mergeEntityFieldMaps(entity.attributes, entity.fields),
+    entity.sidecarFields ?? {},
+  );
   for (const [key, value] of orderedFieldEntries(merged)) {
     const rendered =
       key.toLowerCase() === 'description'
@@ -142,6 +169,7 @@ function formatSingleEntity(entity: ChatEntityForPrompt, index: number): string 
   }
 
   lines.push(...formatConsensusLines(entity.enrichmentConsensus));
+  lines.push(...formatRelationshipLines(entity.relationships));
 
   if (entity.lastSourceSystem || entity.lastUpdatedAt) {
     const provenance = [entity.lastSourceSystem, entity.lastUpdatedAt].filter(Boolean).join(' · ');

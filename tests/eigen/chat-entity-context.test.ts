@@ -9,6 +9,7 @@ import {
 } from '../../src/lib/eigen/chat-entity-context.ts';
 
 const SAMPLE_ID = '550e8400-e29b-41d4-a716-446655440000';
+const OTHER_ID = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
 describe('chat-entity-context', () => {
   it('validates and normalizes entity scope ids', () => {
@@ -35,6 +36,16 @@ describe('chat-entity-context', () => {
         fields: { industry: 'Biotech', description: 'Portfolio client.' },
         attributes: { website: 'https://acme.test' },
         enrichmentConsensus: {},
+        sidecarFields: { legal_name: 'Acme Holdings LLC', hq_city: 'Boston' },
+        relationships: [
+          {
+            edgeType: 'employs',
+            direction: 'out',
+            otherEntityId: OTHER_ID,
+            otherEntityName: 'Jane Doe',
+            otherEntityType: 'person',
+          },
+        ],
         lastSourceSystem: 'operator_workbench',
         lastUpdatedAt: '2026-05-27T12:00:00.000Z',
         sourceLabels: ['clients'],
@@ -44,6 +55,8 @@ describe('chat-entity-context', () => {
     expect(block).toContain(`MEG ID: ${SAMPLE_ID}`);
     expect(block).toContain('org (client)');
     expect(block).toContain('industry: Biotech');
+    expect(block).toContain('legal_name: Acme Holdings LLC');
+    expect(block).toContain('Relationship → employs: Jane Doe (person)');
     expect(block).toContain('Last updated: operator_workbench');
   });
 

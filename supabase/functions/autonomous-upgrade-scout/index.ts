@@ -7,6 +7,7 @@ import { buildSourceSignalKey, timingSafeEqual } from '../_shared/signal-utils.t
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { parseKbDriverId, type KbDriverId } from '../_shared/autonomous-scout-drivers.ts';
 
 type ScoutArticle = {
   title: string;
@@ -20,6 +21,7 @@ type ScoutRequest = {
   topic: string;
   context?: string;
   articles?: ScoutArticle[];
+  target_kb_driver?: KbDriverId;
 };
 
 type UpgradeCandidate = {
@@ -53,6 +55,7 @@ function parseRequest(value: unknown): ScoutRequest {
   if (!topic) throw new Error('topic is required');
 
   const context = typeof value.context === 'string' ? value.context.trim() : undefined;
+  const target_kb_driver = parseKbDriverId(value.target_kb_driver) ?? undefined;
   const incomingArticles = Array.isArray(value.articles) ? value.articles : [];
   const articles = incomingArticles
     .map(normalizeArticle)
@@ -62,7 +65,7 @@ function parseRequest(value: unknown): ScoutRequest {
     throw new Error('Provide context and/or at least one valid article');
   }
 
-  return { topic, context, articles };
+  return { topic, context, articles, target_kb_driver };
 }
 
 function extractJsonCandidate(text: string): string {
@@ -174,6 +177,7 @@ async function emitSignalEnvelope(
     raw_payload: {
       topic: request.topic,
       context: request.context ?? null,
+      target_kb_driver: request.target_kb_driver ?? null,
       articles: request.articles ?? [],
       upgrades,
       generator: 'autonomous-upgrade-scout',
@@ -186,7 +190,7 @@ async function emitSignalEnvelope(
       tool: 'autonomous-upgrade-scout',
       generated_at: new Date().toISOString(),
     },
-    routing_targets: ['operator_workbench', 'oracle'],
+    routing_targets: ['operator_workbench'],
   };
 
   const sourceSignalKey = buildSourceSignalKey(sourceSystem, `upgrade_scout:${idempotencyKey}`);
@@ -266,14 +270,20 @@ Deno.serve(
       return errorResponse(err instanceof Error ? err.message : 'Invalid request body', 400);
     }
 
+    const driverLine = parsedRequest.target_kb_driver
+      ? `Target KB driver: ${parsedRequest.target_kb_driver}`
+      : 'Target KB driver: portfolio-wide';
+
     const prompt = [
       `Topic: ${parsedRequest.topic}`,
+      driverLine,
       parsedRequest.context ? `Context:\n${parsedRequest.context}` : 'Context: none provided.',
       `Articles:\n${toArticlePrompt(parsedRequest.articles ?? [])}`,
       '',
       'Return strictly JSON with this shape:',
       '{ "upgrades": [{ "headline": string, "why_now": string, "proposed_bot_action": string, "confidence": number (0-1), "impacted_stream": string }] }',
       'Generate 3 to 6 concrete upgrades. Focus on deployable bot improvements and production-safe automation.',
+      'Set impacted_stream to Stream A (CentralR2), Stream D (R2Works), Truth Market (R2Chart), or Stream E (R2-IP) when applicable.',
     ].join('\n');
 
     let upgrades: UpgradeCandidate[];

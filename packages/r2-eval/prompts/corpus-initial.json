@@ -118,6 +118,34 @@
       "prompt": "For retrieval verification: name either canonical smartplrx-related source_system token accepted in the v1 contract (smartplrx or smartplrx_trend_tracker). Reply with one token only.",
       "tags": ["nine_lane", "smartplrx", "retrieval"],
       "expect_substrings": ["smartplrx"]
+    },
+    {
+      "id": "eval-019-upgrade-scout-centralr2",
+      "domain": "platform_core",
+      "prompt": "When autonomous bots scout CentralR2 news, which source_system token should futuristic_upgrade_scouted rows use on Eigen? Reply with the token only.",
+      "tags": ["upgrade_scout", "centralr2", "autonomous_bot"],
+      "expect_substrings": ["autonomous_bot_os"]
+    },
+    {
+      "id": "eval-020-upgrade-scout-propose-class",
+      "domain": "autonomous_ops",
+      "prompt": "Upgrade scout signals route only to operator_workbench. Which autonomy action class applies (observe, propose, act, or irreversible)? Reply with one word.",
+      "tags": ["upgrade_scout", "autonomy", "confidence"],
+      "expect_substrings": ["propose"]
+    },
+    {
+      "id": "eval-021-upgrade-scout-kb-driver",
+      "domain": "autonomous_ops",
+      "prompt": "Name the payload field that tags which KB-four driver an upgrade scout run targeted. Reply with the snake_case field name only.",
+      "tags": ["upgrade_scout", "kb_four"],
+      "expect_substrings": ["target_kb_driver"]
+    },
+    {
+      "id": "eval-022-upgrade-scout-event-type",
+      "domain": "autonomous_ops",
+      "prompt": "What is the canonical source_event_type for futuristic upgrade proposals emitted by autonomous-upgrade-scout? Reply with the literal only.",
+      "tags": ["upgrade_scout", "signal-contract"],
+      "expect_substrings": ["futuristic_upgrade_scouted"]
     }
   ]
 }

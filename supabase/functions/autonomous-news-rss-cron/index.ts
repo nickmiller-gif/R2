@@ -2,6 +2,11 @@ import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { withLogger } from '../_shared/log.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
+import {
+  listConfiguredDrivers,
+  resolveDriverRuntime,
+  type KbDriverId,
+} from '../_shared/autonomous-scout-drivers.ts';
 
 type RssEntry = {
   title: string;
@@ -10,8 +15,6 @@ type RssEntry = {
   source?: string;
   published_at?: string;
 };
-
-const DEFAULT_TOPIC = 'R2 futuristic automation upgrades';
 
 function readBearer(req: Request): string | null {
   const value = req.headers.get('authorization');
@@ -73,6 +76,7 @@ async function fetchFeed(url: string): Promise<RssEntry[]> {
 }
 
 async function triggerScout(
+  driverId: KbDriverId,
   topic: string,
   context: string,
   entries: RssEntry[],
@@ -94,6 +98,7 @@ async function triggerScout(
     body: JSON.stringify({
       topic,
       context,
+      target_kb_driver: driverId,
       articles: entries,
     }),
   });
@@ -107,12 +112,87 @@ async function triggerScout(
   return { status: response.status, body };
 }
 
-function cronContext(feeds: string[], entries: RssEntry[]): string {
+function cronContext(
+  driverId: KbDriverId,
+  feeds: string[],
+  entries: RssEntry[],
+  hint: string,
+): string {
   return [
-    `Cron-driven RSS scout run for ${feeds.length} feeds.`,
-    `Collected ${entries.length} recent entries.`,
-    'Prioritize actions that can be deployed in R2Works and operator mesh with confidence boundaries.',
+    `Cron-driven RSS scout for KB driver ${driverId}.`,
+    `Feeds checked: ${feeds.length}. Entries used: ${entries.length}.`,
+    hint,
+    'Prioritize production-safe bot actions with confidence boundaries for operator review on /today.',
   ].join(' ');
+}
+
+function parseRequestedDrivers(req: Request): KbDriverId[] {
+  const url = new URL(req.url);
+  const single = url.searchParams.get('driver')?.trim();
+  if (single) {
+    const allowed = new Set(listConfiguredDrivers());
+    if (!allowed.has(single as KbDriverId)) {
+      throw new Error(`Unknown driver query param: ${single}`);
+    }
+    return [single as KbDriverId];
+  }
+  return listConfiguredDrivers();
+}
+
+async function runDriver(
+  driverId: KbDriverId,
+  hourBucket: string,
+): Promise<Record<string, unknown>> {
+  const { profile, topic, feeds } = resolveDriverRuntime(driverId);
+  if (feeds.length === 0) {
+    return { driver: driverId, status: 'skipped', reason: 'no_feeds_configured' };
+  }
+
+  const allEntries: RssEntry[] = [];
+  const feedErrors: Array<{ feed: string; error: string }> = [];
+  for (const feed of feeds) {
+    try {
+      const entries = await fetchFeed(feed);
+      allEntries.push(...entries);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      feedErrors.push({ feed, error: message });
+    }
+  }
+
+  const uniqueEntries = allEntries
+    .filter((entry, index) => index === allEntries.findIndex((other) => other.url === entry.url))
+    .slice(0, 12);
+
+  if (uniqueEntries.length === 0) {
+    return {
+      driver: driverId,
+      status: 'no_entries',
+      feeds_checked: feeds.length,
+      feed_errors: feedErrors,
+    };
+  }
+
+  const idempotencyKey = `rss-cron:${driverId}:${hourBucket}`;
+  const scout = await triggerScout(
+    driverId,
+    topic,
+    cronContext(driverId, feeds, uniqueEntries, profile.contextHint),
+    uniqueEntries,
+    idempotencyKey,
+  );
+
+  return {
+    driver: driverId,
+    label: profile.label,
+    stream: profile.stream,
+    status: 'triggered',
+    feeds_checked: feeds.length,
+    entries_used: uniqueEntries.length,
+    feed_errors: feedErrors,
+    scout_status: scout.status,
+    scout_response: scout.body,
+  };
 }
 
 Deno.serve(
@@ -129,69 +209,40 @@ Deno.serve(
       }
     }
 
-    const feedsEnv = Deno.env.get('AUTONOMOUS_NEWS_RSS_FEEDS')?.trim() ?? '';
-    const feeds = feedsEnv
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-    if (feeds.length === 0) {
-      return errorResponse('AUTONOMOUS_NEWS_RSS_FEEDS is not configured', 503);
+    let drivers: KbDriverId[];
+    try {
+      drivers = parseRequestedDrivers(req);
+    } catch (err) {
+      return errorResponse(err instanceof Error ? err.message : 'Invalid driver', 400);
     }
 
-    const topic = Deno.env.get('AUTONOMOUS_UPGRADE_SCOUT_TOPIC')?.trim() || DEFAULT_TOPIC;
-    const idempotencyKey = `rss-cron:${new Date().toISOString().slice(0, 13)}`;
+    const hourBucket = new Date().toISOString().slice(0, 13);
+    const results: Record<string, unknown>[] = [];
+    const errors: Array<{ driver: string; error: string }> = [];
 
-    const allEntries: RssEntry[] = [];
-    const feedErrors: Array<{ feed: string; error: string }> = [];
-    for (const feed of feeds) {
+    for (const driverId of drivers) {
       try {
-        const entries = await fetchFeed(feed);
-        allEntries.push(...entries);
+        results.push(await runDriver(driverId, hourBucket));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        feedErrors.push({ feed, error: message });
+        errors.push({ driver: driverId, error: message });
+        log.error('rss_cron_driver_failed', { driver: driverId, message });
       }
     }
 
-    const uniqueEntries = allEntries
-      .filter((entry, index) => index === allEntries.findIndex((other) => other.url === entry.url))
-      .slice(0, 12);
-    if (uniqueEntries.length === 0) {
-      log.warn('rss_cron_no_entries', { feeds: feeds.length, feed_errors: feedErrors.length });
-      return jsonResponse(
-        {
-          ok: true,
-          status: 'no_entries',
-          feeds,
-          feed_errors: feedErrors,
-        },
-        202,
-      );
+    if (results.length === 0 && errors.length > 0) {
+      return errorResponse(errors[0]?.error ?? 'All drivers failed', 500);
     }
 
-    try {
-      const scout = await triggerScout(
-        topic,
-        cronContext(feeds, uniqueEntries),
-        uniqueEntries,
-        idempotencyKey,
-      );
-      return jsonResponse(
-        {
-          ok: true,
-          status: 'triggered',
-          feeds_checked: feeds.length,
-          entries_used: uniqueEntries.length,
-          feed_errors: feedErrors,
-          scout_status: scout.status,
-          scout_response: scout.body,
-        },
-        202,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error('rss_cron_trigger_failed', { message, feed_errors: feedErrors });
-      return errorResponse(message, 500);
-    }
+    return jsonResponse(
+      {
+        ok: true,
+        hour_bucket: hourBucket,
+        drivers_requested: drivers,
+        results,
+        errors,
+      },
+      202,
+    );
   }),
 );

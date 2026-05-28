@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_RERANK_CONFIG,
+  DEFAULT_RERANK_LIMITS,
+  classifyRerankerHttpStatus,
+  formatRerankerError,
   fuseRerankScores,
+  prepareRerankRequest,
   resolveRerankConfig,
+  resolveRerankPayloadLimits,
   runRerankerWithTimeout,
   selectRerankBatch,
+  truncateForRerank,
   type RerankableCandidate,
   type RerankerPort,
   type RerankInput,
@@ -219,5 +225,151 @@ describe('runRerankerWithTimeout', () => {
     } finally {
       process.off('unhandledRejection', handler);
     }
+  });
+});
+
+describe('resolveRerankPayloadLimits', () => {
+  it('returns defaults when nothing overridden', () => {
+    expect(resolveRerankPayloadLimits(undefined)).toEqual(DEFAULT_RERANK_LIMITS);
+    expect(resolveRerankPayloadLimits({})).toEqual(DEFAULT_RERANK_LIMITS);
+  });
+
+  it('clamps both limits within their safety ranges', () => {
+    expect(resolveRerankPayloadLimits({ max_query_chars: 0 }).max_query_chars).toBe(16);
+    expect(resolveRerankPayloadLimits({ max_query_chars: 1_000_000 }).max_query_chars).toBe(32_000);
+    expect(resolveRerankPayloadLimits({ max_document_chars: 0 }).max_document_chars).toBe(64);
+    expect(resolveRerankPayloadLimits({ max_document_chars: 1_000_000 }).max_document_chars).toBe(
+      200_000,
+    );
+  });
+
+  it('falls back to defaults on non-finite values', () => {
+    const limits = resolveRerankPayloadLimits({
+      max_query_chars: Number.NaN,
+      max_document_chars: Number.POSITIVE_INFINITY,
+    });
+    expect(limits).toEqual(DEFAULT_RERANK_LIMITS);
+  });
+});
+
+describe('truncateForRerank', () => {
+  it('returns the string unchanged when within budget', () => {
+    expect(truncateForRerank('hello', 100)).toBe('hello');
+  });
+
+  it('truncates oversized strings to the cap', () => {
+    const text = 'x'.repeat(50);
+    expect(truncateForRerank(text, 10)).toBe('xxxxxxxxxx');
+  });
+
+  it('does not split a surrogate pair at the cut point', () => {
+    // '😀' is U+1F600, encoded as the surrogate pair 0xD83D 0xDE00 in UTF-16.
+    // Slicing at length=1 would leave a lone high surrogate; the helper must
+    // drop it instead of emitting an invalid UTF-16 sequence.
+    const text = 'a😀b';
+    const truncated = truncateForRerank(text, 2);
+    expect(truncated).toBe('a');
+  });
+
+  it('returns empty when maxChars is non-positive or input is not a string', () => {
+    expect(truncateForRerank('abc', 0)).toBe('');
+    expect(truncateForRerank('abc', -5)).toBe('');
+    expect(truncateForRerank(undefined as unknown as string, 10)).toBe('');
+  });
+});
+
+describe('prepareRerankRequest', () => {
+  it('truncates query and per-document content to configured limits', () => {
+    const result = prepareRerankRequest(
+      {
+        query: 'q'.repeat(100),
+        documents: [{ chunk_id: 'a', content: 'c'.repeat(100) }],
+      },
+      { max_query_chars: 10, max_document_chars: 20 },
+    );
+    expect(result).not.toBeNull();
+    expect(result?.query.length).toBe(10);
+    expect(result?.documents[0]?.content.length).toBe(20);
+  });
+
+  it('returns null when the query trims to empty', () => {
+    const result = prepareRerankRequest({
+      query: '   \n\t  ',
+      documents: [{ chunk_id: 'a', content: 'real content' }],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('drops documents with empty or whitespace-only content', () => {
+    const result = prepareRerankRequest({
+      query: 'hello',
+      documents: [
+        { chunk_id: 'a', content: '   ' },
+        { chunk_id: 'b', content: 'real' },
+        { chunk_id: 'c', content: '' },
+      ],
+    });
+    expect(result?.documents.map((d) => d.chunk_id)).toEqual(['b']);
+  });
+
+  it('returns null when every document filters out (skip the API call)', () => {
+    const result = prepareRerankRequest({
+      query: 'hello',
+      documents: [
+        { chunk_id: 'a', content: '' },
+        { chunk_id: 'b', content: '   ' },
+      ],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('drops malformed document rows', () => {
+    const result = prepareRerankRequest({
+      query: 'hello',
+      documents: [{ chunk_id: '', content: 'real' } as never, { chunk_id: 'b', content: 'real' }],
+    });
+    expect(result?.documents.map((d) => d.chunk_id)).toEqual(['b']);
+  });
+});
+
+describe('classifyRerankerHttpStatus', () => {
+  it('returns stable kinds for the common provider failure modes', () => {
+    expect(classifyRerankerHttpStatus(401)).toBe('unauthorized');
+    expect(classifyRerankerHttpStatus(403)).toBe('forbidden');
+    expect(classifyRerankerHttpStatus(404)).toBe('not_found');
+    expect(classifyRerankerHttpStatus(429)).toBe('rate_limited');
+    expect(classifyRerankerHttpStatus(503)).toBe('server_error');
+    expect(classifyRerankerHttpStatus(400)).toBe('bad_request');
+    expect(classifyRerankerHttpStatus(418)).toBe('bad_request');
+    expect(classifyRerankerHttpStatus(0)).toBe('http_error');
+  });
+});
+
+describe('formatRerankerError', () => {
+  it('produces a classified, bounded error message', () => {
+    const err = formatRerankerError('voyage', 429, 'too many requests, slow down', 12);
+    expect(err.message).toBe('reranker_rate_limited: provider=voyage status=429: too many req');
+  });
+
+  it('collapses whitespace and caps body length', () => {
+    const longBody = 'line one\nline two\t\t   line three '.repeat(20);
+    const err = formatRerankerError('cohere', 500, longBody);
+    expect(err.message.startsWith('reranker_server_error: provider=cohere status=500: ')).toBe(
+      true,
+    );
+    // 256 default cap + the static prefix shape; the body suffix must not contain newlines.
+    expect(err.message).not.toContain('\n');
+    expect(err.message).not.toContain('\t');
+  });
+
+  it('omits the suffix when the body is empty', () => {
+    expect(formatRerankerError('voyage', 401, '').message).toBe(
+      'reranker_unauthorized: provider=voyage status=401',
+    );
+  });
+
+  it('tolerates a non-string body', () => {
+    const err = formatRerankerError('voyage', 500, undefined as unknown as string);
+    expect(err.message).toBe('reranker_server_error: provider=voyage status=500');
   });
 });

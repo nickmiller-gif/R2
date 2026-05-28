@@ -227,3 +227,144 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
 }
+
+/**
+ * Per-request hard limits on what we send to the reranker provider. Both
+ * Voyage (`rerank-2`, ~16K tokens/doc) and Cohere (`rerank-english-v3.0`,
+ * ~4K tokens/doc) silently truncate or reject oversized inputs; truncating
+ * client-side bounds payload size, latency, and per-call cost predictably.
+ */
+export interface RerankPayloadLimits {
+  /** Hard ceiling on query characters before truncation. */
+  max_query_chars: number;
+  /** Hard ceiling on per-document content characters before truncation. */
+  max_document_chars: number;
+}
+
+/**
+ * Defaults sized comfortably below both provider per-doc token ceilings while
+ * leaving room for the 90th-percentile chunk. Override via env in the edge
+ * port if a particular corpus needs more headroom.
+ */
+export const DEFAULT_RERANK_LIMITS: RerankPayloadLimits = {
+  max_query_chars: 4_000,
+  max_document_chars: 24_000,
+};
+
+const MAX_QUERY_CHARS_MIN = 16;
+const MAX_QUERY_CHARS_MAX = 32_000;
+const MAX_DOCUMENT_CHARS_MIN = 64;
+const MAX_DOCUMENT_CHARS_MAX = 200_000;
+
+export function resolveRerankPayloadLimits(
+  overrides: Partial<RerankPayloadLimits> | undefined,
+  defaults: RerankPayloadLimits = DEFAULT_RERANK_LIMITS,
+): RerankPayloadLimits {
+  return {
+    max_query_chars: clampInt(
+      overrides?.max_query_chars,
+      defaults.max_query_chars,
+      MAX_QUERY_CHARS_MIN,
+      MAX_QUERY_CHARS_MAX,
+    ),
+    max_document_chars: clampInt(
+      overrides?.max_document_chars,
+      defaults.max_document_chars,
+      MAX_DOCUMENT_CHARS_MIN,
+      MAX_DOCUMENT_CHARS_MAX,
+    ),
+  };
+}
+
+/**
+ * Code-point-safe truncation. JS string slicing splits surrogate pairs, which
+ * the JSON encoder happily passes through as lone surrogates — some providers
+ * 400 on lone surrogates and the whole rerank call fails open for nothing.
+ */
+export function truncateForRerank(text: string, maxChars: number): string {
+  if (typeof text !== 'string') return '';
+  if (maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+  const sliced = text.slice(0, maxChars);
+  const lastCode = sliced.charCodeAt(sliced.length - 1);
+  // Drop a trailing high surrogate to avoid splitting a surrogate pair.
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    return sliced.slice(0, -1);
+  }
+  return sliced;
+}
+
+/**
+ * Apply payload limits and prune empty/whitespace inputs before a provider
+ * call. Returns `null` when there is nothing meaningful to rerank — the
+ * caller skips the network round-trip entirely and falls back to embedding
+ * order without burning quota.
+ */
+export function prepareRerankRequest(
+  input: { query: string; documents: RerankInputDocument[] },
+  limits: RerankPayloadLimits = DEFAULT_RERANK_LIMITS,
+): { query: string; documents: RerankInputDocument[] } | null {
+  const query = truncateForRerank(
+    typeof input.query === 'string' ? input.query : '',
+    limits.max_query_chars,
+  );
+  if (query.trim().length === 0) return null;
+
+  const documents: RerankInputDocument[] = [];
+  for (const doc of input.documents ?? []) {
+    if (!doc || typeof doc.chunk_id !== 'string' || doc.chunk_id.length === 0) continue;
+    const content = truncateForRerank(
+      typeof doc.content === 'string' ? doc.content : '',
+      limits.max_document_chars,
+    );
+    if (content.trim().length === 0) continue;
+    documents.push({ chunk_id: doc.chunk_id, content });
+  }
+
+  if (documents.length === 0) return null;
+  return { query, documents };
+}
+
+/**
+ * Map an HTTP status from a reranker provider to a stable, operator-facing
+ * kind. The kind shows up in `dropped_context_reasons` on `retrieval_runs`
+ * so on-call can triage credential vs throttle vs outage at a glance.
+ */
+export type RerankerHttpErrorKind =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'bad_request'
+  | 'rate_limited'
+  | 'server_error'
+  | 'http_error';
+
+export function classifyRerankerHttpStatus(status: number): RerankerHttpErrorKind {
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500 && status <= 599) return 'server_error';
+  if (status >= 400 && status <= 499) return 'bad_request';
+  return 'http_error';
+}
+
+const ERROR_BODY_CAP_DEFAULT = 256;
+
+/**
+ * Builds a bounded, classified Error from a non-OK provider response.
+ * `runRerankerWithTimeout` swallows it (fail-open), but the message lands
+ * in observability logs — keep it small, no secrets, deterministic shape.
+ */
+export function formatRerankerError(
+  provider: string,
+  status: number,
+  body: string,
+  bodyCap: number = ERROR_BODY_CAP_DEFAULT,
+): Error {
+  const kind = classifyRerankerHttpStatus(status);
+  const cap = Math.max(0, Math.floor(bodyCap));
+  const safeBody = typeof body === 'string' ? body.replace(/\s+/g, ' ').slice(0, cap) : '';
+  const suffix = safeBody.length > 0 ? `: ${safeBody}` : '';
+  return new Error(`reranker_${kind}: provider=${provider} status=${status}${suffix}`);
+}

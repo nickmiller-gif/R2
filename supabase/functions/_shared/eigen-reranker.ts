@@ -7,11 +7,16 @@
  * back to the embedding-only ranking — the reranker is precision-only and
  * never a hard dependency.
  */
-import type {
-  RerankerPort,
-  RerankInput,
-  RerankOutput,
-  RerankScore,
+import {
+  DEFAULT_RERANK_LIMITS,
+  formatRerankerError,
+  prepareRerankRequest,
+  resolveRerankPayloadLimits,
+  type RerankerPort,
+  type RerankInput,
+  type RerankOutput,
+  type RerankPayloadLimits,
+  type RerankScore,
 } from '../../../src/lib/eigen/rerank.ts';
 
 type Provider = 'voyage' | 'cohere';
@@ -21,10 +26,25 @@ interface ResolvedConfig {
   apiKey: string;
   model: string;
   endpoint: string;
+  limits: RerankPayloadLimits;
 }
 
 const VOYAGE_DEFAULT_MODEL = 'rerank-2';
 const COHERE_DEFAULT_MODEL = 'rerank-english-v3.0';
+
+function readNumberEnv(name: string): number | undefined {
+  const raw = Deno.env.get(name);
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function resolveLimitsFromEnv(): RerankPayloadLimits {
+  return resolveRerankPayloadLimits({
+    max_query_chars: readNumberEnv('EIGEN_RERANKER_MAX_QUERY_CHARS'),
+    max_document_chars: readNumberEnv('EIGEN_RERANKER_MAX_DOCUMENT_CHARS'),
+  });
+}
 
 /**
  * Resolves provider config from environment. Returns null when no API key is
@@ -34,6 +54,7 @@ const COHERE_DEFAULT_MODEL = 'rerank-english-v3.0';
 export function resolveEdgeRerankerConfig(): ResolvedConfig | null {
   const providerRaw = (Deno.env.get('EIGEN_RERANKER_PROVIDER') ?? 'voyage').toLowerCase().trim();
   const provider: Provider = providerRaw === 'cohere' ? 'cohere' : 'voyage';
+  const limits = resolveLimitsFromEnv();
 
   if (provider === 'voyage') {
     const apiKey = Deno.env.get('VOYAGE_API_KEY') ?? Deno.env.get('EIGEN_RERANKER_API_KEY');
@@ -43,6 +64,7 @@ export function resolveEdgeRerankerConfig(): ResolvedConfig | null {
       apiKey,
       model: Deno.env.get('EIGEN_RERANKER_MODEL') ?? VOYAGE_DEFAULT_MODEL,
       endpoint: Deno.env.get('VOYAGE_RERANK_URL') ?? 'https://api.voyageai.com/v1/rerank',
+      limits,
     };
   }
 
@@ -53,6 +75,7 @@ export function resolveEdgeRerankerConfig(): ResolvedConfig | null {
     apiKey,
     model: Deno.env.get('EIGEN_RERANKER_MODEL') ?? COHERE_DEFAULT_MODEL,
     endpoint: Deno.env.get('COHERE_RERANK_URL') ?? 'https://api.cohere.com/v2/rerank',
+    limits,
   };
 }
 
@@ -70,10 +93,31 @@ export function createEdgeReranker(
   return {
     rerank: async (input: RerankInput): Promise<RerankOutput> => {
       const startedAt = Date.now();
+      const prepared = prepareRerankRequest(
+        { query: input.query, documents: input.documents },
+        config.limits ?? DEFAULT_RERANK_LIMITS,
+      );
+
+      if (!prepared) {
+        // Nothing meaningful to send — fail open without burning quota.
+        return {
+          scores: [],
+          model: `${config.provider}:${config.model}`,
+          latency_ms: Date.now() - startedAt,
+        };
+      }
+
+      const preparedInput: RerankInput = {
+        query: prepared.query,
+        documents: prepared.documents,
+        top_k: input.top_k,
+        signal: input.signal,
+      };
+
       const scores =
         config.provider === 'voyage'
-          ? await callVoyageRerank(config, input)
-          : await callCohereRerank(config, input);
+          ? await callVoyageRerank(config, preparedInput)
+          : await callCohereRerank(config, preparedInput);
 
       return {
         scores,
@@ -105,9 +149,9 @@ async function callVoyageRerank(
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`voyage rerank failed: ${response.status} ${text}`);
+    throw formatRerankerError('voyage', response.status, text);
   }
-  const body = (await response.json()) as {
+  const body = (await response.json().catch(() => ({}))) as {
     data?: Array<{ index?: number; relevance_score?: number }>;
   };
   return mapIndexedScores(input.documents, body.data);
@@ -134,9 +178,9 @@ async function callCohereRerank(
   });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`cohere rerank failed: ${response.status} ${text}`);
+    throw formatRerankerError('cohere', response.status, text);
   }
-  const body = (await response.json()) as {
+  const body = (await response.json().catch(() => ({}))) as {
     results?: Array<{ index?: number; relevance_score?: number }>;
   };
   return mapIndexedScores(input.documents, body.results);

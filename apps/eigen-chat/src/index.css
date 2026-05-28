@@ -53,10 +53,25 @@
   }
 
   body {
-    background: var(--color-canvas);
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 0%, oklch(0.28 0.08 250 / 0.35), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 90% 10%, oklch(0.30 0.10 70 / 0.22), transparent 50%),
+      var(--color-canvas);
     color: var(--color-fg);
     font-family: var(--font-ui);
     min-height: 100vh;
+  }
+
+  .chat-mesh {
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 0%, oklch(0.82 0.14 70 / 0.08), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 90% 10%, oklch(0.55 0.16 40 / 0.06), transparent 50%);
+  }
+
+  .dark .chat-mesh {
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 0%, oklch(0.28 0.08 250 / 0.45), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 90% 10%, oklch(0.30 0.10 70 / 0.28), transparent 50%);
   }
 
   *:focus-visible {

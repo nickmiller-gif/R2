@@ -38,6 +38,10 @@ interface EigenWidgetProps {
   llmModel?: string;
   /** Optional context handles forwarded to widget chat */
   contextHandles?: Record<string, string | null | undefined>;
+  /** MEG entity UUIDs to inject live client/property/people context (EigenX). */
+  entityScope?: string[];
+  /** Human-readable label for the scoped entity shown in the widget header. */
+  entityLabel?: string;
   /** Cloudflare Pages URL where the widget is hosted */
   widgetHost?: string;
   /**
@@ -61,6 +65,8 @@ export default function EigenWidget({
   llmProvider,
   llmModel,
   contextHandles,
+  entityScope,
+  entityLabel,
   widgetHost = DEFAULT_WIDGET_HOST,
   theme = 'light',
   className,
@@ -89,10 +95,7 @@ export default function EigenWidget({
           targetOrigin,
         );
       } else {
-        iframe.contentWindow.postMessage(
-          { type: 'eigen_widget_signout' },
-          targetOrigin,
-        );
+        iframe.contentWindow.postMessage({ type: 'eigen_widget_signout' }, targetOrigin);
       }
       lastSentToken.current = token;
     },
@@ -108,15 +111,18 @@ export default function EigenWidget({
   }, [accessToken, ready, sendAuth]);
 
   useEffect(() => {
-    if (!ready || !contextHandles) return;
+    if (!ready) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow || !widgetHost) return;
     const targetOrigin = new URL(widgetHost).origin;
-    iframe.contentWindow.postMessage(
-      { type: 'eigen_widget_context', context: contextHandles },
-      targetOrigin,
-    );
-  }, [ready, contextHandles, widgetHost]);
+    const context = {
+      ...(contextHandles ?? {}),
+      ...(entityScope?.length ? { entity_scope: entityScope } : {}),
+      ...(entityLabel ? { entity_label: entityLabel } : {}),
+    };
+    if (Object.keys(context).length === 0) return;
+    iframe.contentWindow.postMessage({ type: 'eigen_widget_context', context }, targetOrigin);
+  }, [ready, contextHandles, entityScope, entityLabel, widgetHost]);
 
   // Listen for the iframe to signal it's loaded
   useEffect(() => {
@@ -145,8 +151,8 @@ export default function EigenWidget({
     return (
       <div className={className} style={style}>
         <p style={{ color: 'inherit', fontSize: '0.875rem' }}>
-          Eigen widget not configured. Set <code>VITE_EIGEN_WIDGET_HOST</code> or
-          pass <code>widgetHost</code> prop.
+          Eigen widget not configured. Set <code>VITE_EIGEN_WIDGET_HOST</code> or pass{' '}
+          <code>widgetHost</code> prop.
         </p>
       </div>
     );

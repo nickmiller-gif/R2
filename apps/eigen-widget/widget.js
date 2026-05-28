@@ -26,6 +26,7 @@ const wsLogo = document.getElementById('ws-logo');
 const wsTitleName = document.getElementById('ws-title-name');
 const wsTitleSub = document.getElementById('ws-title-sub');
 const wsMode = document.getElementById('ws-mode');
+const wsEntityScope = document.getElementById('ws-entity-scope');
 const wsClose = document.getElementById('ws-close');
 const wsBody = document.getElementById('ws-body');
 const wsForm = document.getElementById('ws-form');
@@ -38,7 +39,8 @@ let activeMode = initialMode === 'eigenx' ? 'eigenx' : 'public';
 let widgetToken = '';
 let authBearer = '';
 let allowedParentOrigin = '';
-let pendingAssistant = null;
+let widgetEntityScope = [];
+let widgetEntityLabel = '';
 let morphRaf = 0;
 let systemThemeMqListener = null; // matchMedia listener active when theme === 'system'
 
@@ -70,18 +72,18 @@ const EIGEN_IDENTITY = {
   symbolId: '#eigen-mark',
   placeholder: 'Ask the commons…',
   intro:
-    'Ask a question. Answers draw from public evidence in the R2 commons. Citations show the evidence tier for each source.',
+    'Hi — I’m Eigen. Ask me about people, clients, properties, or anything in the public commons. I’ll answer conversationally and cite what I know.',
 };
 const EIGENX_IDENTITY = {
   app: 'eigenx',
   name: 'EigenX',
-  sub: 'operator console',
+  sub: 'domain intelligence',
   modeLabel: 'EigenX',
   modeClass: 'active-eigenx',
   symbolId: '#eigenx-mark',
-  placeholder: 'Run an operator query…',
+  placeholder: 'Ask about a client, property, or person…',
   intro:
-    'EigenX runs in authenticated scope. Retrieval follows your policy scope; results cite the evidence tier for each source.',
+    'Hi — I’m EigenX. I can pull live client, property, and people context when you scope a MEG entity, then answer like a knowledgeable assistant.',
 };
 
 function identityFor(app) {
@@ -206,19 +208,51 @@ function closeApp() {
 }
 
 /* ---------- Chat primitives ---------- */
+function updateEntityScopeBadge() {
+  if (!wsEntityScope) return;
+  if (widgetEntityScope.length === 0) {
+    wsEntityScope.hidden = true;
+    wsEntityScope.textContent = '';
+    return;
+  }
+  wsEntityScope.hidden = false;
+  const label =
+    widgetEntityLabel?.trim() ||
+    `${widgetEntityScope.length} scoped entit${widgetEntityScope.length === 1 ? 'y' : 'ies'}`;
+  wsEntityScope.textContent = label;
+  wsEntityScope.title = widgetEntityScope.join(', ');
+}
+
 function makeTurn(role, text) {
   const turn = document.createElement('article');
   turn.className = `turn ${role}`;
 
+  const row = document.createElement('div');
+  row.className = 'turn-row';
+
+  if (role === 'assistant' || role === 'user') {
+    const avatar = document.createElement('div');
+    avatar.className = `turn-avatar ${role}`;
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = role === 'user' ? 'You' : activeApp === 'eigenx' ? 'X' : 'E';
+    row.appendChild(avatar);
+  }
+
+  const content = document.createElement('div');
+  content.className = 'turn-content';
+
   const msg = document.createElement('div');
   msg.className = 'msg';
   msg.textContent = text;
-  turn.appendChild(msg);
+  content.appendChild(msg);
 
   const meta = document.createElement('div');
   meta.className = 'turn-meta';
   meta.textContent = timestampNow();
-  turn.appendChild(meta);
+  content.appendChild(meta);
+
+  row.appendChild(content);
+  turn.appendChild(row);
 
   wsBody.appendChild(turn);
   wsBody.scrollTop = wsBody.scrollHeight;
@@ -437,6 +471,7 @@ async function submitMessage(message) {
       body: JSON.stringify({
         widget_token: token,
         message,
+        entity_scope: activeMode === 'eigenx' ? widgetEntityScope : [],
         response_format: 'structured',
         conversation_intent: resolveConversationIntent(),
         stream: true,
@@ -655,6 +690,17 @@ window.addEventListener('message', (event) => {
       if (ctx.module_scope && wsTitleSub) {
         wsTitleSub.textContent = `${ctx.module_scope}`;
       }
+      if (Array.isArray(ctx.entity_scope)) {
+        widgetEntityScope = ctx.entity_scope.map((item) => String(item)).filter(Boolean);
+      } else if (typeof ctx.meg_entity_id === 'string' && ctx.meg_entity_id.trim()) {
+        widgetEntityScope = [ctx.meg_entity_id.trim()];
+      }
+      if (typeof ctx.entity_label === 'string') {
+        widgetEntityLabel = ctx.entity_label.trim();
+      } else if (typeof ctx.client_name === 'string') {
+        widgetEntityLabel = ctx.client_name.trim();
+      }
+      updateEntityScopeBadge();
     } catch {
       /* ignore */
     }

@@ -34,11 +34,19 @@ import {
   enforceEigenKosCapabilityBundle,
 } from '../_shared/eigen-kos-enforcement.ts';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
+import {
+  buildUserMessageWithEntityAndRetrievalContext,
+  EIGEN_ENTITY_CONTEXT_INTRO,
+  formatEntityContextForLlm,
+  type ChatEntityForPrompt,
+} from '../../../src/lib/eigen/chat-entity-context.ts';
+import { fetchMegEntityContextForChat } from '../_shared/chat-entity-context.ts';
 import { requireRole } from '../_shared/rbac.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
   message: string;
+  entity_scope?: string[];
   response_format?: 'structured' | 'freeform';
   conversation_intent?: 'retreat_content' | 'event_ops' | 'general';
   llm_provider?: LlmProvider;
@@ -68,6 +76,9 @@ function parseRequest(value: unknown): WidgetChatRequest {
   return {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
+    entity_scope: Array.isArray(body.entity_scope)
+      ? body.entity_scope.map((item) => String(item))
+      : [],
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     conversation_intent:
       body.conversation_intent === 'retreat_content' || body.conversation_intent === 'event_ops'
@@ -143,6 +154,7 @@ async function synthesize(
   policyScope: string[],
   message: string,
   chunks: EigenRetrieveChunk[],
+  entityContext: ChatEntityForPrompt[],
   format: 'structured' | 'freeform',
   llmProvider: LlmProvider | undefined,
   llmModel: string | undefined,
@@ -153,7 +165,7 @@ async function synthesize(
   critic_provider?: LlmProvider;
   critic_model?: string;
 }> {
-  const hasContext = chunks.length > 0;
+  const hasContext = chunks.length > 0 || entityContext.length > 0;
 
   const envPrompt =
     mode === 'public'
@@ -175,9 +187,14 @@ async function synthesize(
     .filter(Boolean)
     .join('\n\n');
 
-  const labeled = formatRetrievalContextForLlm(chunks);
   const userContent = hasContext
-    ? `User message: ${message}\n\n${EIGEN_RETRIEVED_CONTEXT_INTRO}\n${labeled}`
+    ? buildUserMessageWithEntityAndRetrievalContext({
+        message: `User message: ${message}`,
+        entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
+        entityBlock: formatEntityContextForLlm(entityContext),
+        retrievalIntro: EIGEN_RETRIEVED_CONTEXT_INTRO,
+        retrievalBlock: formatRetrievalContextForLlm(chunks),
+      })
     : `User message: ${message}`;
 
   const result = await completeLlmChat({
@@ -272,6 +289,7 @@ Deno.serve(
 
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
+        entity_scope: claims.mode === 'eigenx' ? (body.entity_scope ?? []) : [],
         policy_scope: effectivePolicyScope,
         site_id: claims.site_id,
         site_source_systems: claims.site_source_systems,
@@ -306,12 +324,17 @@ Deno.serve(
 
       const citations = buildCitations(retrieveResult.body.chunks);
       const confidence = buildCompositeConfidence(citations);
+      const entityContext =
+        claims.mode === 'eigenx'
+          ? await fetchMegEntityContextForChat(client, body.entity_scope ?? []).catch(() => [])
+          : [];
       const synthesis = await synthesize(
         client,
         claims.mode,
         effectivePolicyScope,
         body.message,
         retrieveResult.body.chunks,
+        entityContext,
         body.response_format ?? 'structured',
         body.llm_provider,
         body.llm_model,
@@ -321,6 +344,8 @@ Deno.serve(
         response: synthesis.text,
         citations,
         confidence,
+        entity_context_count: entityContext.length,
+        entity_scope_applied: claims.mode === 'eigenx' ? (body.entity_scope ?? []) : [],
         llm_provider: body.llm_provider ?? 'openai',
         llm_model: body.llm_model ?? null,
         llm_critic_used: synthesis.critic_used,

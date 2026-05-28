@@ -404,16 +404,21 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
-          <EigenXLogo size={24} />
-          <h1 className="text-[13px] font-normal uppercase tracking-wordmark text-fg">EigenX</h1>
-          <div className="ml-auto flex items-center gap-2">
+      <header className="border-b border-border/70 bg-surface/40 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-5 sm:px-6">
+          <EigenXLogo size={28} />
+          <div>
+            <h1 className="text-[15px] font-medium tracking-[-0.02em] text-fg">
+              Eigen Intelligence
+            </h1>
+            <p className="text-[12px] text-muted">Clients · Properties · People</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-border/70 bg-elevated/60 px-3 py-1.5">
             <span className="relative flex h-[7px] w-[7px]">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-40" />
               <span className="relative inline-flex h-[7px] w-[7px] rounded-full bg-accent" />
             </span>
-            <span className="text-label uppercase text-hint">Online</span>
+            <span className="text-[11px] uppercase tracking-[0.14em] text-hint">Live</span>
           </div>
         </div>
       </header>

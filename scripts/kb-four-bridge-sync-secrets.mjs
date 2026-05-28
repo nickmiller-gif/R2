@@ -113,7 +113,11 @@ function setTowerSecrets() {
   const output = `${r.stdout?.toString() ?? ''}\n${r.stderr?.toString() ?? ''}`.trim();
   const outputLower = output.toLowerCase();
   const forbidden =
-    r.status !== 0 && (outputLower.includes('403') || outputLower.includes('not authorized'));
+    r.status !== 0 &&
+    (outputLower.includes('403') ||
+      outputLower.includes('not authorized') ||
+      outputLower.includes('necessary privileges') ||
+      outputLower.includes('access-control'));
   return { ok: r.status === 0, forbidden, output };
 }
 

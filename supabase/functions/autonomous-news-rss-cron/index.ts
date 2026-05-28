@@ -79,15 +79,15 @@ async function triggerScout(
   idempotencyKey: string,
 ): Promise<{ status: number; body: unknown }> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured');
+  const scoutServiceToken = Deno.env.get('AUTONOMOUS_UPGRADE_SCOUT_SERVICE_TOKEN')?.trim();
+  if (!supabaseUrl || !scoutServiceToken) {
+    throw new Error('SUPABASE_URL and AUTONOMOUS_UPGRADE_SCOUT_SERVICE_TOKEN must be configured');
   }
 
   const response = await fetch(`${supabaseUrl}/functions/v1/autonomous-upgrade-scout`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${serviceRoleKey}`,
+      Authorization: `Bearer ${scoutServiceToken}`,
       'Content-Type': 'application/json',
       'x-idempotency-key': idempotencyKey,
     },

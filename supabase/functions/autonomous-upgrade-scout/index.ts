@@ -1,11 +1,12 @@
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
-import { guardAuth } from '../_shared/auth.ts';
+import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { completeLlmChat } from '../_shared/llm-chat.ts';
-import { signHmacSha256 } from '../_shared/signal-utils.ts';
+import { buildSourceSignalKey, timingSafeEqual } from '../_shared/signal-utils.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { withLogger } from '../_shared/log.ts';
+import { getServiceClient } from '../_shared/supabase.ts';
 
 type ScoutArticle = {
   title: string;
@@ -147,24 +148,23 @@ function summarizeUpgrades(upgrades: UpgradeCandidate[]): string {
     .join('; ');
 }
 
+function hasInternalServiceToken(req: Request): boolean {
+  const configured = Deno.env.get('AUTONOMOUS_UPGRADE_SCOUT_SERVICE_TOKEN')?.trim() ?? '';
+  if (!configured) return false;
+  const supplied = extractBearerToken(req)?.trim() ?? '';
+  if (!supplied) return false;
+  return timingSafeEqual(supplied, configured);
+}
+
 async function emitSignalEnvelope(
   request: ScoutRequest,
   upgrades: UpgradeCandidate[],
   idempotencyKey: string,
 ): Promise<{ signal_id: string | null; status: number }> {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-  const hmacSecret = Deno.env.get('R2_SIGNAL_INGEST_HMAC_SECRET')?.trim();
-
-  if (!supabaseUrl || !serviceRoleKey || !hmacSecret) {
-    throw new Error(
-      'SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and R2_SIGNAL_INGEST_HMAC_SECRET must be configured',
-    );
-  }
-
+  const sourceSystem = 'autonomous_bot_os';
   const envelope = {
     contract_version: '1.0.0',
-    source_system: 'autonomous_bot_os',
+    source_system: sourceSystem,
     source_repo: 'nickmiller-gif/R2',
     source_event_type: 'futuristic_upgrade_scouted',
     actor_meg_entity_id: null,
@@ -189,31 +189,52 @@ async function emitSignalEnvelope(
     routing_targets: ['operator_workbench', 'oracle'],
   };
 
-  const body = JSON.stringify(envelope);
-  const signature = await signHmacSha256(hmacSecret, body);
+  const sourceSignalKey = buildSourceSignalKey(sourceSystem, `upgrade_scout:${idempotencyKey}`);
+  const client =
+    getServiceClient() as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/r2-signal-ingest`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
-      'x-r2-signature': signature,
-      'x-idempotency-key': `upgrade_scout:${idempotencyKey}`,
-    },
-    body,
-  });
+  const insertResult = await client
+    .from('platform_feed_items')
+    .insert({
+      contract_version: envelope.contract_version,
+      source_system: envelope.source_system,
+      source_repo: envelope.source_repo,
+      source_event_type: envelope.source_event_type,
+      source_signal_key: sourceSignalKey,
+      actor_meg_entity_id: envelope.actor_meg_entity_id,
+      related_entity_ids: envelope.related_entity_ids,
+      event_time: envelope.event_time,
+      summary: envelope.summary,
+      payload: envelope.raw_payload,
+      confidence: envelope.confidence,
+      privacy_level: envelope.privacy_level,
+      provenance: envelope.provenance,
+      routing_targets: envelope.routing_targets,
+    })
+    .select('id')
+    .single();
 
-  const payload = await response
-    .json()
-    .catch(() => ({ signal_id: null, statusText: response.statusText }));
-  if (!response.ok) {
-    throw new Error(`r2-signal-ingest failed (${response.status}): ${JSON.stringify(payload)}`);
+  let signalId: string | null = null;
+  if (!insertResult.error && insertResult.data?.id) {
+    signalId = insertResult.data.id as string;
+  } else if (insertResult.error && (insertResult.error as { code?: string }).code === '23505') {
+    const existing = await client
+      .from('platform_feed_items')
+      .select('id')
+      .eq('source_signal_key', sourceSignalKey)
+      .maybeSingle();
+    if (existing.error || !existing.data?.id) {
+      throw new Error(existing.error?.message ?? 'Failed to resolve idempotent replay');
+    }
+    signalId = existing.data.id as string;
+  } else {
+    throw new Error(insertResult.error?.message ?? 'Failed to insert scout signal');
   }
 
-  return {
-    signal_id: (payload as { signal_id?: string }).signal_id ?? null,
-    status: response.status,
-  };
+  const enqueue = await client.rpc('enqueue_platform_feed_processing', { signal_id: signalId });
+  if (enqueue.error) throw new Error(enqueue.error.message);
+
+  return { signal_id: signalId, status: 202 };
 }
 
 Deno.serve(
@@ -222,12 +243,15 @@ Deno.serve(
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-    const auth = await guardAuth(req);
-    if (!auth.ok) return auth.response;
-    const isServiceRole = auth.claims.role === 'service_role';
-    if (!isServiceRole) {
-      const roleCheck = await requireRole(auth.claims.userId, 'member');
-      if (!roleCheck.ok) return roleCheck.response;
+    const trustedInternalCall = hasInternalServiceToken(req);
+    if (!trustedInternalCall) {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      const isServiceRole = auth.claims.role === 'service_role';
+      if (!isServiceRole) {
+        const roleCheck = await requireRole(auth.claims.userId, 'member');
+        if (!roleCheck.ok) return roleCheck.response;
+      }
     }
 
     const idemError = requireIdempotencyKey(req);

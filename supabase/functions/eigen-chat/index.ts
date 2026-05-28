@@ -6,6 +6,8 @@ import { executeEigenRetrieve, type EigenRetrieveChunk } from '../_shared/eigen-
 import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
+  EIGENX_DEFAULT_NO_CONTEXT_RESPONSE,
+  defaultEigenxSystemPrompt,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
@@ -86,24 +88,19 @@ function readMaxHistoryTurns(): number {
 }
 
 function readNoContextResponse(): string {
-  return (
-    Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() ||
-    'I do not have enough grounded knowledge to answer that yet.'
-  );
+  return Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() || EIGENX_DEFAULT_NO_CONTEXT_RESPONSE;
 }
 
-function readSystemPrompt(
-  format: 'structured' | 'freeform',
-  voiceAddendum = '',
-  retrievalAppend = '',
-): string {
+function readEigenChatTemperature(): number {
+  const raw = Deno.env.get('EIGEN_CHAT_TEMPERATURE') ?? '0.32';
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return 0.32;
+  return Math.min(1.2, Math.max(0, n));
+}
+
+function readSystemPrompt(hasContext: boolean, voiceAddendum = '', retrievalAppend = ''): string {
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
-  const base =
-    fromEnv && fromEnv.length > 0
-      ? fromEnv
-      : format === 'structured'
-        ? 'You are EigenX. Answer only from provided context. Include concise reasoning and avoid speculation.'
-        : 'You are EigenX. Provide a concise grounded answer using only provided context.';
+  const base = fromEnv && fromEnv.length > 0 ? fromEnv : defaultEigenxSystemPrompt(hasContext);
   return [
     withEigenChatProseStyle(base),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
@@ -352,14 +349,14 @@ Deno.serve(
                   provider: body.llm_provider,
                   model: body.llm_model,
                   systemPrompt: readSystemPrompt(
-                    body.response_format ?? 'structured',
+                    retrievedChunks.length > 0,
                     voiceStyleAddendum,
                     retrievalQualityAppend,
                   ),
                   userContent: streamUserContent,
                   conversationHistory,
                   maxTokens: readMaxCompletionTokens(),
-                  temperature: 0.1,
+                  temperature: readEigenChatTemperature(),
                   critic: {
                     enabled: true,
                     confidence_label: confidence.overall,
@@ -497,14 +494,14 @@ Deno.serve(
           provider: body.llm_provider,
           model: body.llm_model,
           systemPrompt: readSystemPrompt(
-            body.response_format ?? 'structured',
+            retrievedChunks.length > 0,
             voiceStyleAddendum,
             retrievalQualityAppend,
           ),
           userContent: buildUserMessageWithContext(body.message, retrievedChunks, body),
           conversationHistory,
           maxTokens: readMaxCompletionTokens(),
-          temperature: 0.1,
+          temperature: readEigenChatTemperature(),
           critic: {
             enabled: true,
             confidence_label: confidence.overall,

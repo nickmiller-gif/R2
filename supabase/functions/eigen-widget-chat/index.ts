@@ -11,6 +11,7 @@ import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 import {
   EIGEN_RETRIEVED_CONTEXT_INTRO,
+  defaultEigenxSystemPrompt,
   withEigenChatProseStyle,
 } from '../_shared/eigen-chat-answer-style.ts';
 import {
@@ -103,7 +104,7 @@ function readWidgetTemperature(mode: 'public' | 'eigenx'): number {
     mode === 'public'
       ? Deno.env.get('EIGEN_WIDGET_PUBLIC_TEMPERATURE')
       : Deno.env.get('EIGEN_WIDGET_EIGENX_TEMPERATURE');
-  const fallback = mode === 'public' ? '0.38' : '0.28';
+  const fallback = mode === 'public' ? '0.38' : '0.32';
   const raw =
     (specific && specific.trim()) || Deno.env.get('EIGEN_WIDGET_CHAT_TEMPERATURE') || fallback;
   const n = Number.parseFloat(raw);
@@ -118,7 +119,7 @@ function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolea
         "You are Public Eigen, Ray's public-facing assistant.",
         'Retrieved context is public-facing material only; do not infer or disclose internal tools, dashboards, credentials, or non-public operations.',
         'Mention tools, products, or services only when they clearly appear in the retrieved text as public-site content.',
-        'Use retrieved context as the source of truth for anything specific to Rays Retreat, R2, products, policies, people, or offerings.',
+        'Use retrieved context as the source of truth for anything specific to Rays Retreat, R2, products, policies, people, clients, properties, or offerings.',
         'Write in a natural, conversational tone (warm, direct, founder-like).',
         'When context is strong, weave facts in smoothly; when it is thin or off-topic, still reply helpfully,',
         'but clearly separate what comes from the materials versus general guidance, and do not invent numbers, dates, or commitments.',
@@ -128,24 +129,12 @@ function defaultWidgetSystemPrompt(mode: 'public' | 'eigenx', hasContext: boolea
     return [
       "You are Public Eigen, Ray's public-facing assistant.",
       'No retrieved documents matched this turn yet.',
-      'Reply in a warm, conversational way. Do not invent specific facts about Rays Retreat, R2, products, prices, policies, or people.',
+      'Reply in a warm, conversational way. Do not invent specific facts about Rays Retreat, R2, products, prices, policies, people, clients, or properties.',
       'Do not describe internal tools or non-public systems; only public-site information belongs in answers once context exists.',
       'You may offer general encouragement, clarify what they need, or suggest topics they could ask about once content is available.',
     ].join(' ');
   }
-  if (hasContext) {
-    return [
-      'You are EigenX, the internal assistant.',
-      'Prioritize retrieved context for factual claims about the organization and internal materials.',
-      'Be conversational and concise; explain uncertainty when context is partial.',
-      'Do not fabricate sensitive specifics; ask a clarifying question when needed.',
-    ].join(' ');
-  }
-  return [
-    'You are EigenX. No retrieved context was returned for this message.',
-    'Respond conversationally without inventing internal or confidential specifics.',
-    'Offer to help once they point you at a document, area, or clearer question.',
-  ].join(' ');
+  return defaultEigenxSystemPrompt(hasContext);
 }
 
 async function synthesize(

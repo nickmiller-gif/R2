@@ -479,6 +479,8 @@ export function inferRelatedMegResolveArgsList(row: FeedRowForMeg): MegResolveRp
   }
 
   inferCentralr2StructuredResolves(out, seen, row, p, m);
+  inferR2ChartStructuredResolves(out, seen, row, p, m);
+  inferIpPulsePointStructuredResolves(out, seen, row, p, m);
   inferTypedAssetRelatedResolves(out, seen, row, p, m);
 
   return out;
@@ -569,6 +571,71 @@ function inferCentralr2StructuredResolves(
         payloadSlice: { centralr2_valuation: true, field: 'scenario' },
       });
     }
+  }
+}
+
+/** R2Chart / continuity_nexus workspace and signal anchors. */
+function inferR2ChartStructuredResolves(
+  out: MegResolveRpcArgs[],
+  seen: Set<string>,
+  row: FeedRowForMeg,
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+): void {
+  if (row.source_system !== 'r2chart' && row.source_system !== 'continuity_nexus') return;
+
+  const workspaceId = pickPm(
+    p,
+    m,
+    'workspace_id',
+    'charter_workspace_id',
+    'continuity_workspace_id',
+  );
+  if (workspaceId) {
+    pushRelatedResolve(out, seen, row, 'r2chart:workspace', {
+      entityType: 'meg:organization',
+      externalId: `r2chart:workspace:${workspaceId}`,
+      name: firstString(p.workspace_name, m.workspace_name, row.summary),
+      payloadSlice: { r2chart_workspace: true, workspace_id: workspaceId },
+    });
+  }
+
+  const signalId = pickPm(p, m, 'continuity_signal_id', 'signal_id');
+  if (signalId) {
+    pushRelatedResolve(out, seen, row, 'r2chart:continuity_signal', {
+      entityType: 'meg:event',
+      externalId: `r2chart:signal:${signalId}`,
+      name: row.summary,
+      payloadSlice: { continuity_signal_id: signalId },
+    });
+  }
+}
+
+/** ip_pulse_point analysis and probe shapes (canonical literal on Eigen). */
+function inferIpPulsePointStructuredResolves(
+  out: MegResolveRpcArgs[],
+  seen: Set<string>,
+  row: FeedRowForMeg,
+  p: Record<string, unknown>,
+  m: Record<string, unknown>,
+): void {
+  if (row.source_system !== 'ip_pulse_point') return;
+
+  const analysisId = pickPm(
+    p,
+    m,
+    'analysis_id',
+    'patent_analysis_id',
+    'ip_analysis_id',
+    'matter_analysis_id',
+  );
+  if (analysisId) {
+    pushRelatedResolve(out, seen, row, 'ip:analysis', {
+      entityType: 'meg:event',
+      externalId: `ip_pulse_point:analysis:${analysisId}`,
+      name: row.summary,
+      payloadSlice: { ip_analysis_id: analysisId },
+    });
   }
 }
 

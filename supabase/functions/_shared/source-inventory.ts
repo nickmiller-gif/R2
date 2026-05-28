@@ -46,10 +46,31 @@ export interface SourceInventoryResult {
 }
 
 function readInventoryLimit(): number {
-  const raw = Deno.env.get('EIGEN_SOURCE_INVENTORY_DOC_LIMIT') ?? '500';
+  const raw = Deno.env.get('EIGEN_SOURCE_INVENTORY_DOC_LIMIT') ?? '200';
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 10) return 500;
+  if (!Number.isFinite(parsed) || parsed < 10) return 200;
   return Math.min(parsed, 5000);
+}
+
+const CHUNK_BATCH = 25;
+const CHUNK_FETCH_RETRIES = 2;
+
+async function fetchChunkBatch(client: SupabaseClient, batch: string[]): Promise<ChunkRow[]> {
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt <= CHUNK_FETCH_RETRIES; attempt += 1) {
+    const chunkRes = await client
+      .from('knowledge_chunks')
+      .select('document_id,policy_tags')
+      .in('document_id', batch);
+    if (!chunkRes.error) {
+      return (chunkRes.data ?? []) as ChunkRow[];
+    }
+    lastError = chunkRes.error.message;
+    if (attempt < CHUNK_FETCH_RETRIES) {
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+  throw new Error(lastError ?? 'knowledge_chunks batch fetch failed');
 }
 
 function asStringList(value: unknown): string[] {
@@ -86,13 +107,11 @@ export async function fetchSourceInventory(
   }
 
   const docIds = docs.map((d) => d.id);
-  const chunkRes = await client
-    .from('knowledge_chunks')
-    .select('document_id,policy_tags')
-    .in('document_id', docIds);
-  if (chunkRes.error) throw new Error(chunkRes.error.message);
-
-  const chunks = (chunkRes.data ?? []) as ChunkRow[];
+  const chunks: ChunkRow[] = [];
+  for (let i = 0; i < docIds.length; i += CHUNK_BATCH) {
+    const batch = docIds.slice(i, i + CHUNK_BATCH);
+    chunks.push(...(await fetchChunkBatch(client, batch)));
+  }
   const byDoc = new Map<string, { chunkCount: number; tags: Set<string> }>();
   for (const row of chunks) {
     const entry = byDoc.get(row.document_id) ?? { chunkCount: 0, tags: new Set<string>() };
@@ -143,13 +162,19 @@ export async function fetchSourceInventory(
     if (!current.latest_updated_at || doc.updated_at > current.latest_updated_at) {
       current.latest_updated_at = doc.updated_at;
     }
-    if (doc.source_ref && current.sample_source_refs.length < 5 && !current.sample_source_refs.includes(doc.source_ref)) {
+    if (
+      doc.source_ref &&
+      current.sample_source_refs.length < 5 &&
+      !current.sample_source_refs.includes(doc.source_ref)
+    ) {
       current.sample_source_refs.push(doc.source_ref);
     }
     sourceMap.set(key, current);
   }
 
-  const sources = Array.from(sourceMap.values()).sort((a, b) => b.document_count - a.document_count);
+  const sources = Array.from(sourceMap.values()).sort(
+    (a, b) => b.document_count - a.document_count,
+  );
   const totalChunks = documents.reduce((sum, doc) => sum + doc.chunk_count, 0);
 
   return {

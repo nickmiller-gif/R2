@@ -20,6 +20,7 @@ import {
   sanitizeMegResolveRpcArgs,
   type FeedRowForMeg,
 } from '../_shared/meg-resolve-signal.ts';
+import { linkKbFourPortfolioAnchor } from '../_shared/meg-kb-four-linkage.ts';
 import {
   applyEntityFieldUpdateFromFeedRow,
   emitEntityUpdatedProjection,
@@ -780,6 +781,7 @@ Deno.serve(
       try {
         let rowReady = await ensureActorMegEntityLinked(client, row);
         rowReady = await ensureRelatedMegEntitiesLinked(client, rowReady);
+        await linkKbFourPortfolioAnchor(client, toFeedRowForMeg(rowReady));
         await maybeRecordCoffeePairingEdge(client, rowReady);
         await syncCoffeeMatchesMegIds(client, rowReady);
         await maybeApplyAutonomyFeedbackCalibration(client, rowReady, policies);

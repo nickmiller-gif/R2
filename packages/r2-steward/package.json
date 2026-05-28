@@ -1,0 +1,10 @@
+{
+  "name": "@r2/steward",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cluster": "./src/cluster.ts",
+    "./audit-scope": "./src/audit-scope.ts"
+  }
+}

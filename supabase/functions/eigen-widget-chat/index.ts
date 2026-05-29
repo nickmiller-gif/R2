@@ -389,7 +389,13 @@ Deno.serve(
       const confidence = buildCompositeConfidence(citations);
       const entityContext =
         claims.mode === 'eigenx'
-          ? await fetchMegEntityContextForChat(client, effectiveEntityScope).catch(() => [])
+          ? await fetchMegEntityContextForChat(client, effectiveEntityScope).catch((err) => {
+              logError('fetchMegEntityContextForChat failed', {
+                functionName: 'eigen-widget-chat',
+                error: err instanceof Error ? err.message : String(err),
+              });
+              return [] as ChatEntityForPrompt[];
+            })
           : [];
       const synthesis = await synthesize(
         client,

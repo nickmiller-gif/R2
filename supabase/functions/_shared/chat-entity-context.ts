@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { logWarn } from './log.ts';
 import {
   type ChatEntityForPrompt,
   type ChatEntityRelationship,
@@ -63,6 +64,36 @@ export interface ResolveChatEntityScopeResult extends ResolvedChatEntityScope {
 const MAX_MERGE_HOPS = 4;
 const MAX_NEIGHBOR_IDS = 16;
 const MAX_EDGES_PER_ENTITY = 8;
+const DEFAULT_RESOLVE_MAX_HINTS = 4;
+const DEFAULT_RESOLVE_TIMEOUT_MS = 4500;
+
+function readMaxResolveHints(): number {
+  const raw = Deno.env.get('EIGEN_ENTITY_RESOLVE_MAX_HINTS') ?? String(DEFAULT_RESOLVE_MAX_HINTS);
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_RESOLVE_MAX_HINTS;
+  return Math.min(n, 8);
+}
+
+function readEntityResolveTimeoutMs(): number {
+  const raw = Deno.env.get('EIGEN_ENTITY_RESOLVE_TIMEOUT_MS') ?? String(DEFAULT_RESOLVE_TIMEOUT_MS);
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 500) return DEFAULT_RESOLVE_TIMEOUT_MS;
+  return Math.min(n, 15_000);
+}
+
+async function withResolveTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('entity scope resolution timed out')), ms);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
 
 const SIDECAR_SELECT: Record<string, string> = {
   meg_company_sidecar: 'legal_name,domain,industry,size_band,hq_city,hq_state,founded_year',
@@ -237,22 +268,38 @@ export async function resolveChatEntityScope(
   input: ResolveChatEntityScopeInput,
 ): Promise<ResolveChatEntityScopeResult> {
   const safeLabel = sanitizeEntityLabel(input.entityLabel);
-  const hints = collectEntityLookupHints(input.message, safeLabel);
   const maxEntities = Math.min(Math.max(input.maxEntities ?? 8, 1), 8);
+  const explicitScope = normalizeEntityScopeIds(input.explicitScope, maxEntities);
+  const hints = collectEntityLookupHints(input.message, safeLabel).slice(0, readMaxResolveHints());
 
-  const hintResults = await Promise.all(
-    hints.map(async (hint) => {
-      const source: EntityLookupHit['source'] =
-        safeLabel && hint.trim().toLowerCase() === safeLabel.trim().toLowerCase()
-          ? 'label'
-          : 'message';
-      return lookupEntityHitsByHint(client, hint, source);
-    }),
-  );
+  let hintResults: EntityLookupHit[][];
+  try {
+    hintResults = await withResolveTimeout(
+      Promise.all(
+        hints.map(async (hint) => {
+          const source: EntityLookupHit['source'] =
+            safeLabel && hint.trim().toLowerCase() === safeLabel.trim().toLowerCase()
+              ? 'label'
+              : 'message';
+          return lookupEntityHitsByHint(client, hint, source);
+        }),
+      ),
+      readEntityResolveTimeoutMs(),
+    );
+  } catch (err) {
+    hintResults = [];
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('timed out')) {
+      logWarn('resolveChatEntityScope timed out; using explicit scope only', {
+        functionName: 'chat-entity-context',
+        hint_count: hints.length,
+      });
+    }
+  }
   const resolvedHits = filterEntityLookupHitsByMinScore(hintResults.flat());
 
   const merged = mergeExplicitAndResolvedScope(
-    input.explicitScope,
+    explicitScope,
     rankEntityLookupHits(resolvedHits, maxEntities),
     maxEntities,
   );
@@ -266,7 +313,7 @@ export async function resolveChatEntityScope(
   return {
     ...merged,
     entityIds,
-    scopeMode: resolveEntityScopeMode(input.explicitScope, input.entityScopeMode, merged),
+    scopeMode: resolveEntityScopeMode(explicitScope, input.entityScopeMode, merged),
   };
 }
 

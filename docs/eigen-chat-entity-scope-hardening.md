@@ -60,12 +60,23 @@ Hardening plan for query-time MEG entity resolution, context injection, and retr
 - [x] Entity scope ingress normalization tests
 - [x] Entity context size cap tests
 
-## Phase 3 — Backlog (not in this slice)
+## Phase 3 — Audit slice (shipped)
+
+| Item                                                                                | Status |
+| ----------------------------------------------------------------------------------- | ------ |
+| Static security scan tests (`tests/eigen/eigen-chat-entity-hardening-scan.test.ts`) | Done   |
+| Resolution query budget (`EIGEN_ENTITY_RESOLVE_MAX_HINTS`, default 4, max 8)        | Done   |
+| Resolution timeout fail-open (`EIGEN_ENTITY_RESOLVE_TIMEOUT_MS`, default 4500ms)    | Done   |
+| Normalize explicit scope inside `resolveChatEntityScope`                            | Done   |
+| Widget `fetchMegEntityContextForChat` error logging                                 | Done   |
+| Widget host context: UUID scope + label length cap                                  | Done   |
+
+## Phase 3 — Backlog
 
 | Item                                                                 | Rationale                                                                  |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Policy-scope intersection with MEG entities                          | Requires MEG↔policy tag mapping contract; members currently share MEG read |
-| Resolution query budget / circuit breaker                            | 4 hints × 4 parallel queries is bounded; revisit if alias table grows      |
+| Resolution query budget / circuit breaker                            | Shipped via env `EIGEN_ENTITY_RESOLVE_MAX_HINTS` + timeout                 |
 | Mid-session scope update API                                         | Explicit client `entity_label` refresh without new session                 |
 | Oracle memory write-back from chat turns                             | Separate EigenX memory slice                                               |
 | Governance handle hydration (`oracle_run_id`, `charter_decision_id`) | Prompt enrichment, not scope hardening                                     |
@@ -86,6 +97,12 @@ Post-deploy smoke (eigenx member token):
 3. Follow-up turn without label — session retains resolved scope.
 4. Widget eigenx mode — same metadata fields present.
 5. Public widget mode — no entity resolution, empty `entity_scope_applied`.
+
+Optional env tuning:
+
+- `EIGEN_ENTITY_RESOLVE_MAX_HINTS` (default `4`, max `8`)
+- `EIGEN_ENTITY_RESOLVE_TIMEOUT_MS` (default `4500`, max `15000`)
+- `EIGEN_WIDGET_CHAT_MAX_MESSAGE_CHARS` (default `16000`)
 
 ## Key files
 

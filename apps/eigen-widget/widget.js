@@ -64,6 +64,29 @@ function makeIdempotencyKey(prefix) {
   return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
+const MAX_WIDGET_ENTITY_LABEL_CHARS = 120;
+const MEG_ENTITY_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function sanitizeWidgetEntityLabel(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/\0/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_WIDGET_ENTITY_LABEL_CHARS);
+}
+
+function normalizeWidgetEntityScope(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    const id = String(item).trim();
+    if (!MEG_ENTITY_ID_RE.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /* ---------- Identity swap ---------- */
 const EIGEN_IDENTITY = {
   app: 'eigen',
@@ -781,14 +804,14 @@ window.addEventListener('message', (event) => {
         wsTitleSub.textContent = `${ctx.module_scope}`;
       }
       if (Array.isArray(ctx.entity_scope)) {
-        widgetEntityScope = ctx.entity_scope.map((item) => String(item)).filter(Boolean);
+        widgetEntityScope = normalizeWidgetEntityScope(ctx.entity_scope);
       } else if (typeof ctx.meg_entity_id === 'string' && ctx.meg_entity_id.trim()) {
-        widgetEntityScope = [ctx.meg_entity_id.trim()];
+        widgetEntityScope = normalizeWidgetEntityScope([ctx.meg_entity_id.trim()]);
       }
       if (typeof ctx.entity_label === 'string') {
-        widgetEntityLabel = ctx.entity_label.trim();
+        widgetEntityLabel = sanitizeWidgetEntityLabel(ctx.entity_label);
       } else if (typeof ctx.client_name === 'string') {
-        widgetEntityLabel = ctx.client_name.trim();
+        widgetEntityLabel = sanitizeWidgetEntityLabel(ctx.client_name);
       }
       updateEntityScopeBadge();
     } catch {

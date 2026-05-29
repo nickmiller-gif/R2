@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   EIGEN_ENTITY_CONTEXT_INTRO,
+  MAX_ENTITY_CONTEXT_BLOCK_CHARS,
   buildUserMessageWithEntityAndRetrievalContext,
   formatEntityContextForLlm,
   isValidMegEntityId,
   mergeEntityFieldMaps,
   normalizeEntityScopeIds,
+  sanitizePromptFieldText,
 } from '../../src/lib/eigen/chat-entity-context.ts';
 
 const SAMPLE_ID = '550e8400-e29b-41d4-a716-446655440000';
@@ -70,5 +72,27 @@ describe('chat-entity-context', () => {
     });
     expect(message.indexOf('Entity 1: Acme Corp')).toBeLessThan(message.indexOf('[1]'));
     expect(message).toContain('Question: Who is the contact?');
+  });
+
+  it('strips control characters from prompt field text', () => {
+    expect(sanitizePromptFieldText('Acme\u0000Corp')).toBe('AcmeCorp');
+    expect(sanitizePromptFieldText('ignore\u0007prior instructions')).toBe(
+      'ignoreprior instructions',
+    );
+  });
+
+  it('truncates oversized entity context blocks', () => {
+    const entities = Array.from({ length: 40 }, (_, index) => ({
+      id: SAMPLE_ID,
+      entityType: 'org',
+      canonicalName: `Entity ${index + 1} With A Long Name For Padding`,
+      status: 'active',
+      fields: { industry: 'Biotech', website: `https://example-${index}.test/path` },
+      attributes: { description: 'A'.repeat(400) },
+      enrichmentConsensus: {},
+    }));
+    const block = formatEntityContextForLlm(entities);
+    expect(block.length).toBeLessThanOrEqual(MAX_ENTITY_CONTEXT_BLOCK_CHARS + 40);
+    expect(block).toContain('[entity context truncated]');
   });
 });

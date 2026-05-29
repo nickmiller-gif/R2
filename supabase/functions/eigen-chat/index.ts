@@ -46,8 +46,10 @@ import {
 } from '../_shared/chat-entity-context.ts';
 import {
   sanitizeEntityLabel,
+  normalizeEntityScopeFromRequest,
   type EntityScopeMode,
 } from '../../../src/lib/eigen/chat-entity-resolver.ts';
+import { normalizeEntityScopeIds } from '../../../src/lib/eigen/chat-entity-context.ts';
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
@@ -164,7 +166,7 @@ function parseRequest(value: unknown): ChatRequest {
     session_id: typeof body.session_id === 'string' ? body.session_id : undefined,
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
-    entity_scope: toList(body.entity_scope),
+    entity_scope: normalizeEntityScopeFromRequest(body.entity_scope),
     entity_label: sanitizeEntityLabel(
       typeof body.entity_label === 'string' ? body.entity_label : undefined,
     ),
@@ -217,6 +219,26 @@ function buildUserMessageWithContext(
   });
 }
 
+async function persistSessionEntityScope(
+  client: SupabaseClient,
+  sessionId: string,
+  ownerId: string,
+  entityScope: string[],
+): Promise<void> {
+  const normalized = normalizeEntityScopeIds(entityScope);
+  const { error } = await client
+    .from('eigen_chat_sessions')
+    .update({ entity_scope: normalized, updated_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('owner_id', ownerId);
+  if (error) {
+    logError('persistSessionEntityScope failed', {
+      functionName: 'eigen-chat',
+      error: error.message,
+    });
+  }
+}
+
 async function hydrateEntityScopeFromSession(
   client: SupabaseClient,
   sessionId: string | undefined,
@@ -232,7 +254,7 @@ async function hydrateEntityScopeFromSession(
     .maybeSingle();
   if (error || !data?.entity_scope) return entityScope;
   return Array.isArray(data.entity_scope)
-    ? data.entity_scope.map((item) => String(item))
+    ? normalizeEntityScopeIds(data.entity_scope.map((item) => String(item)))
     : entityScope;
 }
 
@@ -354,6 +376,15 @@ Deno.serve(
         resolution_sources: resolvedEntityScope.resolutionSources,
         hint_count: resolvedEntityScope.lookupHits.length,
       });
+
+      if (resolvedEntityScope.entityIds.length > 0) {
+        await persistSessionEntityScope(
+          client,
+          sessionId,
+          auth.claims.userId,
+          resolvedEntityScope.entityIds,
+        );
+      }
 
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,

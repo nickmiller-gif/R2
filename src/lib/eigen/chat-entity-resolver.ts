@@ -48,6 +48,15 @@ export function sanitizeEntityLabel(raw: string | undefined): string | undefined
   return cleaned.slice(0, MAX_ENTITY_LABEL_LENGTH);
 }
 
+/** Normalize a raw request entity_scope array to deduped valid MEG UUIDs. */
+export function normalizeEntityScopeFromRequest(raw: unknown, max = 8): string[] {
+  if (!Array.isArray(raw)) return [];
+  return normalizeEntityScopeIds(
+    raw.map((item) => String(item)),
+    max,
+  );
+}
+
 function isUsableHint(raw: string): boolean {
   const trimmed = raw.trim();
   if (trimmed.length < MIN_HINT_LENGTH || trimmed.length > MAX_HINT_LENGTH) return false;

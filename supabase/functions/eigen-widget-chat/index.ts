@@ -46,9 +46,11 @@ import {
 } from '../_shared/chat-entity-context.ts';
 import {
   sanitizeEntityLabel,
+  normalizeEntityScopeFromRequest,
   type EntityScopeMode,
 } from '../../../src/lib/eigen/chat-entity-resolver.ts';
 import { requireRole } from '../_shared/rbac.ts';
+import { logError, logInfo } from '../_shared/log.ts';
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -68,6 +70,13 @@ interface WidgetChatRequest {
   stream?: boolean;
 }
 
+function readWidgetMaxMessageChars(): number {
+  const raw = Deno.env.get('EIGEN_WIDGET_CHAT_MAX_MESSAGE_CHARS') ?? '16000';
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 500) return 16000;
+  return Math.min(n, 100_000);
+}
+
 function parseRequest(value: unknown): WidgetChatRequest {
   if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
   assertNoClientPolicyScopeOverride(value);
@@ -78,6 +87,10 @@ function parseRequest(value: unknown): WidgetChatRequest {
   if (typeof body.message !== 'string' || body.message.trim().length === 0) {
     throw new Error('message is required');
   }
+  const maxChars = readWidgetMaxMessageChars();
+  if (body.message.length > maxChars) {
+    throw new Error(`message exceeds maximum length (${maxChars} characters)`);
+  }
   const budget =
     body.budget_profile && typeof body.budget_profile === 'object'
       ? (body.budget_profile as Record<string, unknown>)
@@ -85,9 +98,7 @@ function parseRequest(value: unknown): WidgetChatRequest {
   return {
     widget_token: body.widget_token.trim(),
     message: body.message.trim(),
-    entity_scope: Array.isArray(body.entity_scope)
-      ? body.entity_scope.map((item) => String(item))
-      : [],
+    entity_scope: normalizeEntityScopeFromRequest(body.entity_scope),
     entity_label: sanitizeEntityLabel(
       typeof body.entity_label === 'string' ? body.entity_label : undefined,
     ),
@@ -312,15 +323,30 @@ Deno.serve(
           explicitScope: body.entity_scope ?? [],
           entityLabel: body.entity_label,
           entityScopeMode: body.entity_scope_mode,
-        }).catch(() => ({
-          entityIds: body.entity_scope ?? [],
-          resolutionSources: (body.entity_scope ?? []).length > 0 ? (['explicit'] as const) : [],
-          scopeMode: (body.entity_scope_mode ?? 'filter') as EntityScopeMode,
-          lookupHits: [],
-        }));
+        }).catch((err) => {
+          logError('resolveChatEntityScope failed', {
+            functionName: 'eigen-widget-chat',
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return {
+            entityIds: body.entity_scope ?? [],
+            resolutionSources: (body.entity_scope ?? []).length > 0 ? (['explicit'] as const) : [],
+            scopeMode: (body.entity_scope_mode ?? 'filter') as EntityScopeMode,
+            lookupHits: [],
+          };
+        });
         effectiveEntityScope = resolvedEntityScope.entityIds;
         entityScopeMode = resolvedEntityScope.scopeMode;
         entityResolutionSources = [...resolvedEntityScope.resolutionSources];
+        logInfo('widget chat entity scope resolved', {
+          functionName: 'eigen-widget-chat',
+          correlationId: meta.correlationId,
+          scope_mode: resolvedEntityScope.scopeMode,
+          entity_count: resolvedEntityScope.entityIds.length,
+          resolution_sources: resolvedEntityScope.resolutionSources,
+          hint_count: resolvedEntityScope.lookupHits.length,
+          mode: claims.mode,
+        });
       }
 
       const retrieveResult = await executeEigenRetrieve(client, {

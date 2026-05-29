@@ -4,6 +4,7 @@ import {
   escapeIlikePattern,
   filterEntityLookupHitsByMinScore,
   mergeExplicitAndResolvedScope,
+  normalizeEntityScopeFromRequest,
   rankEntityLookupHits,
   resolveEntityScopeMode,
   sanitizeEntityLabel,
@@ -106,5 +107,12 @@ describe('chat-entity-resolver', () => {
 
   it('ignores null bytes and non-alphanumeric-only hints', () => {
     expect(collectEntityLookupHints('%%\0%%', undefined)).toEqual([]);
+  });
+
+  it('normalizes raw entity scope arrays to valid UUIDs only', () => {
+    expect(
+      normalizeEntityScopeFromRequest([SAMPLE_ID, 'not-a-uuid', SAMPLE_ID, OTHER_ID, 'also-bad']),
+    ).toEqual([SAMPLE_ID, OTHER_ID]);
+    expect(normalizeEntityScopeFromRequest('bad', 8)).toEqual([]);
   });
 });

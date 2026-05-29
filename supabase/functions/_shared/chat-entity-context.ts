@@ -194,6 +194,7 @@ async function lookupEntityHitsByHint(
   const hits: EntityLookupHit[] = [];
 
   const pushHit = (id: string, matchedText: string, exact: boolean, confidence?: number) => {
+    if (!isValidMegEntityId(id)) return;
     candidateIds.add(id);
     hits.push({
       id,

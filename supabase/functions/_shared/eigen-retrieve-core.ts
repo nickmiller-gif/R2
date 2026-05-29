@@ -24,6 +24,7 @@ import {
   shouldHardFilterEntityScope,
   type EntityScopeMode,
 } from '../../../src/lib/eigen/entity-retrieval-boost.ts';
+import { normalizeEntityScopeIds } from '../../../src/lib/eigen/chat-entity-context.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
@@ -261,7 +262,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     throw new Error(`query must not exceed ${QUERY_MAX_LENGTH} characters`);
   }
 
-  const entityScope = normalizeList(payload.entity_scope);
+  const entityScope = normalizeEntityScopeIds(normalizeList(payload.entity_scope), 100);
   const policyScope = normalizeList(payload.policy_scope);
   if (entityScope.length > 100) {
     throw new Error('entity_scope must not exceed 100 entries');

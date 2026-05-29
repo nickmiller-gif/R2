@@ -50,6 +50,20 @@ const ENTITY_FIELD_PRIORITY = [
 
 const MAX_DESCRIPTION_CHARS = 500;
 const MAX_FIELD_VALUE_CHARS = 240;
+/** Upper bound on total entity block size injected into the LLM prompt. */
+export const MAX_ENTITY_CONTEXT_BLOCK_CHARS = 12_000;
+
+/** Strip null bytes and C0 control chars (keep tab/newline) from user/DB-derived prompt text. */
+export function sanitizePromptFieldText(raw: string, maxChars = MAX_FIELD_VALUE_CHARS): string {
+  let cleaned = '';
+  for (const char of raw.replace(/\0/g, '')) {
+    const code = char.charCodeAt(0);
+    if (code === 9 || code === 10 || code === 13 || code >= 32) cleaned += char;
+  }
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  return `${cleaned.slice(0, maxChars)}…`;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -88,9 +102,7 @@ export function formatEntityTypeLabel(entityType: string, sourceLabels: string[]
 function truncateFieldValue(value: unknown, maxChars = MAX_FIELD_VALUE_CHARS): string {
   if (value == null) return '';
   if (typeof value === 'string') {
-    const clean = value.replace(/\s+/g, ' ').trim();
-    if (clean.length <= maxChars) return clean;
-    return `${clean.slice(0, maxChars)}…`;
+    return sanitizePromptFieldText(value, maxChars);
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value)) {
@@ -181,7 +193,11 @@ function formatSingleEntity(entity: ChatEntityForPrompt, index: number): string 
 
 export function formatEntityContextForLlm(entities: ChatEntityForPrompt[]): string {
   if (entities.length === 0) return '';
-  return entities.map((entity, index) => formatSingleEntity(entity, index)).join('\n\n---\n\n');
+  const block = entities
+    .map((entity, index) => formatSingleEntity(entity, index))
+    .join('\n\n---\n\n');
+  if (block.length <= MAX_ENTITY_CONTEXT_BLOCK_CHARS) return block;
+  return `${block.slice(0, MAX_ENTITY_CONTEXT_BLOCK_CHARS)}…\n\n[entity context truncated]`;
 }
 
 export function buildUserMessageWithEntityAndRetrievalContext(input: {

@@ -114,4 +114,32 @@ HST_EIGEN_DRY_RUN=false
 
 ---
 
+## R2 Supabase edge (`eigen-chat`, `eigen-retrieve`, `eigen-widget-chat`)
+
+Top-tier retrieval (E1 rerank + E2 multi-query RRF):
+
+```env
+EIGEN_TOP_TIER_RETRIEVAL=false
+EIGEN_ENABLE_RERANKING=false
+EIGEN_MULTI_QUERY_FUSION=false
+EIGEN_MULTI_QUERY_LLM=false
+EIGEN_MULTI_QUERY_MAX_QUERIES=3
+```
+
+Oracle intelligence in entity-scoped chat:
+
+```env
+EIGEN_ORACLE_SIGNAL_CHAT_MIN_SCORE=65
+EIGEN_ORACLE_SIGNAL_MEMORY_PROMOTION=false
+EIGEN_WORKSPACE_MEMORY_OWNER_ID=<uuid>
+```
+
+Staging recommendation:
+
+```env
+EIGEN_TOP_TIER_RETRIEVAL=true
+```
+
+---
+
 For staged sequence and rollback plan, see `docs/eigen-safe-rollout-checklist.md`.

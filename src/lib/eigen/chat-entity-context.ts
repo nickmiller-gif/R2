@@ -208,6 +208,8 @@ export function buildUserMessageWithEntityAndRetrievalContext(input: {
   memoryBlock?: string;
   governanceIntro?: string;
   governanceBlock?: string;
+  oracleSignalsIntro?: string;
+  oracleSignalsBlock?: string;
   retrievalIntro: string;
   retrievalBlock: string;
   suffix?: string;
@@ -221,6 +223,9 @@ export function buildUserMessageWithEntityAndRetrievalContext(input: {
   }
   if (input.governanceBlock?.trim()) {
     parts.push('', input.governanceIntro ?? '', input.governanceBlock.trim());
+  }
+  if (input.oracleSignalsBlock?.trim()) {
+    parts.push('', input.oracleSignalsIntro ?? '', input.oracleSignalsBlock.trim());
   }
   if (input.retrievalBlock.trim()) {
     parts.push('', input.retrievalIntro, input.retrievalBlock.trim());

@@ -51,14 +51,19 @@ import {
 } from '../../../src/lib/eigen/chat-entity-resolver.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { logError, logInfo } from '../_shared/log.ts';
-import { parseBooleanEnvFlag } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
+import { resolveEigenRetrievalQualityFlags } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
+import {
+  EIGEN_ORACLE_SIGNALS_INTRO,
+  formatOracleSignalsForLlm,
+} from '../../../src/lib/eigen/chat-oracle-signals-context.ts';
+import { fetchOracleSignalsForEntityScope } from '../_shared/chat-oracle-signals.ts';
 
-function readEigenEnableReranking(): boolean {
-  return parseBooleanEnvFlag(Deno.env.get('EIGEN_ENABLE_RERANKING'), false);
-}
-
-function readEigenEnableMultiQueryFusion(): boolean {
-  return parseBooleanEnvFlag(Deno.env.get('EIGEN_MULTI_QUERY_FUSION'), false);
+function readRetrievalQualityFlags() {
+  return resolveEigenRetrievalQualityFlags({
+    topTier: Deno.env.get('EIGEN_TOP_TIER_RETRIEVAL'),
+    multiQuery: Deno.env.get('EIGEN_MULTI_QUERY_FUSION'),
+    rerank: Deno.env.get('EIGEN_ENABLE_RERANKING'),
+  });
 }
 
 interface WidgetChatRequest {
@@ -191,6 +196,7 @@ async function synthesize(
   message: string,
   chunks: EigenRetrieveChunk[],
   entityContext: ChatEntityForPrompt[],
+  oracleSignalsBlock: string,
   format: 'structured' | 'freeform',
   llmProvider: LlmProvider | undefined,
   llmModel: string | undefined,
@@ -201,7 +207,8 @@ async function synthesize(
   critic_provider?: LlmProvider;
   critic_model?: string;
 }> {
-  const hasContext = chunks.length > 0 || entityContext.length > 0;
+  const hasContext =
+    chunks.length > 0 || entityContext.length > 0 || oracleSignalsBlock.trim().length > 0;
 
   const envPrompt =
     mode === 'public'
@@ -228,6 +235,8 @@ async function synthesize(
         message: `User message: ${message}`,
         entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
         entityBlock: formatEntityContextForLlm(entityContext),
+        oracleSignalsIntro: EIGEN_ORACLE_SIGNALS_INTRO,
+        oracleSignalsBlock,
         retrievalIntro: EIGEN_RETRIEVED_CONTEXT_INTRO,
         retrievalBlock: formatRetrievalContextForLlm(chunks),
       })
@@ -358,6 +367,11 @@ Deno.serve(
         });
       }
 
+      const widgetRetrievalFlags =
+        claims.mode === 'eigenx'
+          ? readRetrievalQualityFlags()
+          : { multiQuery: false, rerank: false };
+
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
         entity_scope: effectiveEntityScope,
@@ -385,8 +399,8 @@ Deno.serve(
             }
           : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
         rerank: true,
-        enable_reranking: claims.mode === 'eigenx' && readEigenEnableReranking(),
-        enable_multi_query: claims.mode === 'eigenx' && readEigenEnableMultiQueryFusion(),
+        enable_reranking: widgetRetrievalFlags.rerank,
+        enable_multi_query: widgetRetrievalFlags.multiQuery,
         include_provenance: true,
       });
       if (!retrieveResult.ok)
@@ -398,16 +412,22 @@ Deno.serve(
 
       const citations = buildCitations(retrieveResult.body.chunks);
       const confidence = buildCompositeConfidence(citations);
-      const entityContext =
-        claims.mode === 'eigenx'
-          ? await fetchMegEntityContextForChat(client, effectiveEntityScope).catch((err) => {
-              logError('fetchMegEntityContextForChat failed', {
-                functionName: 'eigen-widget-chat',
-                error: err instanceof Error ? err.message : String(err),
-              });
-              return [] as ChatEntityForPrompt[];
-            })
-          : [];
+      let entityContext: ChatEntityForPrompt[] = [];
+      let oracleSignalsBlock = '';
+      if (claims.mode === 'eigenx') {
+        const [entities, signals] = await Promise.all([
+          fetchMegEntityContextForChat(client, effectiveEntityScope).catch((err) => {
+            logError('fetchMegEntityContextForChat failed', {
+              functionName: 'eigen-widget-chat',
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return [] as ChatEntityForPrompt[];
+          }),
+          fetchOracleSignalsForEntityScope(client, effectiveEntityScope).catch(() => []),
+        ]);
+        entityContext = entities;
+        oracleSignalsBlock = formatOracleSignalsForLlm(signals);
+      }
       const synthesis = await synthesize(
         client,
         claims.mode,
@@ -415,6 +435,7 @@ Deno.serve(
         body.message,
         retrieveResult.body.chunks,
         entityContext,
+        oracleSignalsBlock,
         body.response_format ?? 'structured',
         body.llm_provider,
         body.llm_model,

@@ -17,7 +17,8 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     expect(src).toMatch(/loadSessionMemoryForChat/);
     expect(src).toMatch(/fetchGovernanceContextForChat/);
     expect(src).toMatch(/scope_update/);
-    expect(src).toMatch(/readEigenEnableReranking/);
+    expect(src).toMatch(/readRetrievalQualityFlags/);
+    expect(src).toMatch(/fetchOracleSignalsForEntityScope/);
   });
 
   it('eigen-widget-chat blocks client policy_scope and limits entity resolve to eigenx', () => {

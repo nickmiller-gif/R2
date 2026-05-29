@@ -162,7 +162,15 @@ interface RetrievePipelineContext {
 function shouldUseMultiQueryFusion(payload: EigenRetrieveRequest): boolean {
   if (payload.enable_multi_query === true) return true;
   if (payload.enable_multi_query === false) return false;
+  if (parseBooleanEnvFlag(Deno.env.get('EIGEN_TOP_TIER_RETRIEVAL'), false)) return true;
   return parseBooleanEnvFlag(Deno.env.get('EIGEN_MULTI_QUERY_FUSION'), false);
+}
+
+function resolveEnableReranking(payload: EigenRetrieveRequest): boolean {
+  if (payload.enable_reranking === true) return true;
+  if (payload.enable_reranking === false) return false;
+  if (parseBooleanEnvFlag(Deno.env.get('EIGEN_TOP_TIER_RETRIEVAL'), false)) return true;
+  return parseBooleanEnvFlag(Deno.env.get('EIGEN_ENABLE_RERANKING'), false);
 }
 
 function fuseScoredCandidatesWithRrf(
@@ -388,7 +396,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     disallowed_source_systems: normalizeList(payload.disallowed_source_systems),
     budget_profile: budgetProfile,
     rerank: payload.rerank !== false,
-    enable_reranking: payload.enable_reranking === true,
+    enable_reranking: resolveEnableReranking(payload),
     enable_multi_query: payload.enable_multi_query === true,
     reranker: parseRerankerOverrides(payload.reranker),
     include_provenance: payload.include_provenance !== false,
@@ -893,7 +901,7 @@ async function applyRerankStage<
   deps: EigenRetrieveDeps,
 ): Promise<{ candidates: C[]; dropped_reason: string | null }> {
   if (candidates.length === 0) return { candidates, dropped_reason: null };
-  if (!payload.enable_reranking) return { candidates, dropped_reason: null };
+  if (!resolveEnableReranking(payload)) return { candidates, dropped_reason: null };
 
   const port = deps.rerankerPort === undefined ? getCachedEdgeReranker() : deps.rerankerPort;
   if (!port) {

@@ -28,6 +28,7 @@ interface FakeRuleRow {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  is_active?: boolean;
 }
 
 function makeRuleRow(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
@@ -41,6 +42,7 @@ function makeRuleRow(overrides: Partial<FakeRuleRow> = {}): FakeRuleRow {
     metadata: overrides.metadata ?? {},
     created_at: overrides.created_at ?? '2026-04-24T00:00:00.000Z',
     updated_at: overrides.updated_at ?? '2026-04-24T00:00:00.000Z',
+    ...(overrides.is_active === undefined ? {} : { is_active: overrides.is_active }),
   };
 }
 
@@ -100,6 +102,32 @@ describe('enforceEigenKosCapabilityBundle', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.rulesConfigured).toBe(false);
+  });
+
+  it('denies when the table only contains inactive rules', async () => {
+    const client = makeFakeClient([
+      makeRuleRow({
+        id: 'retired-allow-all',
+        policy_tag: 'eigenx',
+        capability_tag_pattern: '*',
+        effect: 'allow',
+        required_role: 'member',
+        is_active: false,
+      }),
+    ]);
+    const result = await enforceEigenKosCapabilityBundle(client, {
+      policyTags: ['eigenx'],
+      requiredCapabilityTags: ['search', 'read:knowledge', 'ai:synthesis'],
+      callerRoles: ['member'],
+      surface: 'eigen-chat',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.denial.deniedCapabilityTags.sort()).toEqual(
+        ['ai:synthesis', 'read:knowledge', 'search'].sort(),
+      );
+      expect(result.denial.deniedReasonsByCapability['search']).toContain('No matching allow rule');
+    }
   });
 
   it('allows a bundle when every required capability matches an allow rule', async () => {

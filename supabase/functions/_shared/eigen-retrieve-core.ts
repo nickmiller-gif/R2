@@ -25,6 +25,12 @@ import {
   type EntityScopeMode,
 } from '../../../src/lib/eigen/entity-retrieval-boost.ts';
 import { normalizeEntityScopeIds } from '../../../src/lib/eigen/chat-entity-context.ts';
+import {
+  computeRrfScores,
+  sortIdsByRrfScore,
+} from '../../../src/lib/eigen/reciprocal-rank-fusion.ts';
+import { parseBooleanEnvFlag } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
+import { resolveRetrievalQueries } from './eigen-query-expansion.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
@@ -53,6 +59,11 @@ export interface EigenRetrieveRequest {
    * back to the embedding-only ranking.
    */
   enable_reranking?: boolean;
+  /**
+   * Multi-query RRF: run retrieval for expanded queries and fuse rankings.
+   * Default off; enable via `EIGEN_MULTI_QUERY_FUSION=true` or explicit true.
+   */
+  enable_multi_query?: boolean;
   reranker?: Partial<RerankConfig>;
   include_provenance?: boolean;
 }
@@ -115,6 +126,76 @@ interface MatchKnowledgeChunksPayload {
 interface SiteRegistryContext {
   source_systems: string[];
   default_policy_scope: string[];
+}
+
+interface InternalScoredCandidate {
+  chunk_id: string;
+  content: string;
+  chunk_level: string;
+  heading_path: string[];
+  document_id: string;
+  ingestion_run_id: string | null;
+  source_system: string;
+  entity_ids: string[];
+  policy_tags: string[];
+  valid_from: string | null;
+  valid_to: string | null;
+  authority_score: number;
+  freshness_score: number;
+  provenance_completeness: number;
+  similarity_score: number;
+  oracle_signal_id: string | null;
+  oracle_relevance_score: number | null;
+  source_ref: string;
+  composite_score: number;
+  rerank_score?: number | null;
+}
+
+interface RetrievePipelineContext {
+  payload: EigenRetrieveRequest;
+  effectivePolicyScope: string[];
+  effectiveSiteSources: string[];
+  annLimit: number;
+  nowIso: string;
+}
+
+function shouldUseMultiQueryFusion(payload: EigenRetrieveRequest): boolean {
+  if (payload.enable_multi_query === true) return true;
+  if (payload.enable_multi_query === false) return false;
+  return parseBooleanEnvFlag(Deno.env.get('EIGEN_MULTI_QUERY_FUSION'), false);
+}
+
+function fuseScoredCandidatesWithRrf(
+  lists: InternalScoredCandidate[][],
+): InternalScoredCandidate[] {
+  if (lists.length === 0) return [];
+  if (lists.length === 1) return lists[0] ?? [];
+
+  const rankedLists = lists.map((list) => list.map((item) => ({ id: item.chunk_id })));
+  const rrfScores = computeRrfScores(rankedLists);
+  const order = sortIdsByRrfScore(rrfScores);
+
+  const byId = new Map<string, InternalScoredCandidate>();
+  for (const list of lists) {
+    for (const candidate of list) {
+      const existing = byId.get(candidate.chunk_id);
+      if (!existing || candidate.similarity_score > existing.similarity_score) {
+        byId.set(candidate.chunk_id, candidate);
+      }
+    }
+  }
+
+  return order
+    .map((id) => {
+      const candidate = byId.get(id);
+      if (!candidate) return null;
+      const rrf = rrfScores.get(id);
+      return {
+        ...candidate,
+        composite_score: Number((rrf ?? candidate.composite_score).toFixed(6)),
+      };
+    })
+    .filter((item): item is InternalScoredCandidate => item !== null);
 }
 
 function normalizeList(value: unknown): string[] {
@@ -308,6 +389,7 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
     budget_profile: budgetProfile,
     rerank: payload.rerank !== false,
     enable_reranking: payload.enable_reranking === true,
+    enable_multi_query: payload.enable_multi_query === true,
     reranker: parseRerankerOverrides(payload.reranker),
     include_provenance: payload.include_provenance !== false,
   };
@@ -338,6 +420,198 @@ function parseMatchPayload(raw: unknown): MatchKnowledgeChunksPayload {
     passed_row_count: typeof o.passed_row_count === 'number' ? o.passed_row_count : 0,
     chunks: chunks as MatchChunkRow[],
   };
+}
+
+async function scoreChunksFromEmbedding(
+  client: SupabaseClient,
+  ctx: RetrievePipelineContext,
+  queryEmbedding: number[],
+): Promise<{
+  scored: InternalScoredCandidate[];
+  envelope: MatchKnowledgeChunksPayload;
+  droppedReasons: string[];
+}> {
+  const { payload, effectivePolicyScope, effectiveSiteSources, annLimit, nowIso } = ctx;
+  const droppedReasons: string[] = [];
+
+  const rpcResult = await client.rpc('match_knowledge_chunks', {
+    query_embedding: queryEmbedding,
+    ann_limit: annLimit,
+    filter_entity_ids: shouldHardFilterEntityScope(payload.entity_scope, payload.entity_scope_mode)
+      ? payload.entity_scope
+      : null,
+    filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
+    valid_at: nowIso,
+  });
+
+  if (rpcResult.error) {
+    throw new Error(rpcResult.error.message);
+  }
+
+  const envelope = parseMatchPayload(rpcResult.data);
+  droppedReasons.push(`ann_index_probe: ${envelope.ann_row_count} rows (limit ${annLimit})`);
+  const hardDropped = envelope.ann_row_count - envelope.passed_row_count;
+  if (hardDropped > 0) {
+    droppedReasons.push(`hard_filter_dropped: ${hardDropped} chunks (entity/policy on ANN pool)`);
+  }
+
+  const temporalFiltered = envelope.chunks.map((row) => {
+    const entityIds = Array.isArray(row.entity_ids) ? row.entity_ids.map(String) : [];
+    const policyTags = Array.isArray(row.policy_tags) ? row.policy_tags.map(String) : [];
+    const oracleSignalId =
+      typeof row.oracle_signal_id === 'string' && row.oracle_signal_id.length > 0
+        ? row.oracle_signal_id
+        : null;
+    const oracleRel =
+      typeof row.oracle_relevance_score === 'number' && Number.isFinite(row.oracle_relevance_score)
+        ? row.oracle_relevance_score
+        : null;
+    return {
+      chunk_id: row.id,
+      content: row.content,
+      chunk_level: row.chunk_level,
+      heading_path: Array.isArray(row.heading_path) ? row.heading_path.map(String) : [],
+      document_id: row.document_id,
+      ingestion_run_id: row.ingestion_run_id,
+      source_system: row.source_system ?? 'unknown',
+      entity_ids: entityIds,
+      policy_tags: policyTags,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      authority_score: Number(row.authority_score ?? 50),
+      freshness_score: Number(row.freshness_score ?? 100),
+      provenance_completeness: Number(row.provenance_completeness ?? 0),
+      similarity_score: Number(row.similarity ?? 0),
+      oracle_signal_id: oracleSignalId,
+      oracle_relevance_score: oracleRel,
+    };
+  });
+
+  const runIdSet = Array.from(
+    new Set(temporalFiltered.map((c) => c.ingestion_run_id).filter(Boolean)),
+  ) as string[];
+
+  const sourceRefByRunId = new Map<string, string>();
+  if (runIdSet.length > 0) {
+    const runs = await client.from('ingestion_runs').select('id,source_ref').in('id', runIdSet);
+    if (runs.error) throw new Error(runs.error.message);
+    for (const run of runs.data ?? []) {
+      sourceRefByRunId.set(run.id as string, (run.source_ref as string) ?? 'unknown');
+    }
+  }
+
+  const siteSources = new Set(
+    effectiveSiteSources.map((s) => s.trim()).filter((s) => s.length > 0),
+  );
+  const siteBoost = payload.site_boost ?? readDefaultSiteBoost();
+  const globalPenalty = payload.global_penalty ?? readDefaultGlobalPenalty();
+  if (siteSources.size > 0) {
+    droppedReasons.push(
+      `site_priority: boost=${siteBoost.toFixed(3)} penalty=${globalPenalty.toFixed(3)} site_sources=${siteSources.size}`,
+    );
+  }
+
+  const relevanceGate = applySiteRelevanceGate(temporalFiltered, {
+    siteSources,
+    siteRelevanceMin: payload.site_relevance_min,
+    allowCrossSourceWhenLowConfidence: payload.allow_cross_source_when_low_confidence,
+    outsideDomainIntent: payload.outside_domain_intent,
+  });
+  if (siteSources.size > 0) {
+    droppedReasons.push(
+      `site_relevance_gate: site=${relevanceGate.siteCandidateCount} cross=${relevanceGate.crossCandidateCount} best_site_similarity=${relevanceGate.bestSiteSimilarity.toFixed(4)}`,
+    );
+  }
+  if (relevanceGate.crossSuppressedCount > 0) {
+    droppedReasons.push(`cross_source_suppressed: ${relevanceGate.crossSuppressedCount} chunks`);
+  }
+  if (relevanceGate.crossSourceFallbackEnabled) {
+    droppedReasons.push('cross_source_fallback_enabled');
+  }
+
+  const disallowedSourceSystems = new Set(
+    (payload.disallowed_source_systems ?? [])
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+  );
+  const filteredByDisallowed =
+    disallowedSourceSystems.size > 0
+      ? relevanceGate.candidates.filter(
+          (candidate) => !disallowedSourceSystems.has(candidate.source_system),
+        )
+      : relevanceGate.candidates;
+  if (disallowedSourceSystems.size > 0) {
+    const disallowedDroppedCount = relevanceGate.candidates.length - filteredByDisallowed.length;
+    if (disallowedDroppedCount > 0) {
+      droppedReasons.push(`disallowed_source_system_dropped: ${disallowedDroppedCount} chunks`);
+    }
+  }
+
+  const applyRerank = payload.rerank !== false;
+  const hasSiteSources = siteSources.size > 0;
+  const oracleBoostCap = readOracleRelevanceBoostCap();
+  const uploadSourceBoost = readUploadSourceBoost();
+  const entityScopeMode = payload.entity_scope_mode ?? 'filter';
+  const entityScopeSet = payload.entity_scope ?? [];
+
+  const scored = filteredByDisallowed
+    .map((candidate) => {
+      const baseScore = applyRerank
+        ? scoreCandidate({
+            id: candidate.chunk_id,
+            content: candidate.content,
+            chunk_level: candidate.chunk_level as 'document' | 'section' | 'paragraph' | 'claim',
+            heading_path: candidate.heading_path,
+            document_id: candidate.document_id,
+            source_system: candidate.source_system,
+            source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
+            valid_from: candidate.valid_from,
+            valid_to: candidate.valid_to,
+            entity_ids: candidate.entity_ids,
+            policy_tags: candidate.policy_tags,
+            similarity_score: candidate.similarity_score,
+            authority_score: candidate.authority_score,
+            freshness_score: candidate.freshness_score,
+            provenance_completeness: candidate.provenance_completeness,
+          })
+        : candidate.similarity_score;
+      const siteAdj = hasSiteSources
+        ? siteSources.has(candidate.source_system)
+          ? siteBoost
+          : globalPenalty
+        : 0;
+      const oracleAdj = computeOracleCompositeBoost(
+        candidate.oracle_signal_id,
+        candidate.oracle_relevance_score,
+        oracleBoostCap,
+      );
+      const sourceLower = candidate.source_system.toLowerCase();
+      const uploadAdj =
+        sourceLower.includes('upload') ||
+        sourceLower.includes('manual') ||
+        sourceLower.includes('autonomous')
+          ? uploadSourceBoost
+          : 0;
+      const entityAdj = computeEntityScopeBoost(
+        entityScopeSet,
+        candidate.entity_ids,
+        entityScopeMode,
+        readEntityScopeBoost(),
+      );
+      return {
+        ...candidate,
+        source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
+        composite_score: Number(
+          Math.max(
+            0,
+            Math.min(1.5, baseScore + siteAdj + oracleAdj + uploadAdj + entityAdj),
+          ).toFixed(6),
+        ),
+      };
+    })
+    .sort((left, right) => right.composite_score - left.composite_score);
+
+  return { scored, envelope, droppedReasons };
 }
 
 export type EigenRetrieveExecutionResult =
@@ -407,6 +681,7 @@ export async function executeEigenRetrieve(
                 payload.allow_cross_source_when_low_confidence ?? false,
               outside_domain_intent: payload.outside_domain_intent ?? false,
               disallowed_source_systems: payload.disallowed_source_systems ?? [],
+              multi_query_fusion: shouldUseMultiQueryFusion(payload),
             },
             budget_profile: payload.budget_profile ?? {},
             status: 'running',
@@ -439,134 +714,22 @@ export async function executeEigenRetrieve(
 
     const { embedding: queryEmbedding } = embedOutcome.value;
 
-    const rpcResult = await client.rpc('match_knowledge_chunks', {
-      query_embedding: queryEmbedding,
-      ann_limit: annLimit,
-      filter_entity_ids: shouldHardFilterEntityScope(
-        payload.entity_scope,
-        payload.entity_scope_mode,
-      )
-        ? payload.entity_scope
-        : null,
-      filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
-      valid_at: nowIso,
-    });
-
-    if (rpcResult.error) {
-      await failRun(rpcResult.error.message);
-      return { ok: false, status: 400, message: rpcResult.error.message };
-    }
-
-    const envelope = parseMatchPayload(rpcResult.data);
-    const droppedReasons: string[] = [
-      `ann_index_probe: ${envelope.ann_row_count} rows (limit ${annLimit})`,
-    ];
-    const hardDropped = envelope.ann_row_count - envelope.passed_row_count;
-    if (hardDropped > 0) {
-      droppedReasons.push(`hard_filter_dropped: ${hardDropped} chunks (entity/policy on ANN pool)`);
-    }
-
-    const temporalFiltered = envelope.chunks.map((row) => {
-      const entityIds = Array.isArray(row.entity_ids) ? row.entity_ids.map(String) : [];
-      const policyTags = Array.isArray(row.policy_tags) ? row.policy_tags.map(String) : [];
-      const oracleSignalId =
-        typeof row.oracle_signal_id === 'string' && row.oracle_signal_id.length > 0
-          ? row.oracle_signal_id
-          : null;
-      const oracleRel =
-        typeof row.oracle_relevance_score === 'number' &&
-        Number.isFinite(row.oracle_relevance_score)
-          ? row.oracle_relevance_score
-          : null;
-      return {
-        chunk_id: row.id,
-        content: row.content,
-        chunk_level: row.chunk_level,
-        heading_path: Array.isArray(row.heading_path) ? row.heading_path.map(String) : [],
-        document_id: row.document_id,
-        ingestion_run_id: row.ingestion_run_id,
-        source_system: row.source_system ?? 'unknown',
-        entity_ids: entityIds,
-        policy_tags: policyTags,
-        valid_from: row.valid_from,
-        valid_to: row.valid_to,
-        authority_score: Number(row.authority_score ?? 50),
-        freshness_score: Number(row.freshness_score ?? 100),
-        provenance_completeness: Number(row.provenance_completeness ?? 0),
-        similarity_score: Number(row.similarity ?? 0),
-        oracle_signal_id: oracleSignalId,
-        oracle_relevance_score: oracleRel,
-      };
-    });
-
-    const runIdSet = Array.from(
-      new Set(temporalFiltered.map((c) => c.ingestion_run_id).filter(Boolean)),
-    ) as string[];
-
-    const sourceRefByRunId = new Map<string, string>();
-    if (runIdSet.length > 0) {
-      const runs = await client.from('ingestion_runs').select('id,source_ref').in('id', runIdSet);
-      if (runs.error) {
-        await failRun(runs.error.message);
-        return { ok: false, status: 400, message: runs.error.message };
-      }
-      for (const run of runs.data ?? []) {
-        sourceRefByRunId.set(run.id as string, (run.source_ref as string) ?? 'unknown');
-      }
-    }
-
+    const pipelineCtx: RetrievePipelineContext = {
+      payload,
+      effectivePolicyScope,
+      effectiveSiteSources,
+      annLimit,
+      nowIso,
+    };
+    const droppedReasons: string[] = [];
     const siteSources = new Set(
       effectiveSiteSources.map((s) => s.trim()).filter((s) => s.length > 0),
     );
-    const siteBoost = payload.site_boost ?? readDefaultSiteBoost();
-    const globalPenalty = payload.global_penalty ?? readDefaultGlobalPenalty();
-    if (siteSources.size > 0) {
-      droppedReasons.push(
-        `site_priority: boost=${siteBoost.toFixed(3)} penalty=${globalPenalty.toFixed(3)} site_sources=${siteSources.size}`,
-      );
-    }
 
-    const relevanceGate = applySiteRelevanceGate(temporalFiltered, {
-      siteSources,
-      siteRelevanceMin: payload.site_relevance_min,
-      allowCrossSourceWhenLowConfidence: payload.allow_cross_source_when_low_confidence,
-      outsideDomainIntent: payload.outside_domain_intent,
-    });
-    if (siteSources.size > 0) {
-      droppedReasons.push(
-        `site_relevance_gate: site=${relevanceGate.siteCandidateCount} cross=${relevanceGate.crossCandidateCount} best_site_similarity=${relevanceGate.bestSiteSimilarity.toFixed(4)}`,
-      );
-    }
-    if (relevanceGate.crossSuppressedCount > 0) {
-      droppedReasons.push(`cross_source_suppressed: ${relevanceGate.crossSuppressedCount} chunks`);
-    }
-    if (relevanceGate.crossSourceFallbackEnabled) {
-      droppedReasons.push('cross_source_fallback_enabled');
-    }
+    let scoredDescending: InternalScoredCandidate[];
+    let envelopeAnnCount = 0;
+    let envelopePassedCount = 0;
 
-    const disallowedSourceSystems = new Set(
-      (payload.disallowed_source_systems ?? [])
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
-    );
-    const filteredByDisallowed =
-      disallowedSourceSystems.size > 0
-        ? relevanceGate.candidates.filter(
-            (candidate) => !disallowedSourceSystems.has(candidate.source_system),
-          )
-        : relevanceGate.candidates;
-    if (disallowedSourceSystems.size > 0) {
-      const disallowedDroppedCount = relevanceGate.candidates.length - filteredByDisallowed.length;
-      if (disallowedDroppedCount > 0) {
-        droppedReasons.push(`disallowed_source_system_dropped: ${disallowedDroppedCount} chunks`);
-      }
-    }
-
-    // rerank defaults to true; only skipped when caller explicitly passes rerank: false
-    const applyRerank = payload.rerank !== false;
-    const hasSiteSources = siteSources.size > 0;
-    const oracleBoostCap = readOracleRelevanceBoostCap();
-    const uploadSourceBoost = readUploadSourceBoost();
     const entityScopeMode = payload.entity_scope_mode ?? 'filter';
     const entityScopeSet = payload.entity_scope ?? [];
     if (entityScopeMode === 'boost' && entityScopeSet.length > 0) {
@@ -575,61 +738,37 @@ export async function executeEigenRetrieve(
       );
     }
 
-    const scoredDescending = filteredByDisallowed
-      .map((candidate) => {
-        const baseScore = applyRerank
-          ? scoreCandidate({
-              id: candidate.chunk_id,
-              content: candidate.content,
-              chunk_level: candidate.chunk_level as 'document' | 'section' | 'paragraph' | 'claim',
-              heading_path: candidate.heading_path,
-              document_id: candidate.document_id,
-              source_system: candidate.source_system,
-              source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
-              valid_from: candidate.valid_from,
-              valid_to: candidate.valid_to,
-              entity_ids: candidate.entity_ids,
-              policy_tags: candidate.policy_tags,
-              similarity_score: candidate.similarity_score,
-              authority_score: candidate.authority_score,
-              freshness_score: candidate.freshness_score,
-              provenance_completeness: candidate.provenance_completeness,
-            })
-          : candidate.similarity_score;
-        const siteAdj = hasSiteSources
-          ? siteSources.has(candidate.source_system)
-            ? siteBoost
-            : globalPenalty
-          : 0;
-        const oracleAdj = computeOracleCompositeBoost(
-          candidate.oracle_signal_id,
-          candidate.oracle_relevance_score,
-          oracleBoostCap,
+    try {
+      if (shouldUseMultiQueryFusion(payload)) {
+        const expansionQueries = await resolveRetrievalQueries(payload.query);
+        droppedReasons.push(`multi_query_fusion: queries=${expansionQueries.length}`);
+
+        const embeddings = await Promise.all(
+          expansionQueries.map(async (q) => (await embedText(q)).embedding),
         );
-        const sourceLower = candidate.source_system.toLowerCase();
-        const uploadAdj =
-          sourceLower.includes('upload') ||
-          sourceLower.includes('manual') ||
-          sourceLower.includes('autonomous')
-            ? uploadSourceBoost
-            : 0;
-        const entityAdj = computeEntityScopeBoost(
-          entityScopeSet,
-          candidate.entity_ids,
-          entityScopeMode,
-          readEntityScopeBoost(),
+        const scoredPerQuery = await Promise.all(
+          embeddings.map((embedding) => scoreChunksFromEmbedding(client, pipelineCtx, embedding)),
         );
-        return {
-          ...candidate,
-          composite_score: Number(
-            Math.max(
-              0,
-              Math.min(1.5, baseScore + siteAdj + oracleAdj + uploadAdj + entityAdj),
-            ).toFixed(6),
-          ),
-        };
-      })
-      .sort((left, right) => right.composite_score - left.composite_score);
+
+        for (const result of scoredPerQuery) {
+          droppedReasons.push(...result.droppedReasons);
+          envelopeAnnCount += result.envelope.ann_row_count;
+          envelopePassedCount += result.envelope.passed_row_count;
+        }
+
+        scoredDescending = fuseScoredCandidatesWithRrf(scoredPerQuery.map((r) => r.scored));
+      } else {
+        const single = await scoreChunksFromEmbedding(client, pipelineCtx, queryEmbedding);
+        droppedReasons.push(...single.droppedReasons);
+        scoredDescending = single.scored;
+        envelopeAnnCount = single.envelope.ann_row_count;
+        envelopePassedCount = single.envelope.passed_row_count;
+      }
+    } catch (pipelineErr) {
+      const reason = pipelineErr instanceof Error ? pipelineErr.message : String(pipelineErr);
+      await failRun(reason);
+      return { ok: false, status: 400, message: reason };
+    }
 
     const rerankStage = await applyRerankStage(scoredDescending, payload, deps);
     if (rerankStage.dropped_reason) {
@@ -664,8 +803,8 @@ export async function executeEigenRetrieve(
     const runComplete = await client
       .from('retrieval_runs')
       .update({
-        candidate_count: envelope.ann_row_count,
-        filtered_count: envelope.passed_row_count,
+        candidate_count: envelopeAnnCount,
+        filtered_count: envelopePassedCount,
         final_count: reranked.length,
         dropped_context_reasons: droppedReasons,
         latency_ms: elapsed,
@@ -698,7 +837,7 @@ export async function executeEigenRetrieve(
           : {
               document_id: candidate.document_id,
               source_system: candidate.source_system,
-              source_ref: sourceRefByRunId.get(candidate.ingestion_run_id ?? '') ?? 'unknown',
+              source_ref: candidate.source_ref,
               heading_path: candidate.heading_path,
               valid_from: candidate.valid_from,
             },

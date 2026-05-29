@@ -57,6 +57,10 @@ function readEigenEnableReranking(): boolean {
   return parseBooleanEnvFlag(Deno.env.get('EIGEN_ENABLE_RERANKING'), false);
 }
 
+function readEigenEnableMultiQueryFusion(): boolean {
+  return parseBooleanEnvFlag(Deno.env.get('EIGEN_MULTI_QUERY_FUSION'), false);
+}
+
 interface WidgetChatRequest {
   widget_token: string;
   message: string;
@@ -382,6 +386,7 @@ Deno.serve(
           : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
         rerank: true,
         enable_reranking: claims.mode === 'eigenx' && readEigenEnableReranking(),
+        enable_multi_query: claims.mode === 'eigenx' && readEigenEnableMultiQueryFusion(),
         include_provenance: true,
       });
       if (!retrieveResult.ok)

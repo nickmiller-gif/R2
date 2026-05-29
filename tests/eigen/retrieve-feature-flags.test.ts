@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseBooleanEnvFlag } from '../../src/lib/eigen/retrieve-feature-flags.ts';
+import {
+  parseBooleanEnvFlag,
+  readEigenEnableMultiQueryFusion,
+} from '../../src/lib/eigen/retrieve-feature-flags.ts';
 
 describe('retrieve-feature-flags', () => {
   it('parses common truthy env values', () => {
@@ -18,5 +21,10 @@ describe('retrieve-feature-flags', () => {
   it('treats other values as false', () => {
     expect(parseBooleanEnvFlag('false')).toBe(false);
     expect(parseBooleanEnvFlag('0')).toBe(false);
+  });
+
+  it('reads multi-query fusion flag from env', () => {
+    expect(readEigenEnableMultiQueryFusion('true')).toBe(true);
+    expect(readEigenEnableMultiQueryFusion(undefined)).toBe(false);
   });
 });

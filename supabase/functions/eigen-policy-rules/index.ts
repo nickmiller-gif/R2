@@ -331,8 +331,6 @@ Deno.serve(
           required_role: predecessor.required_role ?? null,
           rationale: predecessor.rationale ?? null,
           metadata: predecessor.metadata ?? {},
-          version: (predecessor.version ?? 1) + 1,
-          is_active: true,
         };
 
         if (obj.policy_tag !== undefined) {
@@ -371,47 +369,55 @@ Deno.serve(
           next.metadata = obj.metadata;
         }
 
-        // Versioned supersede: insert the new row, then mark the predecessor
-        // inactive and point it at the new id. The partial unique index on
-        // active rows means we must flip predecessor's is_active *before* the
-        // new row acquires the index slot — do it in that order.
-        const { data: inserted, error: insertErr } = await serviceClient
-          .from('eigen_policy_rules')
-          .insert([next])
-          .select()
-          .single();
-        if (insertErr || !inserted) {
-          return errorResponse(insertErr?.message ?? 'Failed to insert superseding rule', 400);
-        }
-        const newId = inserted.id as string;
-
-        // Now retire the predecessor. If this fails we have a duplicate
-        // active rule (both predecessor and successor) — flag loudly.
-        const { data: supersededPredecessor, error: supersedeErr } = await serviceClient
-          .from('eigen_policy_rules')
-          .update({
-            is_active: false,
-            superseded_by: newId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', ruleId)
-          .select()
-          .single();
-        if (supersedeErr || !supersededPredecessor) {
-          logError('eigen-policy-rules supersede predecessor flip failed', {
+        // Atomic supersede: the RPC retires the predecessor (is_active=false,
+        // superseded_by=newId) and inserts the successor inside one
+        // transaction, in that order, so the partial unique index on active
+        // rows never sees two rows sharing
+        // (policy_tag, capability_tag_pattern, effect, required_role).
+        // Doing it from two HTTP-level statements collided whenever the
+        // PATCH preserved the tuple (rationale/metadata-only edits).
+        const { data: swap, error: swapErr } = await serviceClient.rpc(
+          'eigen_policy_rule_supersede',
+          {
+            p_predecessor_id: ruleId,
+            p_policy_tag: next.policy_tag,
+            p_capability_tag_pattern: next.capability_tag_pattern,
+            p_effect: next.effect,
+            p_required_role: next.required_role,
+            p_rationale: next.rationale,
+            p_metadata: next.metadata,
+          },
+        );
+        if (swapErr || !swap) {
+          const message = swapErr?.message ?? 'Failed to supersede rule';
+          if (message.includes('predecessor_not_found')) {
+            return errorResponse('Rule not found', 404);
+          }
+          if (message.includes('predecessor_already_inactive')) {
+            return errorResponse(
+              'Cannot supersede an already-inactive rule; start from its active successor',
+              409,
+            );
+          }
+          if (message.includes('invalid_effect')) {
+            return errorResponse('effect must be allow or deny', 400);
+          }
+          logError('eigen-policy-rules supersede rpc failed', {
             functionName: 'eigen-policy-rules',
             predecessorId: ruleId,
-            newId,
-            error: supersedeErr?.message,
+            error: message,
             correlationId: meta.correlationId,
           });
-          return errorResponse(
-            `Superseding rule created (${newId}) but predecessor flip failed: ${
-              supersedeErr?.message ?? 'unknown'
-            }`,
-            500,
-          );
+          return errorResponse(message, 400);
         }
+
+        const swapPayload = swap as {
+          predecessor: Record<string, unknown>;
+          successor: Record<string, unknown>;
+        };
+        const supersededPredecessor = swapPayload.predecessor;
+        const inserted = swapPayload.successor;
+        const newId = inserted.id as string;
 
         const auditWarnings: string[] = [];
         const notes =
@@ -425,7 +431,7 @@ Deno.serve(
           ruleId,
           action: 'supersede',
           beforeState: snapshotRule(predecessor as Record<string, unknown>),
-          afterState: snapshotRule(supersededPredecessor as Record<string, unknown>),
+          afterState: snapshotRule(supersededPredecessor),
           actorId: auth.claims.userId,
           correlationId: meta.correlationId,
           rationale: notes,
@@ -450,7 +456,7 @@ Deno.serve(
           ruleId: newId,
           action: 'create',
           beforeState: null,
-          afterState: snapshotRule(inserted as Record<string, unknown>),
+          afterState: snapshotRule(inserted),
           actorId: auth.claims.userId,
           correlationId: meta.correlationId,
           rationale: notes,
@@ -471,10 +477,7 @@ Deno.serve(
           auditWarnings.push(`create_successor:${createAudit}`);
         }
 
-        const responseBody =
-          auditWarnings.length > 0 && inserted && typeof inserted === 'object'
-            ? { ...(inserted as Record<string, unknown>), auditWarnings }
-            : inserted;
+        const responseBody = auditWarnings.length > 0 ? { ...inserted, auditWarnings } : inserted;
         return jsonResponse(responseBody, 201);
       }
 

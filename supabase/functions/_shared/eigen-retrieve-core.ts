@@ -20,11 +20,12 @@ import {
 } from '../../../src/lib/eigen/rerank.ts';
 import { createEdgeReranker } from './eigen-reranker.ts';
 import {
-  computeEntityScopeBoost,
+  computeGraphAwareEntityBoost,
   shouldHardFilterEntityScope,
   type EntityScopeMode,
 } from '../../../src/lib/eigen/entity-retrieval-boost.ts';
 import { normalizeEntityScopeIds } from '../../../src/lib/eigen/chat-entity-context.ts';
+import { loadMegOneHopNeighborIds } from './meg-neighbor-scope.ts';
 import {
   computeRrfScores,
   sortIdsByRrfScore,
@@ -36,6 +37,8 @@ export interface EigenRetrieveRequest {
   query: string;
   entity_scope?: string[];
   entity_scope_mode?: EntityScopeMode;
+  /** 1-hop MEG neighbor ids for graph-aware boost; loaded automatically when omitted. */
+  meg_neighbor_scope?: string[];
   policy_scope?: string[];
   site_id?: string;
   site_source_systems?: string[];
@@ -224,6 +227,7 @@ let _defaultGlobalPenalty: number | undefined;
 let _oracleBoostCap: number | undefined;
 let _uploadSourceBoost: number | undefined;
 let _entityScopeBoost: number | undefined;
+let _megNeighborBoost: number | undefined;
 
 function readEntityScopeBoost(): number {
   if (_entityScopeBoost === undefined) {
@@ -232,6 +236,15 @@ function readEntityScopeBoost(): number {
     _entityScopeBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.35)) : 0.07;
   }
   return _entityScopeBoost;
+}
+
+function readMegNeighborBoost(): number {
+  if (_megNeighborBoost === undefined) {
+    const raw = Deno.env.get('EIGEN_MEG_NEIGHBOR_BOOST') ?? '0.035';
+    const parsed = Number.parseFloat(raw);
+    _megNeighborBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.25)) : 0.035;
+  }
+  return _megNeighborBoost;
 }
 
 function readDefaultSiteBoost(): number {
@@ -600,11 +613,13 @@ async function scoreChunksFromEmbedding(
         sourceLower.includes('autonomous')
           ? uploadSourceBoost
           : 0;
-      const entityAdj = computeEntityScopeBoost(
+      const entityAdj = computeGraphAwareEntityBoost(
         entityScopeSet,
+        payload.meg_neighbor_scope ?? [],
         candidate.entity_ids,
         entityScopeMode,
         readEntityScopeBoost(),
+        readMegNeighborBoost(),
       );
       return {
         ...candidate,
@@ -744,6 +759,17 @@ export async function executeEigenRetrieve(
       droppedReasons.push(
         `entity_scope_boost: mode=boost entities=${entityScopeSet.length} boost=${readEntityScopeBoost().toFixed(3)}`,
       );
+      const neighborBoost = readMegNeighborBoost();
+      if (neighborBoost > 0) {
+        const neighbors =
+          payload.meg_neighbor_scope ?? (await loadMegOneHopNeighborIds(client, entityScopeSet));
+        payload.meg_neighbor_scope = neighbors;
+        if (neighbors.length > 0) {
+          droppedReasons.push(
+            `meg_neighbor_boost: neighbors=${neighbors.length} boost=${neighborBoost.toFixed(3)}`,
+          );
+        }
+      }
     }
 
     try {

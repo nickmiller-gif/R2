@@ -44,10 +44,8 @@ import {
   EIGEN_GOVERNANCE_CONTEXT_INTRO,
   formatGovernanceContextForLlm,
 } from '../../../src/lib/eigen/chat-governance-context.ts';
-import {
-  EIGEN_SESSION_MEMORY_INTRO,
-  formatSessionMemoryForLlm,
-} from '../../../src/lib/eigen/chat-session-memory.ts';
+import { EIGEN_SESSION_MEMORY_INTRO } from '../../../src/lib/eigen/chat-session-memory.ts';
+import { loadChatMemoryRecallForChat } from '../_shared/chat-memory-recall.ts';
 import { resolveEigenRetrievalQualityFlags } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
 import {
   EIGEN_ORACLE_SIGNALS_INTRO,
@@ -59,7 +57,6 @@ import {
   resolveChatEntityScope,
 } from '../_shared/chat-entity-context.ts';
 import { fetchGovernanceContextForChat } from '../_shared/chat-governance-context.ts';
-import { loadSessionMemoryForChat } from '../_shared/chat-session-memory.ts';
 import {
   sanitizeEntityLabel,
   normalizeEntityScopeFromRequest,
@@ -231,6 +228,7 @@ function buildUserMessageWithContext(
   message: string,
   chunks: EigenRetrieveChunk[],
   entityContext: ChatEntityForPrompt[],
+  memoryIntro: string,
   sessionMemoryBlock: string,
   governanceBlock: string,
   oracleSignalsBlock: string,
@@ -239,7 +237,7 @@ function buildUserMessageWithContext(
     message,
     entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
     entityBlock: formatEntityContextForLlm(entityContext),
-    memoryIntro: EIGEN_SESSION_MEMORY_INTRO,
+    memoryIntro,
     memoryBlock: sessionMemoryBlock,
     governanceIntro: EIGEN_GOVERNANCE_CONTEXT_INTRO,
     governanceBlock,
@@ -459,7 +457,7 @@ Deno.serve(
       const retrievedChunks = retrieveResult.body.chunks;
       const citations = buildCitations(retrievedChunks);
       const confidence = buildCompositeConfidence(citations);
-      const [voiceStyleAddendum, entityContext, sessionMemory, governance, oracleSignals] =
+      const [voiceStyleAddendum, entityContext, memoryRecall, governance, oracleSignals] =
         await Promise.all([
           fetchRayVoiceStyleAddendum(client, {
             message: body.message,
@@ -473,7 +471,12 @@ Deno.serve(
             });
             return [] as ChatEntityForPrompt[];
           }),
-          loadSessionMemoryForChat(client, sessionId, auth.claims.userId),
+          loadChatMemoryRecallForChat(
+            client,
+            sessionId,
+            auth.claims.userId,
+            body.entity_scope ?? [],
+          ),
           fetchGovernanceContextForChat(client, {
             oracleRunId: body.oracle_run_id,
             charterDecisionId: body.charter_decision_id,
@@ -486,7 +489,8 @@ Deno.serve(
             return [];
           }),
         ]);
-      const sessionMemoryBlock = formatSessionMemoryForLlm(sessionMemory);
+      const sessionMemoryBlock = memoryRecall.block;
+      const memoryIntro = memoryRecall.intro || EIGEN_SESSION_MEMORY_INTRO;
       const governanceBlock = formatGovernanceContextForLlm(governance);
       const oracleSignalsBlock = formatOracleSignalsForLlm(oracleSignals);
       const retrievalQualityAppend = eigenRetrievalQualityAppend(
@@ -518,6 +522,7 @@ Deno.serve(
           body.message,
           retrievedChunks,
           entityContext,
+          memoryIntro,
           sessionMemoryBlock,
           governanceBlock,
           oracleSignalsBlock,
@@ -709,6 +714,7 @@ Deno.serve(
             body.message,
             retrievedChunks,
             entityContext,
+            memoryIntro,
             sessionMemoryBlock,
             governanceBlock,
             oracleSignalsBlock,

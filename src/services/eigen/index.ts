@@ -37,6 +37,13 @@ export {
 } from './memory-entry.service.js';
 
 export {
+  createMemoryEpisodeService,
+  type MemoryEpisodeService,
+  type MemoryEpisodeDb,
+  type DbMemoryEpisodeRow,
+} from './memory-episode.service.js';
+
+export {
   createEigenOracleWhitespaceReaderService,
   type EigenOracleWhitespaceReaderService,
   type EigenOracleWhitespaceReaderDeps,

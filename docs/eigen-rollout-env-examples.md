@@ -140,6 +140,24 @@ Staging recommendation:
 EIGEN_TOP_TIER_RETRIEVAL=true
 ```
 
+MEG 1-hop neighbor retrieval boost (X1; boost mode only):
+
+```env
+EIGEN_MEG_NEIGHBOR_BOOST=0.035
+# Disable graph neighbor boost:
+# EIGEN_MEG_NEIGHBOR_BOOST=0
+```
+
+Memory episode consolidation cron (E3):
+
+```env
+EIGEN_MEMORY_EPISODES_CRON_TOKEN=<cron-bearer>
+EIGEN_MEMORY_EPISODES_SERVICE_TOKEN=<service-role-jwt>
+```
+
+Vault secret for pg_cron: `eigen_memory_episodes_cron_bearer` (service-role JWT).
+Run `select public.schedule_eigen_memory_episodes_cron();` after the secret exists.
+
 ---
 
 For staged sequence and rollback plan, see `docs/eigen-safe-rollout-checklist.md`.

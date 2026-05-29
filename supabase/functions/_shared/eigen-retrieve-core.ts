@@ -19,10 +19,16 @@ import {
   type RerankerPort,
 } from '../../../src/lib/eigen/rerank.ts';
 import { createEdgeReranker } from './eigen-reranker.ts';
+import {
+  computeEntityScopeBoost,
+  shouldHardFilterEntityScope,
+  type EntityScopeMode,
+} from '../../../src/lib/eigen/entity-retrieval-boost.ts';
 
 export interface EigenRetrieveRequest {
   query: string;
   entity_scope?: string[];
+  entity_scope_mode?: EntityScopeMode;
   policy_scope?: string[];
   site_id?: string;
   site_source_systems?: string[];
@@ -127,6 +133,16 @@ let _defaultSiteBoost: number | undefined;
 let _defaultGlobalPenalty: number | undefined;
 let _oracleBoostCap: number | undefined;
 let _uploadSourceBoost: number | undefined;
+let _entityScopeBoost: number | undefined;
+
+function readEntityScopeBoost(): number {
+  if (_entityScopeBoost === undefined) {
+    const raw = Deno.env.get('EIGEN_ENTITY_SCOPE_BOOST') ?? '0.07';
+    const parsed = Number.parseFloat(raw);
+    _entityScopeBoost = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 0.35)) : 0.07;
+  }
+  return _entityScopeBoost;
+}
 
 function readDefaultSiteBoost(): number {
   if (_defaultSiteBoost === undefined) {
@@ -274,6 +290,10 @@ export function parseEigenRetrieveRequest(body: unknown): EigenRetrieveRequest {
   return {
     query,
     entity_scope: entityScope,
+    entity_scope_mode:
+      payload.entity_scope_mode === 'boost' || payload.entity_scope_mode === 'filter'
+        ? payload.entity_scope_mode
+        : undefined,
     policy_scope: policyScope,
     site_id: typeof payload.site_id === 'string' ? payload.site_id.trim() : undefined,
     site_source_systems: normalizeList(payload.site_source_systems),
@@ -421,7 +441,12 @@ export async function executeEigenRetrieve(
     const rpcResult = await client.rpc('match_knowledge_chunks', {
       query_embedding: queryEmbedding,
       ann_limit: annLimit,
-      filter_entity_ids: payload.entity_scope?.length ? payload.entity_scope : null,
+      filter_entity_ids: shouldHardFilterEntityScope(
+        payload.entity_scope,
+        payload.entity_scope_mode,
+      )
+        ? payload.entity_scope
+        : null,
       filter_policy_tags: effectivePolicyScope.length ? effectivePolicyScope : null,
       valid_at: nowIso,
     });
@@ -541,6 +566,13 @@ export async function executeEigenRetrieve(
     const hasSiteSources = siteSources.size > 0;
     const oracleBoostCap = readOracleRelevanceBoostCap();
     const uploadSourceBoost = readUploadSourceBoost();
+    const entityScopeMode = payload.entity_scope_mode ?? 'filter';
+    const entityScopeSet = payload.entity_scope ?? [];
+    if (entityScopeMode === 'boost' && entityScopeSet.length > 0) {
+      droppedReasons.push(
+        `entity_scope_boost: mode=boost entities=${entityScopeSet.length} boost=${readEntityScopeBoost().toFixed(3)}`,
+      );
+    }
 
     const scoredDescending = filteredByDisallowed
       .map((candidate) => {
@@ -580,10 +612,19 @@ export async function executeEigenRetrieve(
           sourceLower.includes('autonomous')
             ? uploadSourceBoost
             : 0;
+        const entityAdj = computeEntityScopeBoost(
+          entityScopeSet,
+          candidate.entity_ids,
+          entityScopeMode,
+          readEntityScopeBoost(),
+        );
         return {
           ...candidate,
           composite_score: Number(
-            Math.max(0, Math.min(1.5, baseScore + siteAdj + oracleAdj + uploadAdj)).toFixed(6),
+            Math.max(
+              0,
+              Math.min(1.5, baseScore + siteAdj + oracleAdj + uploadAdj + entityAdj),
+            ).toFixed(6),
           ),
         };
       })

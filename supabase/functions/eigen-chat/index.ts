@@ -27,7 +27,7 @@ import {
   type ConversationTurn,
 } from '../../../src/lib/eigen/chat-history-utils.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
-import { logError } from '../_shared/log.ts';
+import { logError, logInfo } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import {
@@ -40,7 +40,14 @@ import {
   formatEntityContextForLlm,
   type ChatEntityForPrompt,
 } from '../../../src/lib/eigen/chat-entity-context.ts';
-import { fetchMegEntityContextForChat } from '../_shared/chat-entity-context.ts';
+import {
+  fetchMegEntityContextForChat,
+  resolveChatEntityScope,
+} from '../_shared/chat-entity-context.ts';
+import {
+  sanitizeEntityLabel,
+  type EntityScopeMode,
+} from '../../../src/lib/eigen/chat-entity-resolver.ts';
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { EIGEN_KOS_CAPABILITY } from '../../../src/lib/eigen/eigen-kos-capabilities.ts';
 
@@ -50,6 +57,8 @@ interface ChatRequest {
   conversation_context?: 'auto' | 'none';
   response_format?: 'structured' | 'freeform';
   entity_scope?: string[];
+  entity_label?: string;
+  entity_scope_mode?: EntityScopeMode;
   /** Resolved after auth; parseRequest may leave empty when client omitted policy_scope. */
   policy_scope: string[];
   policy_scope_explicit: boolean;
@@ -156,6 +165,13 @@ function parseRequest(value: unknown): ChatRequest {
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
     entity_scope: toList(body.entity_scope),
+    entity_label: sanitizeEntityLabel(
+      typeof body.entity_label === 'string' ? body.entity_label : undefined,
+    ),
+    entity_scope_mode:
+      body.entity_scope_mode === 'boost' || body.entity_scope_mode === 'filter'
+        ? body.entity_scope_mode
+        : undefined,
     policy_scope: policyScopeList,
     policy_scope_explicit: Object.prototype.hasOwnProperty.call(body, 'policy_scope'),
     stream: body.stream === true,
@@ -311,9 +327,38 @@ Deno.serve(
         body.entity_scope ?? [],
       );
 
+      const explicitScope = body.entity_scope ?? [];
+      const resolvedEntityScope = await resolveChatEntityScope(client, {
+        message: body.message,
+        explicitScope,
+        entityLabel: body.entity_label,
+        entityScopeMode: body.entity_scope_mode,
+      }).catch((err) => {
+        logError('resolveChatEntityScope failed', {
+          functionName: 'eigen-chat',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return {
+          entityIds: explicitScope,
+          resolutionSources: explicitScope.length > 0 ? (['explicit'] as const) : [],
+          scopeMode: (body.entity_scope_mode ?? 'filter') as EntityScopeMode,
+          lookupHits: [],
+        };
+      });
+      body.entity_scope = resolvedEntityScope.entityIds;
+      logInfo('chat entity scope resolved', {
+        functionName: 'eigen-chat',
+        correlationId: meta.correlationId,
+        scope_mode: resolvedEntityScope.scopeMode,
+        entity_count: resolvedEntityScope.entityIds.length,
+        resolution_sources: resolvedEntityScope.resolutionSources,
+        hint_count: resolvedEntityScope.lookupHits.length,
+      });
+
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
         entity_scope: body.entity_scope,
+        entity_scope_mode: resolvedEntityScope.scopeMode,
         policy_scope: body.policy_scope ?? [],
         site_id: body.site_id,
         site_source_systems: body.site_source_systems ?? [],
@@ -522,6 +567,10 @@ Deno.serve(
                 llm_critic_provider: criticProvider ?? null,
                 llm_critic_model: criticModel ?? null,
                 effective_policy_scope: resolvedScope.effectivePolicyScope,
+                entity_scope_applied: resolvedEntityScope.entityIds,
+                entity_scope_mode: resolvedEntityScope.scopeMode,
+                entity_resolution_sources: resolvedEntityScope.resolutionSources,
+                entity_context_count: entityContext.length,
               });
             } catch (streamErr) {
               const msg = streamErr instanceof Error ? streamErr.message : 'Unknown error';
@@ -650,6 +699,10 @@ Deno.serve(
         llm_critic_provider: llmCriticProvider,
         llm_critic_model: llmCriticModel,
         effective_policy_scope: resolvedScope.effectivePolicyScope,
+        entity_scope_applied: resolvedEntityScope.entityIds,
+        entity_scope_mode: resolvedEntityScope.scopeMode,
+        entity_resolution_sources: resolvedEntityScope.resolutionSources,
+        entity_context_count: entityContext.length,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

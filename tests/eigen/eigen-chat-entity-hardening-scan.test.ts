@@ -14,7 +14,7 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     expect(src).toMatch(/sanitizeEntityLabel/);
     expect(src).toMatch(/persistSessionEntityScope/);
     expect(src).toMatch(/enforceEigenKosCapabilityBundle/);
-    expect(src).toMatch(/loadSessionMemoryForChat/);
+    expect(src).toMatch(/loadChatMemoryRecallForChat/);
     expect(src).toMatch(/fetchGovernanceContextForChat/);
     expect(src).toMatch(/scope_update/);
     expect(src).toMatch(/readRetrievalQualityFlags/);
@@ -60,5 +60,7 @@ describe('eigen chat entity scope hardening (static audit)', () => {
       'utf8',
     );
     expect(src).toMatch(/normalizeEntityScopeIds/);
+    expect(src).toMatch(/computeGraphAwareEntityBoost/);
+    expect(src).toMatch(/loadMegOneHopNeighborIds/);
   });
 });

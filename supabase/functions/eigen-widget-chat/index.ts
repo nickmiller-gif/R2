@@ -51,6 +51,11 @@ import {
 } from '../../../src/lib/eigen/chat-entity-resolver.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { logError, logInfo } from '../_shared/log.ts';
+import { parseBooleanEnvFlag } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
+
+function readEigenEnableReranking(): boolean {
+  return parseBooleanEnvFlag(Deno.env.get('EIGEN_ENABLE_RERANKING'), false);
+}
 
 interface WidgetChatRequest {
   widget_token: string;
@@ -376,6 +381,7 @@ Deno.serve(
             }
           : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
         rerank: true,
+        enable_reranking: claims.mode === 'eigenx' && readEigenEnableReranking(),
         include_provenance: true,
       });
       if (!retrieveResult.ok)

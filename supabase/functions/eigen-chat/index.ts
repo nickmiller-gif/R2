@@ -41,9 +41,20 @@ import {
   type ChatEntityForPrompt,
 } from '../../../src/lib/eigen/chat-entity-context.ts';
 import {
+  EIGEN_GOVERNANCE_CONTEXT_INTRO,
+  formatGovernanceContextForLlm,
+} from '../../../src/lib/eigen/chat-governance-context.ts';
+import {
+  EIGEN_SESSION_MEMORY_INTRO,
+  formatSessionMemoryForLlm,
+} from '../../../src/lib/eigen/chat-session-memory.ts';
+import { parseBooleanEnvFlag } from '../../../src/lib/eigen/retrieve-feature-flags.ts';
+import {
   fetchMegEntityContextForChat,
   resolveChatEntityScope,
 } from '../_shared/chat-entity-context.ts';
+import { fetchGovernanceContextForChat } from '../_shared/chat-governance-context.ts';
+import { loadSessionMemoryForChat } from '../_shared/chat-session-memory.ts';
 import {
   sanitizeEntityLabel,
   normalizeEntityScopeFromRequest,
@@ -78,6 +89,8 @@ interface ChatRequest {
   llm_model?: string;
   oracle_run_id?: string;
   charter_decision_id?: string;
+  /** When true, resolve and persist entity scope only (no retrieve / LLM). Requires session_id. */
+  scope_update?: boolean;
 }
 
 const supabaseClients = createSupabaseClientFactory();
@@ -110,6 +123,10 @@ function readNoContextResponse(): string {
   return Deno.env.get('EIGENX_NO_CONTEXT_RESPONSE')?.trim() || EIGENX_DEFAULT_NO_CONTEXT_RESPONSE;
 }
 
+function readEigenEnableReranking(): boolean {
+  return parseBooleanEnvFlag(Deno.env.get('EIGEN_ENABLE_RERANKING'), false);
+}
+
 function readEigenChatTemperature(): number {
   const raw = Deno.env.get('EIGEN_CHAT_TEMPERATURE') ?? '0.32';
   const n = Number.parseFloat(raw);
@@ -138,12 +155,17 @@ function toList(value: unknown): string[] {
 function parseRequest(value: unknown): ChatRequest {
   if (!value || typeof value !== 'object') throw new Error('Request body must be a JSON object');
   const body = value as Record<string, unknown>;
-  if (typeof body.message !== 'string' || body.message.trim().length === 0) {
+  const scopeUpdate = body.scope_update === true;
+  const rawMessage = typeof body.message === 'string' ? body.message : '';
+  if (!scopeUpdate && rawMessage.trim().length === 0) {
     throw new Error('message is required');
+  }
+  if (scopeUpdate && (typeof body.session_id !== 'string' || body.session_id.trim().length === 0)) {
+    throw new Error('session_id is required for scope_update');
   }
 
   const maxChars = readMaxMessageChars();
-  if (body.message.length > maxChars) {
+  if (rawMessage.length > maxChars) {
     throw new Error(`message exceeds maximum length (${maxChars} characters)`);
   }
 
@@ -162,7 +184,8 @@ function parseRequest(value: unknown): ChatRequest {
 
   const policyScopeList = toList(body.policy_scope);
   return {
-    message: body.message.trim(),
+    message: rawMessage.trim(),
+    scope_update: scopeUpdate,
     session_id: typeof body.session_id === 'string' ? body.session_id : undefined,
     conversation_context: body.conversation_context === 'none' ? 'none' : 'auto',
     response_format: body.response_format === 'freeform' ? 'freeform' : 'structured',
@@ -195,27 +218,23 @@ function parseRequest(value: unknown): ChatRequest {
   };
 }
 
-function buildContextHandlesMessage(body: ChatRequest): string {
-  const handles: string[] = [];
-  if (body.oracle_run_id) handles.push(`oracle_run_id=${body.oracle_run_id}`);
-  if (body.charter_decision_id) handles.push(`charter_decision_id=${body.charter_decision_id}`);
-  if (!handles.length) return '';
-  return `\n\nLinked governance context handles:\n- ${handles.join('\n- ')}`;
-}
-
 function buildUserMessageWithContext(
   message: string,
   chunks: EigenRetrieveChunk[],
   entityContext: ChatEntityForPrompt[],
-  body: ChatRequest,
+  sessionMemoryBlock: string,
+  governanceBlock: string,
 ): string {
   return buildUserMessageWithEntityAndRetrievalContext({
     message,
     entityIntro: EIGEN_ENTITY_CONTEXT_INTRO,
     entityBlock: formatEntityContextForLlm(entityContext),
+    memoryIntro: EIGEN_SESSION_MEMORY_INTRO,
+    memoryBlock: sessionMemoryBlock,
+    governanceIntro: EIGEN_GOVERNANCE_CONTEXT_INTRO,
+    governanceBlock,
     retrievalIntro: EIGEN_RETRIEVED_CONTEXT_INTRO,
     retrievalBlock: formatRetrievalContextForLlm(chunks),
-    suffix: buildContextHandlesMessage(body),
   });
 }
 
@@ -315,12 +334,15 @@ Deno.serve(
 
       let sessionId = body.session_id;
       if (!sessionId) {
+        if (body.scope_update) {
+          return errorResponse('session_id is required for scope_update', 400);
+        }
         const sessionInsert = await client
           .from('eigen_chat_sessions')
           .insert([
             {
               owner_id: auth.claims.userId,
-              title: body.message.slice(0, 80),
+              title: body.message.slice(0, 80) || 'Eigen chat',
               entity_scope: body.entity_scope ?? [],
               policy_scope: resolvedScope.effectivePolicyScope,
             },
@@ -386,6 +408,16 @@ Deno.serve(
         );
       }
 
+      if (body.scope_update) {
+        return jsonResponse({
+          scope_update: true,
+          session_id: sessionId,
+          entity_scope_applied: resolvedEntityScope.entityIds,
+          entity_scope_mode: resolvedEntityScope.scopeMode,
+          entity_resolution_sources: resolvedEntityScope.resolutionSources,
+        });
+      }
+
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
         entity_scope: body.entity_scope,
@@ -402,6 +434,7 @@ Deno.serve(
             }
           : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
         rerank: true,
+        enable_reranking: readEigenEnableReranking(),
         include_provenance: true,
       });
 
@@ -412,7 +445,7 @@ Deno.serve(
       const retrievedChunks = retrieveResult.body.chunks;
       const citations = buildCitations(retrievedChunks);
       const confidence = buildCompositeConfidence(citations);
-      const [voiceStyleAddendum, entityContext] = await Promise.all([
+      const [voiceStyleAddendum, entityContext, sessionMemory, governance] = await Promise.all([
         fetchRayVoiceStyleAddendum(client, {
           message: body.message,
           includePrivate: true,
@@ -425,12 +458,23 @@ Deno.serve(
           });
           return [] as ChatEntityForPrompt[];
         }),
+        loadSessionMemoryForChat(client, sessionId, auth.claims.userId),
+        fetchGovernanceContextForChat(client, {
+          oracleRunId: body.oracle_run_id,
+          charterDecisionId: body.charter_decision_id,
+        }),
       ]);
+      const sessionMemoryBlock = formatSessionMemoryForLlm(sessionMemory);
+      const governanceBlock = formatGovernanceContextForLlm(governance);
       const retrievalQualityAppend = eigenRetrievalQualityAppend(
         retrievedChunks,
         confidence.overall,
       );
-      const hasAnswerContext = retrievedChunks.length > 0 || entityContext.length > 0;
+      const hasAnswerContext =
+        retrievedChunks.length > 0 ||
+        entityContext.length > 0 ||
+        sessionMemoryBlock.length > 0 ||
+        governanceBlock.length > 0;
 
       const maxHistoryTurns = readMaxHistoryTurns();
       let conversationHistory: ConversationTurn[] = [];
@@ -450,7 +494,8 @@ Deno.serve(
           body.message,
           retrievedChunks,
           entityContext,
-          body,
+          sessionMemoryBlock,
+          governanceBlock,
         );
         const sseHeaders = {
           ...corsHeaders,
@@ -639,7 +684,8 @@ Deno.serve(
             body.message,
             retrievedChunks,
             entityContext,
-            body,
+            sessionMemoryBlock,
+            governanceBlock,
           ),
           conversationHistory,
           maxTokens: readMaxCompletionTokens(),

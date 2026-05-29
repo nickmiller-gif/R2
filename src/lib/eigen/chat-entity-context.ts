@@ -204,6 +204,10 @@ export function buildUserMessageWithEntityAndRetrievalContext(input: {
   message: string;
   entityIntro: string;
   entityBlock: string;
+  memoryIntro?: string;
+  memoryBlock?: string;
+  governanceIntro?: string;
+  governanceBlock?: string;
   retrievalIntro: string;
   retrievalBlock: string;
   suffix?: string;
@@ -211,6 +215,12 @@ export function buildUserMessageWithEntityAndRetrievalContext(input: {
   const parts = [`Question: ${input.message}`];
   if (input.entityBlock.trim()) {
     parts.push('', input.entityIntro, input.entityBlock.trim());
+  }
+  if (input.memoryBlock?.trim()) {
+    parts.push('', input.memoryIntro ?? '', input.memoryBlock.trim());
+  }
+  if (input.governanceBlock?.trim()) {
+    parts.push('', input.governanceIntro ?? '', input.governanceBlock.trim());
   }
   if (input.retrievalBlock.trim()) {
     parts.push('', input.retrievalIntro, input.retrievalBlock.trim());

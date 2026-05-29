@@ -3,6 +3,8 @@ import {
   buildEpisodeSummaryFromTurns,
   entityEpisodeTopicKey,
   episodeWindowFromTurns,
+  MAX_PAIRS_IN_SUMMARY,
+  MAX_TURNS_PER_EPISODE,
   MIN_TURNS_FOR_EPISODE,
   pairEpisodeTurns,
   sessionEpisodeTopicKey,
@@ -13,6 +15,8 @@ import {
   type MemoryEpisodeDb,
   type DbMemoryEpisodeRow,
 } from '../../src/services/eigen/memory-episode.service.js';
+
+const VALID_SESSION = '550e8400-e29b-41d4-a716-446655440000';
 
 describe('memory-episode-consolidation', () => {
   const turns = [
@@ -43,8 +47,9 @@ describe('memory-episode-consolidation', () => {
   ];
 
   it('builds deterministic topic keys', () => {
-    expect(sessionEpisodeTopicKey('abc')).toBe('session:abc');
-    expect(entityEpisodeTopicKey('xyz')).toBe('entity:xyz');
+    expect(sessionEpisodeTopicKey(VALID_SESSION)).toBe(`session:${VALID_SESSION}`);
+    expect(entityEpisodeTopicKey(VALID_SESSION)).toBe(`entity:${VALID_SESSION}`);
+    expect(sessionEpisodeTopicKey('bad')).toBeNull();
   });
 
   it('pairs user/assistant turns in order', () => {
@@ -71,6 +76,18 @@ describe('memory-episode-consolidation', () => {
   it('requires minimum turn count before consolidation', () => {
     expect(shouldConsolidateSessionTurns(MIN_TURNS_FOR_EPISODE)).toBe(true);
     expect(shouldConsolidateSessionTurns(MIN_TURNS_FOR_EPISODE - 1)).toBe(false);
+  });
+
+  it('caps summary pairs and turn input', () => {
+    const manyTurns = Array.from({ length: MAX_TURNS_PER_EPISODE + 20 }, (_, index) => ({
+      id: `t${index}`,
+      role: (index % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `turn ${index}`,
+      createdAt: new Date(Date.UTC(2026, 4, 1, 10, index)).toISOString(),
+    }));
+    const summary = buildEpisodeSummaryFromTurns(manyTurns);
+    expect(summary.length).toBeLessThanOrEqual(2403);
+    expect(pairEpisodeTurns(manyTurns).length).toBeGreaterThan(MAX_PAIRS_IN_SUMMARY);
   });
 });
 
@@ -121,8 +138,8 @@ describe('MemoryEpisodeService', () => {
     const first = await service.upsert({
       ownerId: 'owner-1',
       scope: 'session',
-      sessionId: 'session-1',
-      topicKey: sessionEpisodeTopicKey('session-1'),
+      sessionId: VALID_SESSION,
+      topicKey: sessionEpisodeTopicKey(VALID_SESSION)!,
       summary: 'First summary',
       turnCount: 4,
       windowStart: '2026-05-01T10:00:00.000Z',
@@ -132,8 +149,8 @@ describe('MemoryEpisodeService', () => {
     const second = await service.upsert({
       ownerId: 'owner-1',
       scope: 'session',
-      sessionId: 'session-1',
-      topicKey: sessionEpisodeTopicKey('session-1'),
+      sessionId: VALID_SESSION,
+      topicKey: sessionEpisodeTopicKey(VALID_SESSION)!,
       summary: 'Updated summary',
       turnCount: 6,
       windowStart: '2026-05-01T10:00:00.000Z',

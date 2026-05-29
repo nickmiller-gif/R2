@@ -67,6 +67,10 @@ Hardening plan for query-time MEG entity resolution, context injection, and retr
 | Static security scan tests (`tests/eigen/eigen-chat-entity-hardening-scan.test.ts`) | Done   |
 | Resolution query budget (`EIGEN_ENTITY_RESOLVE_MAX_HINTS`, default 4, max 8)        | Done   |
 | Resolution timeout fail-open (`EIGEN_ENTITY_RESOLVE_TIMEOUT_MS`, default 4500ms)    | Done   |
+| MEG neighbor load timeout fail-open (`EIGEN_MEG_NEIGHBOR_LOAD_TIMEOUT_MS`)          | Done   |
+| Memory episodes RLS + bounds (service_role writes only)                             | Done   |
+| Memory episode topic key UUID validation                                            | Done   |
+| Consolidate idempotency + ingress bounds                                            | Done   |
 | Normalize explicit scope inside `resolveChatEntityScope`                            | Done   |
 | Widget `fetchMegEntityContextForChat` error logging                                 | Done   |
 | Widget host context: UUID scope + label length cap                                  | Done   |

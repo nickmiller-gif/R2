@@ -476,7 +476,17 @@ Deno.serve(
             sessionId,
             auth.claims.userId,
             body.entity_scope ?? [],
-          ),
+          ).catch((err) => {
+            logError('loadChatMemoryRecallForChat failed', {
+              functionName: 'eigen-chat',
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return {
+              block: '',
+              source: 'none' as const,
+              intro: EIGEN_SESSION_MEMORY_INTRO,
+            };
+          }),
           fetchGovernanceContextForChat(client, {
             oracleRunId: body.oracle_run_id,
             charterDecisionId: body.charter_decision_id,

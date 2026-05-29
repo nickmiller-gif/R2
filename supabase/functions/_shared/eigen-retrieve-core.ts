@@ -37,7 +37,7 @@ export interface EigenRetrieveRequest {
   query: string;
   entity_scope?: string[];
   entity_scope_mode?: EntityScopeMode;
-  /** 1-hop MEG neighbor ids for graph-aware boost; loaded automatically when omitted. */
+  /** 1-hop MEG neighbor ids for graph-aware boost; loaded server-side only (client input ignored). */
   meg_neighbor_scope?: string[];
   policy_scope?: string[];
   site_id?: string;
@@ -615,7 +615,7 @@ async function scoreChunksFromEmbedding(
           : 0;
       const entityAdj = computeGraphAwareEntityBoost(
         entityScopeSet,
-        payload.meg_neighbor_scope ?? [],
+        normalizeEntityScopeIds(payload.meg_neighbor_scope ?? [], 50),
         candidate.entity_ids,
         entityScopeMode,
         readEntityScopeBoost(),

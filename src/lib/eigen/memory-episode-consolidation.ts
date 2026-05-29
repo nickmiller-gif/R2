@@ -5,6 +5,8 @@
 import { sanitizePromptFieldText } from './chat-entity-context.ts';
 
 export const MIN_TURNS_FOR_EPISODE = 4;
+export const MAX_TURNS_PER_EPISODE = 200;
+export const MAX_PAIRS_IN_SUMMARY = 50;
 export const EPISODE_SUMMARY_MAX_CHARS = 2400;
 export const EPISODE_USER_TURN_MAX_CHARS = 280;
 export const EPISODE_ASSISTANT_TURN_MAX_CHARS = 420;
@@ -16,13 +18,7 @@ export interface EpisodeTurnInput {
   createdAt: string;
 }
 
-export function sessionEpisodeTopicKey(sessionId: string): string {
-  return `session:${sessionId.trim()}`;
-}
-
-export function entityEpisodeTopicKey(entityId: string): string {
-  return `entity:${entityId.trim()}`;
-}
+export { entityEpisodeTopicKey, sessionEpisodeTopicKey } from './memory-episode-keys.ts';
 
 export function pairEpisodeTurns(turns: EpisodeTurnInput[]): EpisodeTurnInput[][] {
   const sorted = [...turns].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -46,7 +42,8 @@ export function pairEpisodeTurns(turns: EpisodeTurnInput[]): EpisodeTurnInput[][
 }
 
 export function buildEpisodeSummaryFromTurns(turns: EpisodeTurnInput[]): string {
-  const pairs = pairEpisodeTurns(turns);
+  const cappedTurns = turns.slice(0, MAX_TURNS_PER_EPISODE);
+  const pairs = pairEpisodeTurns(cappedTurns).slice(0, MAX_PAIRS_IN_SUMMARY);
   if (pairs.length === 0) return '';
 
   const lines: string[] = [];

@@ -71,17 +71,24 @@ Hardening plan for query-time MEG entity resolution, context injection, and retr
 | Widget `fetchMegEntityContextForChat` error logging                                 | Done   |
 | Widget host context: UUID scope + label length cap                                  | Done   |
 
+## Intelligence slice (shipped)
+
+| Item                         | Notes                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| Session memory recall        | `chat:last_turn:{sessionId}` injected before retrieval snippets                           |
+| Governance hydration         | `oracle_run_id` → `oracle_whitespace_runs`; `charter_decision_id` → `charter_decisions`   |
+| Cross-encoder rerank on chat | Set `EIGEN_ENABLE_RERANKING=true` (requires Voyage/Cohere keys)                           |
+| Mid-session scope update     | POST `eigen-chat` with `{ "scope_update": true, "session_id": "…", "entity_label": "…" }` |
+
 ## Phase 3 — Backlog
 
-| Item                                                                 | Rationale                                                                  |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Policy-scope intersection with MEG entities                          | Requires MEG↔policy tag mapping contract; members currently share MEG read |
-| Resolution query budget / circuit breaker                            | Shipped via env `EIGEN_ENTITY_RESOLVE_MAX_HINTS` + timeout                 |
-| Mid-session scope update API                                         | Explicit client `entity_label` refresh without new session                 |
-| Oracle memory write-back from chat turns                             | Separate EigenX memory slice                                               |
-| Governance handle hydration (`oracle_run_id`, `charter_decision_id`) | Prompt enrichment, not scope hardening                                     |
-| Rate limit on entity resolution per session                          | Layer on existing chat rate limits if abuse observed                       |
-| `eigen-retrieve` entity_scope UUID validation at DB RPC layer        | Defense in depth beyond parse layer                                        |
+| Item                                                          | Rationale                                                                  |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Policy-scope intersection with MEG entities                   | Requires MEG↔policy tag mapping contract; members currently share MEG read |
+| Oracle memory write-back from chat turns                      | Beyond last-turn recall; episode consolidation (E3)                        |
+| Rate limit on entity resolution per session                   | Layer on existing chat rate limits if abuse observed                       |
+| `eigen-retrieve` entity_scope UUID validation at DB RPC layer | Defense in depth beyond parse layer                                        |
+| Multi-query RRF (E2)                                          | See `docs/r2-next-level-roadmap.md`                                        |
 
 ## Verification checklist
 

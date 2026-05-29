@@ -6,6 +6,7 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { promoteOracleSignalToMemoryEntries } from '../_shared/oracle-signal-memory-promotion.ts';
 
 type ConfidenceBand = 'high' | 'medium' | 'low';
 
@@ -209,6 +210,18 @@ Deno.serve(
       }
 
       const signalId = insert.data.id as string;
+
+      if (entityIds.length > 0) {
+        await promoteOracleSignalToMemoryEntries(client, {
+          signalId,
+          entityIds,
+          score,
+          confidence,
+          reasons: reasons.length > 0 ? reasons : ['Eigen ingest signal_candidate'],
+          tags,
+          scoredAt: new Date().toISOString(),
+        });
+      }
 
       if (sourceDocumentId) {
         const chunkUp = await client

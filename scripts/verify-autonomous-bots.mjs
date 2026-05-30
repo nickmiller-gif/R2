@@ -56,6 +56,8 @@ for (const fn of [
   'autonomous-steward-cycle-cron',
   'autonomous-regent-review',
   'autonomous-regent-review-cron',
+  'autonomous-paralegal-schedule',
+  'autonomous-paralegal-schedule-cron',
   'meg-kb-four-backfill-links',
 ]) {
   if (config.includes(`[functions.${fn}]`)) pass(`config-${fn}`, 'listed');
@@ -105,6 +107,7 @@ const smokes = [
   ['smoke-mesh', 'run-autonomous-revolutionary-mesh.mjs', []],
   ['smoke-scout-centralr2', 'run-autonomous-scout-drivers.mjs', ['--driver', 'centralr2']],
   ['smoke-regent', 'run-autonomous-regent-review.mjs', []],
+  ['smoke-paralegal', 'run-autonomous-paralegal-schedule.mjs', []],
 ];
 
 for (const [id, script, args] of smokes) {

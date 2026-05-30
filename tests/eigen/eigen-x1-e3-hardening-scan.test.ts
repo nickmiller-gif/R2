@@ -67,6 +67,7 @@ describe('X1/E3 hardening static audit', () => {
       join(ROOT, 'supabase/functions/eigen-memory-episodes/index.ts'),
       'utf8',
     );
+    expect(src).toMatch(/hasMemoryEpisodesServiceToken/);
     expect(src).toMatch(/requireIdempotencyKey/);
     expect(src).toMatch(/Service role JWT required for consolidate/);
     expect(src).toMatch(/isValidEpisodeTopicKey/);

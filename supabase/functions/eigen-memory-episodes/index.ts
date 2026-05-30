@@ -1,10 +1,10 @@
 /**
  * Memory episode read + consolidate (E3).
- * Consolidate requires service_role JWT (cron / ops).
+ * Consolidate accepts internal service token (cron) or verified service_role JWT.
  */
 import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
-import { guardAuth } from '../_shared/auth.ts';
+import { extractBearerToken, guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
@@ -15,6 +15,11 @@ import {
   MAX_EPISODE_TOPIC_KEY_CHARS,
   parseBoundedConsolidateInt,
 } from '../../../src/lib/eigen/memory-episode-keys.ts';
+import {
+  extractSupabaseProjectRef,
+  isLegacyServiceRoleJwt,
+  timingSafeEqual,
+} from '../_shared/signal-utils.ts';
 
 const ALLOWED_SCOPES = new Set(['session', 'user', 'workspace']);
 
@@ -24,15 +29,36 @@ function parseEpisodeListLimit(raw: string | null): number {
   return Math.max(1, Math.min(parsed, 100));
 }
 
+/** Cron / ops bearer matching configured service credentials (timing-safe). */
+function hasMemoryEpisodesServiceToken(req: Request): boolean {
+  const bearer = extractBearerToken(req)?.trim() ?? '';
+  if (!bearer) return false;
+
+  const dedicated = Deno.env.get('EIGEN_MEMORY_EPISODES_SERVICE_TOKEN')?.trim();
+  if (dedicated && timingSafeEqual(bearer, dedicated)) return true;
+
+  const injected = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+  if (injected && timingSafeEqual(bearer, injected)) return true;
+
+  return isLegacyServiceRoleJwt(bearer, extractSupabaseProjectRef(Deno.env.get('SUPABASE_URL')));
+}
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') return corsResponse();
 
-    const auth = await guardAuth(req);
-    if (!auth.ok) return auth.response;
+    const trustedServiceCall = hasMemoryEpisodesServiceToken(req);
+    let isServiceRole = trustedServiceCall;
+    let memberUserId: string | undefined;
+
+    if (!trustedServiceCall) {
+      const auth = await guardAuth(req);
+      if (!auth.ok) return auth.response;
+      isServiceRole = auth.claims.role === 'service_role';
+      memberUserId = auth.claims.userId;
+    }
 
     const client = getServiceClient();
-    const isServiceRole = auth.claims.role === 'service_role';
 
     try {
       const url = new URL(req.url);
@@ -40,7 +66,7 @@ Deno.serve(
 
       if (req.method === 'GET') {
         if (!isServiceRole) {
-          const roleCheck = await requireRole(auth.claims.userId, 'member');
+          const roleCheck = await requireRole(memberUserId!, 'member');
           if (!roleCheck.ok) return roleCheck.response;
         }
 
@@ -72,7 +98,7 @@ Deno.serve(
           .order('window_end', { ascending: false })
           .limit(limit);
 
-        if (!isServiceRole) query = query.eq('owner_id', auth.claims.userId);
+        if (!isServiceRole) query = query.eq('owner_id', memberUserId!);
         if (scope) query = query.eq('scope', scope);
         if (topicKey) query = query.eq('topic_key', topicKey);
         if (sessionId) query = query.eq('session_id', sessionId);

@@ -38,6 +38,7 @@ export interface EigenAccessGroupDb {
     groupIds: string[],
     status?: EigenAccessGroupStatus,
   ): Promise<DbEigenAccessGroupRow[]>;
+  getGroupById(groupId: string): Promise<DbEigenAccessGroupRow | null>;
   listMembershipsForUser(userId: string): Promise<DbEigenAccessGroupMemberRow[]>;
   insertGroup(row: {
     slug: string;
@@ -135,6 +136,13 @@ export function createEigenAccessGroupService(db: EigenAccessGroupDb): EigenAcce
       if (!groupId || !userId) {
         throw new Error('group_id and user_id required');
       }
+      const group = await db.getGroupById(groupId);
+      if (!group) {
+        throw new Error('group not found');
+      }
+      if (group.status !== 'active') {
+        throw new Error('cannot modify archived access group');
+      }
       await db.upsertMember({
         groupId,
         userId,
@@ -147,6 +155,13 @@ export function createEigenAccessGroupService(db: EigenAccessGroupDb): EigenAcce
       const userId = input.userId.trim();
       if (!groupId || !userId) {
         throw new Error('group_id and user_id required');
+      }
+      const group = await db.getGroupById(groupId);
+      if (!group) {
+        throw new Error('group not found');
+      }
+      if (group.status !== 'active') {
+        throw new Error('cannot modify archived access group');
       }
       await db.removeMember(groupId, userId);
     },

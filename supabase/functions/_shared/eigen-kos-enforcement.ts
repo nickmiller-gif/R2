@@ -62,10 +62,14 @@ export type EnforceEigenKosCapabilityBundleResult =
       ok: true;
       rulesConfigured: boolean;
       allowedCapabilityTags: string[];
+      /** Set when `audit` was provided and recording succeeded. */
+      policyDecisionId?: string | null;
     }
   | {
       ok: false;
       denial: EigenKosCapabilityDenial;
+      /** Set when `audit` was provided and recording succeeded before denial. */
+      policyDecisionId?: string | null;
     };
 
 /**
@@ -122,30 +126,22 @@ export async function enforceEigenKosCapabilityBundle(
         ),
       );
 
+  let policyDecisionId: string | null = null;
   if (input.audit) {
-    // Fire-and-forget but awaited so we can preserve the evaluation_ms
-    // signal in the row. The recorder swallows its own errors so this
-    // await cannot leak a recording failure into enforcement.
-    // Wrap with a bounded timeout (100ms) so a slow insert cannot block enforcement.
-    try {
-      await Promise.race([
-        recordEigenPolicyBundleDecision(client, {
-          allowed,
-          policyTags: input.policyTags,
-          capabilityTags,
-          callerRoles: input.callerRoles,
-          matchedRuleIds: access.matchedRuleIds,
-          denyReasons,
-          evaluationMs,
-          audit: input.audit,
-          surface: input.surface,
-        }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
-      ]);
-    } catch (_err) {
-      // Swallow audit failures (timeout or other) so enforcement proceeds.
-      // The recorder already logs errors internally; nothing more needed here.
-    }
+    // Await recording so callers can link downstream audit rows (e.g. chat
+    // citations → policy_decision_id). The recorder swallows its own errors
+    // and returns null on failure, so this await cannot break enforcement.
+    policyDecisionId = await recordEigenPolicyBundleDecision(client, {
+      allowed,
+      policyTags: input.policyTags,
+      capabilityTags,
+      callerRoles: input.callerRoles,
+      matchedRuleIds: access.matchedRuleIds,
+      denyReasons,
+      evaluationMs,
+      audit: input.audit,
+      surface: input.surface,
+    });
   }
 
   if (allowed) {
@@ -153,6 +149,7 @@ export async function enforceEigenKosCapabilityBundle(
       ok: true,
       rulesConfigured: true,
       allowedCapabilityTags: access.allowedCapabilityTags,
+      policyDecisionId,
     };
   }
 
@@ -166,6 +163,7 @@ export async function enforceEigenKosCapabilityBundle(
       deniedCapabilityTags: access.deniedCapabilityTags,
       deniedReasonsByCapability: access.deniedReasonsByCapability,
     },
+    policyDecisionId,
   };
 }
 

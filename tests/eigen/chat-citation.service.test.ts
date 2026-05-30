@@ -18,6 +18,13 @@ function makeMockDb(): EigenChatCitationDb & { rows: DbEigenChatCitationRow[] } 
   const rows: DbEigenChatCitationRow[] = [];
   return {
     rows,
+    async deleteForTurn(chatTurnId) {
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        if (rows[i].chat_turn_id === chatTurnId) {
+          rows.splice(i, 1);
+        }
+      }
+    },
     async insertMany(insertRows) {
       const created = insertRows.map((row) => ({
         id: crypto.randomUUID(),
@@ -107,5 +114,40 @@ describe('EigenChatCitationService', () => {
         citations: toPersistCitationInputs(SAMPLE_CITATIONS),
       }),
     ).rejects.toThrow(/chat_turn_id/);
+  });
+
+  it('replaces existing citations for the same turn on retry', async () => {
+    const db = makeMockDb();
+    const svc = createEigenChatCitationService(db);
+    const inputs = toPersistCitationInputs(SAMPLE_CITATIONS);
+
+    const first = await svc.persistForTurn({
+      chatTurnId: TURN_ID,
+      ownerId: OWNER_ID,
+      citations: inputs,
+    });
+    const second = await svc.persistForTurn({
+      chatTurnId: TURN_ID,
+      ownerId: OWNER_ID,
+      citations: inputs,
+    });
+
+    expect(second).toHaveLength(2);
+    expect(db.rows).toHaveLength(2);
+    expect(second.map((row) => row.id)).not.toEqual(first.map((row) => row.id));
+  });
+
+  it('persists policy_decision_id when provided', async () => {
+    const db = makeMockDb();
+    const svc = createEigenChatCitationService(db);
+    const policyDecisionId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+    const persisted = await svc.persistForTurn({
+      chatTurnId: TURN_ID,
+      ownerId: OWNER_ID,
+      policyDecisionId,
+      citations: toPersistCitationInputs(SAMPLE_CITATIONS),
+    });
+    expect(persisted[0].policyDecisionId).toBe(policyDecisionId);
+    expect(db.rows[0].policy_decision_id).toBe(policyDecisionId);
   });
 });

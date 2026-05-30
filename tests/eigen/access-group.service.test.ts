@@ -48,6 +48,9 @@ function makeMockDb(
     async listGroupsByIds(groupIds, status = 'active') {
       return groups.filter((g) => groupIds.includes(g.id) && g.status === status);
     },
+    async getGroupById(groupId) {
+      return groups.find((g) => g.id === groupId) ?? null;
+    },
     async listMembershipsForUser(userId) {
       return members.filter((m) => m.user_id === userId);
     },
@@ -163,5 +166,12 @@ describe('EigenAccessGroupService', () => {
     const svc = createEigenAccessGroupService(db);
     await svc.archiveGroup(GROUP_A);
     expect(db.groups[0].status).toBe('archived');
+  });
+
+  it('rejects add/remove member on archived groups', async () => {
+    const db = makeMockDb({ groups: [baseGroup({ status: 'archived' })] });
+    const svc = createEigenAccessGroupService(db);
+    await expect(svc.addMember({ groupId: GROUP_A, userId: USER })).rejects.toThrow(/archived/);
+    await expect(svc.removeMember({ groupId: GROUP_A, userId: USER })).rejects.toThrow(/archived/);
   });
 });

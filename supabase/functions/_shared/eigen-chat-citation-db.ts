@@ -6,6 +6,14 @@ import type {
 
 export function createEigenChatCitationDb(client: SupabaseClient): EigenChatCitationDb {
   return {
+    async deleteForTurn(chatTurnId) {
+      const { error } = await client
+        .from('eigen_chat_citations')
+        .delete()
+        .eq('chat_turn_id', chatTurnId);
+      if (error) throw new Error(error.message);
+    },
+
     async insertMany(rows) {
       const { data, error } = await client
         .from('eigen_chat_citations')

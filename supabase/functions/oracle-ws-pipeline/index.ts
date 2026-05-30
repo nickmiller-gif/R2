@@ -650,18 +650,21 @@ async function enqueueGraphExtractionJob(
   serviceClient: ReturnType<typeof getServiceClient>,
   run: Record<string, unknown>,
 ) {
+  // oracle_graph_extraction_jobs only has (run_id, status, priority, metadata,
+  // ...); trigger/domain/target_entities are not columns, so carry them inside
+  // metadata rather than as top-level columns (which raised a schema error).
   const payload = {
     run_id: run.id as string,
     status: 'pending',
     priority: 50,
-    trigger: 'pipeline_execute',
-    domain: String(run.domain ?? ''),
-    target_entities: Array.isArray(run.target_entities)
-      ? (run.target_entities as unknown[]).map((value) => String(value))
-      : [],
     metadata: {
       queued_by: 'oracle-ws-pipeline',
       queued_at: new Date().toISOString(),
+      trigger: 'pipeline_execute',
+      domain: String(run.domain ?? ''),
+      target_entities: Array.isArray(run.target_entities)
+        ? (run.target_entities as unknown[]).map((value) => String(value))
+        : [],
     },
   };
   const { error } = await serviceClient
@@ -759,11 +762,12 @@ Deno.serve(
 
         // ── Create a new run ────────────────────────────────────────
         if (action === 'create') {
+          // targetEntities and evidenceSourcesAllowed are arrays; validateBody's
+          // 'object' type explicitly rejects arrays, so they are validated
+          // manually below via Array.isArray rather than declared here.
           const body = await validateBody<CreateRunRequest>(req, [
             { name: 'domain', type: 'string' },
-            { name: 'targetEntities', type: 'object' },
             { name: 'constraints', type: 'object' },
-            { name: 'evidenceSourcesAllowed', type: 'object' },
             { name: 'riskLevel', type: 'string' },
             { name: 'timeHorizon', type: 'string', required: false },
             { name: 'runLabel', type: 'string', required: false },

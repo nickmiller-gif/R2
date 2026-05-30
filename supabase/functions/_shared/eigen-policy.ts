@@ -7,6 +7,20 @@ export function policyTagEigenxUser(userId: string): string {
   return `eigenx:user:${userId}`;
 }
 
+/** Tag member uploads so retrieval scoped to `eigenx:user:<id>` includes their material. */
+export function applyPersonalUploadPolicyTags(
+  policyTags: string[],
+  ownerUserId: string,
+  sourceSystem: string,
+): string[] {
+  const lower = sourceSystem.toLowerCase();
+  const isPersonalUpload =
+    lower.includes('upload') || lower.includes('manual') || lower.includes('autonomous');
+  if (!isPersonalUpload || ownerUserId.trim().length === 0) return policyTags;
+  const personal = policyTagEigenxUser(ownerUserId);
+  return policyTags.includes(personal) ? policyTags : [...policyTags, personal];
+}
+
 export type EigenCorpusTier = 'public' | 'eigenx';
 
 /**

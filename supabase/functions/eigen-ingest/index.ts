@@ -11,6 +11,7 @@ import { extractDocumentText } from '../_shared/extract-document.ts';
 import {
   inferCorpusTier,
   normalizeCorpusPolicyTags,
+  applyPersonalUploadPolicyTags,
   POLICY_TAG_RAY_VOICE,
 } from '../_shared/eigen-policy.ts';
 import { logError } from '../_shared/log.ts';
@@ -118,21 +119,29 @@ function readMaxBinaryBytes(): number {
 /** Stable domain for document rows so eigen-oracle-outbox-drain can anchor signals on public ingest. */
 const EIGEN_DOCUMENT_ASSET_DOMAIN = 'eigen_ingest';
 
+function resolveOwnerEntityId(entityIds: string[]): string | undefined {
+  const first = entityIds.find((id) => id.trim().length > 0);
+  return first?.trim();
+}
+
 async function ensureEigenDocumentAsset(
   client: SupabaseClient,
-  params: { documentId: string; title: string; sourceSystem: string },
+  params: { documentId: string; title: string; sourceSystem: string; ownerEntityId?: string },
 ): Promise<void> {
   const label = params.title.trim().slice(0, 500) || params.sourceSystem;
-  const { error } = await client.from('asset_registry').upsert(
-    {
-      kind: 'document',
-      ref_id: params.documentId,
-      domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
-      label,
-      metadata: { source_system: params.sourceSystem },
-    },
-    { onConflict: 'kind,ref_id,domain' },
-  );
+  const row: Record<string, unknown> = {
+    kind: 'document',
+    ref_id: params.documentId,
+    domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
+    label,
+    metadata: { source_system: params.sourceSystem },
+  };
+  if (params.ownerEntityId) {
+    row.owner_entity_id = params.ownerEntityId;
+  }
+  const { error } = await client
+    .from('asset_registry')
+    .upsert(row, { onConflict: 'kind,ref_id,domain' });
   if (error) {
     logError('asset_registry upsert failed', {
       functionName: 'eigen-ingest',
@@ -444,7 +453,12 @@ Deno.serve(
         );
       }
       const sourceSystemLower = requestBody.source_system.toLowerCase();
-      const policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+      let policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+      policyTags = applyPersonalUploadPolicyTags(
+        policyTags,
+        ownerUserId,
+        requestBody.source_system,
+      );
       if (
         sourceSystemLower.includes('upload') ||
         sourceSystemLower.includes('manual') ||
@@ -604,6 +618,7 @@ Deno.serve(
             documentId: existingDoc.id as string,
             title: requestBody.document.title,
             sourceSystem: requestBody.source_system,
+            ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
           });
           return jsonResponse({
             document_id: existingDoc.id,
@@ -682,6 +697,7 @@ Deno.serve(
         documentId,
         title: requestBody.document.title,
         sourceSystem: requestBody.source_system,
+        ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
       });
 
       const deleteChunks = await client

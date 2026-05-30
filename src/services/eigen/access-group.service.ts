@@ -171,6 +171,13 @@ export function createEigenAccessGroupService(db: EigenAccessGroupDb): EigenAcce
       if (!trimmed) {
         throw new Error('group_id required');
       }
+      const group = await db.getGroupById(trimmed);
+      if (!group) {
+        throw new Error('group not found');
+      }
+      if (group.status === 'archived') {
+        return;
+      }
       await db.archiveGroup(trimmed, nowUtc().toISOString());
     },
   };

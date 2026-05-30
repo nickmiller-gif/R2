@@ -5,6 +5,7 @@ import { requireRole } from '../_shared/rbac.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { createEigenAccessGroupService } from '../../../src/services/eigen/access-group.service.ts';
 import { createEigenAccessGroupDb } from '../_shared/eigen-access-group-db.ts';
+import { mapEigenAccessGroupHttpStatus } from '../_shared/eigen-access-group-errors.ts';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -30,7 +31,7 @@ Deno.serve(
         return jsonResponse({ groups });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        return errorResponse(message, 400);
+        return errorResponse(message, mapEigenAccessGroupHttpStatus(message));
       }
     }
 
@@ -83,7 +84,7 @@ Deno.serve(
         return errorResponse('Unknown action', 400);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        return errorResponse(message, 400);
+        return errorResponse(message, mapEigenAccessGroupHttpStatus(message));
       }
     }
 

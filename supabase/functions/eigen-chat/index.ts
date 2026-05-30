@@ -684,14 +684,17 @@ Deno.serve(
               }
 
               let responseCitations = citations;
+              let citationsPersisted = false;
               if (persistResult.ok && persistResult.assistantTurnId) {
-                responseCitations = await persistChatCitationsForTurn(client, {
+                const citationPersist = await persistChatCitationsForTurn(client, {
                   assistantTurnId: persistResult.assistantTurnId,
                   ownerId: auth.claims.userId,
                   retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
                   policyDecisionId: kos.policyDecisionId ?? null,
                   citations,
                 });
+                responseCitations = citationPersist.citations;
+                citationsPersisted = citationPersist.persisted;
               }
 
               send({
@@ -702,6 +705,8 @@ Deno.serve(
                 retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
                 memory_updated: true,
                 session_id: sessionId,
+                turn_persisted: persistResult.ok,
+                citations_persisted: citationsPersisted,
                 llm_provider: resolvedLlmProvider,
                 llm_model: resolvedLlmModel,
                 llm_fallback_used: resolvedLlmFallbackUsed,
@@ -829,14 +834,17 @@ Deno.serve(
       }
 
       let responseCitations = citations;
+      let citationsPersisted = false;
       if (persistNonStream.ok && persistNonStream.assistantTurnId) {
-        responseCitations = await persistChatCitationsForTurn(client, {
+        const citationPersist = await persistChatCitationsForTurn(client, {
           assistantTurnId: persistNonStream.assistantTurnId,
           ownerId: auth.claims.userId,
           retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
           policyDecisionId: kos.policyDecisionId ?? null,
           citations,
         });
+        responseCitations = citationPersist.citations;
+        citationsPersisted = citationPersist.persisted;
       }
 
       return jsonResponse({
@@ -846,6 +854,8 @@ Deno.serve(
         retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
         memory_updated: true,
         session_id: sessionId,
+        turn_persisted: persistNonStream.ok,
+        citations_persisted: citationsPersisted,
         llm_provider: llmProvider,
         llm_model: llmModel,
         llm_fallback_used: llmFallbackUsed,

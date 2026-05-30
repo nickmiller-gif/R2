@@ -11,6 +11,8 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     expect(src).toMatch(/requireRole\s*\(/);
     expect(src).toMatch(/requireIdempotencyKey\s*\(/);
     expect(src).toMatch(/idempotencyKey:\s*meta\.idempotencyKey/);
+    expect(src).toMatch(/citations_persisted/);
+    expect(src).toMatch(/turn_persisted/);
     expect(src).toMatch(/normalizeEntityScopeFromRequest/);
     expect(src).toMatch(/sanitizeEntityLabel/);
     expect(src).toMatch(/persistSessionEntityScope/);
@@ -26,6 +28,9 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     const src = readFileSync(join(ROOT, 'supabase/functions/eigen-widget-chat/index.ts'), 'utf8');
     expect(src).toMatch(/assertNoClientPolicyScopeOverride/);
     expect(src).toMatch(/verifyWidgetSessionToken/);
+    expect(src).toMatch(/insertConversationTurn/);
+    expect(src).toMatch(/conversation_turn_id/);
+    expect(src).toMatch(/stream is not supported on widget chat/);
     expect(src).toMatch(/normalizeEntityScopeFromRequest/);
     expect(src).toMatch(/claims\.mode === 'eigenx'/);
     expect(src).toMatch(/resolveChatEntityScope/);

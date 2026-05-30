@@ -59,6 +59,7 @@ import {
 import { fetchOracleSignalsForEntityScope } from '../_shared/chat-oracle-signals.ts';
 import { filterVisibleMegEntityIds } from '../_shared/eigen-access-control.ts';
 import type { CharterRole } from '../_shared/rbac.ts';
+import { buildRetrievalPlan, insertConversationTurn } from '../_shared/conversation-turn.ts';
 
 function readRetrievalQualityFlags() {
   return resolveEigenRetrievalQualityFlags({
@@ -273,6 +274,9 @@ Deno.serve(
 
     try {
       const body = parseRequest(await req.json());
+      if (body.stream === true) {
+        return reflectedErrorResponse(rawOrigin, 'stream is not supported on widget chat', 400);
+      }
       const claims = await verifyWidgetSessionToken(body.widget_token);
 
       const origin = (rawOrigin ?? '').replace(/\/+$/, '').toLowerCase();
@@ -384,6 +388,8 @@ Deno.serve(
           ? readRetrievalQualityFlags()
           : { multiQuery: false, rerank: false };
 
+      const turnStartedAt = Date.now();
+
       const retrieveResult = await executeEigenRetrieve(client, {
         query: body.message,
         entity_scope: effectiveEntityScope,
@@ -459,10 +465,31 @@ Deno.serve(
         body.llm_model,
         confidence.overall,
       );
+      const latencyMs = Math.max(0, Date.now() - turnStartedAt);
+      const retrievalPlan = buildRetrievalPlan(
+        effectivePolicyScope,
+        retrieveResult.body.chunks,
+        retrieveResult.body.retrieval_run_id,
+      );
+      const conversationTurnId = await insertConversationTurn(client, {
+        siteId: claims.site_id,
+        mode: claims.mode,
+        userId: claims.mode === 'eigenx' ? (claims.user_id ?? null) : null,
+        question: body.message,
+        answer: synthesis.text,
+        retrievalRunId: retrieveResult.body.retrieval_run_id,
+        effectivePolicyScope,
+        citations,
+        confidence,
+        retrievalPlan,
+        latencyMs,
+        idempotencyKey: meta.idempotencyKey,
+      });
       return reflectedJsonResponse(rawOrigin, {
         response: synthesis.text,
         citations,
         confidence,
+        conversation_turn_id: conversationTurnId,
         entity_context_count: entityContext.length,
         entity_scope_applied: claims.mode === 'eigenx' ? effectiveEntityScope : [],
         entity_scope_mode: claims.mode === 'eigenx' ? entityScopeMode : null,

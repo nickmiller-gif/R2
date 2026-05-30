@@ -3,16 +3,8 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
-import { policyTagEigenxGroup } from '../_shared/eigen-access-groups.ts';
-
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
+import { createEigenAccessGroupService } from '../../../src/services/eigen/access-group.service.ts';
+import { createEigenAccessGroupDb } from '../_shared/eigen-access-group-db.ts';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -22,45 +14,24 @@ Deno.serve(
     if (!auth.ok) return auth.response;
 
     const client = getServiceClient();
+    const accessGroups = createEigenAccessGroupService(createEigenAccessGroupDb(client));
 
     if (req.method === 'GET') {
       const roleCheck = await requireRole(auth.claims.userId, 'member');
       if (!roleCheck.ok) return roleCheck.response;
 
-      const isAdmin = roleCheck.roles.includes('admin');
+      try {
+        if (roleCheck.roles.includes('admin')) {
+          const groups = await accessGroups.listAllForAdmin();
+          return jsonResponse({ groups });
+        }
 
-      if (isAdmin) {
-        const { data, error } = await client
-          .from('eigen_access_groups')
-          .select('id, slug, label, status, metadata, created_at, updated_at')
-          .order('label');
-        if (error) return errorResponse(error.message, 400);
-        return jsonResponse({ groups: data ?? [] });
+        const groups = await accessGroups.listForMember(auth.claims.userId);
+        return jsonResponse({ groups });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return errorResponse(message, 400);
       }
-
-      const { data: memberships, error: memberError } = await client
-        .from('eigen_access_group_members')
-        .select('group_id, role, joined_at')
-        .eq('user_id', auth.claims.userId);
-      if (memberError) return errorResponse(memberError.message, 400);
-
-      const groupIds = (memberships ?? []).map((m) => m.group_id as string);
-      if (groupIds.length === 0) return jsonResponse({ groups: [] });
-
-      const { data: groups, error: groupError } = await client
-        .from('eigen_access_groups')
-        .select('id, slug, label, status, metadata, created_at, updated_at')
-        .in('id', groupIds)
-        .eq('status', 'active');
-      if (groupError) return errorResponse(groupError.message, 400);
-
-      return jsonResponse({
-        groups: (groups ?? []).map((g) => ({
-          ...g,
-          policy_tag: policyTagEigenxGroup(String(g.id)),
-          membership: memberships?.find((m) => m.group_id === g.id) ?? null,
-        })),
-      });
     }
 
     if (req.method === 'POST') {
@@ -76,68 +47,44 @@ Deno.serve(
 
       const action = typeof body.action === 'string' ? body.action : '';
 
-      if (action === 'create_group') {
-        const label = typeof body.label === 'string' ? body.label.trim() : '';
-        const slugRaw = typeof body.slug === 'string' ? body.slug : label;
-        const slug = slugify(slugRaw);
-        if (!label || !slug) return errorResponse('label (and slug) required', 400);
+      try {
+        if (action === 'create_group') {
+          const label = typeof body.label === 'string' ? body.label : '';
+          const slug = typeof body.slug === 'string' ? body.slug : undefined;
+          const metadata =
+            body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+              ? (body.metadata as Record<string, unknown>)
+              : undefined;
 
-        const { data, error } = await client
-          .from('eigen_access_groups')
-          .insert([{ slug, label, metadata: body.metadata ?? {} }])
-          .select('id, slug, label, status, created_at')
-          .single();
-        if (error) return errorResponse(error.message, 400);
-        return jsonResponse(
-          {
-            ...data,
-            policy_tag: policyTagEigenxGroup(String(data.id)),
-          },
-          201,
-        );
+          const group = await accessGroups.createGroup({ label, slug, metadata });
+          return jsonResponse(group, 201);
+        }
+
+        if (action === 'add_member') {
+          const groupId = typeof body.group_id === 'string' ? body.group_id : '';
+          const userId = typeof body.user_id === 'string' ? body.user_id : '';
+          await accessGroups.addMember({ groupId, userId });
+          return jsonResponse({ ok: true, group_id: groupId.trim(), user_id: userId.trim() });
+        }
+
+        if (action === 'remove_member') {
+          const groupId = typeof body.group_id === 'string' ? body.group_id : '';
+          const userId = typeof body.user_id === 'string' ? body.user_id : '';
+          await accessGroups.removeMember({ groupId, userId });
+          return jsonResponse({ ok: true });
+        }
+
+        if (action === 'archive_group') {
+          const groupId = typeof body.group_id === 'string' ? body.group_id : '';
+          await accessGroups.archiveGroup(groupId);
+          return jsonResponse({ ok: true, group_id: groupId.trim(), status: 'archived' });
+        }
+
+        return errorResponse('Unknown action', 400);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return errorResponse(message, 400);
       }
-
-      if (action === 'add_member') {
-        const groupId = typeof body.group_id === 'string' ? body.group_id.trim() : '';
-        const userId = typeof body.user_id === 'string' ? body.user_id.trim() : '';
-        if (!groupId || !userId) return errorResponse('group_id and user_id required', 400);
-
-        const { error } = await client
-          .from('eigen_access_group_members')
-          .upsert([{ group_id: groupId, user_id: userId, role: 'member' }], {
-            onConflict: 'group_id,user_id',
-          });
-        if (error) return errorResponse(error.message, 400);
-        return jsonResponse({ ok: true, group_id: groupId, user_id: userId });
-      }
-
-      if (action === 'remove_member') {
-        const groupId = typeof body.group_id === 'string' ? body.group_id.trim() : '';
-        const userId = typeof body.user_id === 'string' ? body.user_id.trim() : '';
-        if (!groupId || !userId) return errorResponse('group_id and user_id required', 400);
-
-        const { error } = await client
-          .from('eigen_access_group_members')
-          .delete()
-          .eq('group_id', groupId)
-          .eq('user_id', userId);
-        if (error) return errorResponse(error.message, 400);
-        return jsonResponse({ ok: true });
-      }
-
-      if (action === 'archive_group') {
-        const groupId = typeof body.group_id === 'string' ? body.group_id.trim() : '';
-        if (!groupId) return errorResponse('group_id required', 400);
-
-        const { error } = await client
-          .from('eigen_access_groups')
-          .update({ status: 'archived', updated_at: new Date().toISOString() })
-          .eq('id', groupId);
-        if (error) return errorResponse(error.message, 400);
-        return jsonResponse({ ok: true, group_id: groupId, status: 'archived' });
-      }
-
-      return errorResponse('Unknown action', 400);
     }
 
     return errorResponse('Method not allowed', 405);

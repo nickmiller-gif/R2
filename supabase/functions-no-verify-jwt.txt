@@ -2,6 +2,8 @@ autonomous-capture-ingest
 autonomous-information-audit
 autonomous-information-audit-cron
 autonomous-news-rss-cron
+autonomous-regent-review
+autonomous-regent-review-cron
 autonomous-revolutionary-mesh
 autonomous-steward-cycle
 autonomous-steward-cycle-cron

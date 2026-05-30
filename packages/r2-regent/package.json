@@ -1,0 +1,11 @@
+{
+  "name": "@r2/regent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "REGENT — pure executive-review faculties (Capital, Strategy, Commercial, Operations, Asset Review). Deterministic, dependency-free, advisory-only. Consumed by the autonomous-regent-review Edge function.",
+  "type": "module",
+  "exports": {
+    "./review": "./src/review.ts"
+  },
+  "sideEffects": false
+}

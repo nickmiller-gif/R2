@@ -674,6 +674,7 @@ Deno.serve(
                 llmFallbackUsed: resolvedLlmFallbackUsed,
                 llmCriticUsed: resolvedLlmCriticUsed,
                 latencyMs: turnLatencyMs,
+                idempotencyKey: meta.idempotencyKey,
               });
               if (!persistResult.ok) {
                 logError('persistTurnPair failed', {
@@ -818,6 +819,7 @@ Deno.serve(
         llmFallbackUsed: !hasAnswerContext ? false : llmFallbackUsed,
         llmCriticUsed: !hasAnswerContext ? false : llmCriticUsed,
         latencyMs: nonStreamTurnLatencyMs,
+        idempotencyKey: meta.idempotencyKey,
       });
       if (!persistNonStream.ok) {
         logError('persistTurnPair failed', {

@@ -10,6 +10,7 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     expect(src).toMatch(/guardAuth\s*\(/);
     expect(src).toMatch(/requireRole\s*\(/);
     expect(src).toMatch(/requireIdempotencyKey\s*\(/);
+    expect(src).toMatch(/idempotencyKey:\s*meta\.idempotencyKey/);
     expect(src).toMatch(/normalizeEntityScopeFromRequest/);
     expect(src).toMatch(/sanitizeEntityLabel/);
     expect(src).toMatch(/persistSessionEntityScope/);

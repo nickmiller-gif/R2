@@ -64,6 +64,15 @@ export {
 } from './site-registry.service.js';
 
 export {
+  createEigenAccessGroupService,
+  slugifyAccessGroupSlug,
+  type EigenAccessGroupService,
+  type EigenAccessGroupDb,
+  type DbEigenAccessGroupRow,
+  type DbEigenAccessGroupMemberRow,
+} from './access-group.service.js';
+
+export {
   createEigenChatCitationService,
   toPersistCitationInputs,
   type EigenChatCitationService,

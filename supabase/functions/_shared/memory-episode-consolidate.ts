@@ -6,11 +6,15 @@ import {
   buildEpisodeSummaryFromTurns,
   entityEpisodeTopicKey,
   episodeWindowFromTurns,
+  MAX_TURNS_PER_EPISODE,
   sessionEpisodeTopicKey,
   shouldConsolidateSessionTurns,
   type EpisodeTurnInput,
 } from '../../../src/lib/eigen/memory-episode-consolidation.ts';
-import { normalizeEntityScopeIds } from '../../../src/lib/eigen/chat-entity-context.ts';
+import {
+  isValidMegEntityId,
+  normalizeEntityScopeIds,
+} from '../../../src/lib/eigen/chat-entity-context.ts';
 
 export interface ConsolidateMemoryEpisodesOptions {
   lookbackDays?: number;
@@ -39,6 +43,7 @@ interface TurnRow {
 
 const DEFAULT_LOOKBACK_DAYS = 14;
 const DEFAULT_MAX_SESSIONS = 200;
+const MAX_ENTITY_EPISODES_PER_SESSION = 20;
 
 export async function consolidateMemoryEpisodes(
   client: SupabaseClient,
@@ -63,13 +68,25 @@ export async function consolidateMemoryEpisodes(
   let skippedSessions = 0;
 
   for (const session of (sessions ?? []) as SessionRow[]) {
+    if (!isValidMegEntityId(session.id) || !isValidMegEntityId(session.owner_id)) {
+      skippedSessions += 1;
+      continue;
+    }
+
+    const topicKey = sessionEpisodeTopicKey(session.id);
+    if (!topicKey) {
+      skippedSessions += 1;
+      continue;
+    }
+
     const { data: turns, error: turnsError } = await client
       .from('eigen_chat_turns')
       .select('id,role,content,created_at')
       .eq('session_id', session.id)
       .eq('owner_id', session.owner_id)
       .order('created_at', { ascending: true })
-      .order('turn_index', { ascending: true });
+      .order('turn_index', { ascending: true })
+      .limit(MAX_TURNS_PER_EPISODE);
 
     if (turnsError) {
       skippedSessions += 1;
@@ -110,10 +127,10 @@ export async function consolidateMemoryEpisodes(
       scope: 'session',
       session_id: session.id,
       entity_ids: entityScope,
-      topic_key: sessionEpisodeTopicKey(session.id),
+      topic_key: topicKey,
       summary,
       turn_count: episodeTurns.length,
-      source_turn_ids: episodeTurns.map((turn) => turn.id),
+      source_turn_ids: episodeTurns.map((turn) => turn.id).slice(0, MAX_TURNS_PER_EPISODE),
       source_entry_ids: [],
       window_start: window.windowStart,
       window_end: window.windowEnd,
@@ -130,11 +147,13 @@ export async function consolidateMemoryEpisodes(
     }
     episodesUpserted += 1;
 
-    for (const entityId of entityScope) {
+    for (const entityId of entityScope.slice(0, MAX_ENTITY_EPISODES_PER_SESSION)) {
+      const entityTopic = entityEpisodeTopicKey(entityId);
+      if (!entityTopic) continue;
       const entityPayload = {
         ...sessionPayload,
         entity_ids: [entityId],
-        topic_key: entityEpisodeTopicKey(entityId),
+        topic_key: entityTopic,
       };
       const { error: entityUpsertError } = await client
         .from('memory_episodes')

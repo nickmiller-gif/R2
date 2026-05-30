@@ -146,6 +146,9 @@ MEG 1-hop neighbor retrieval boost (X1; boost mode only):
 EIGEN_MEG_NEIGHBOR_BOOST=0.035
 # Disable graph neighbor boost:
 # EIGEN_MEG_NEIGHBOR_BOOST=0
+# Loader bounds (fail-open on timeout; max 5000 ms / 1000 edges):
+EIGEN_MEG_NEIGHBOR_LOAD_TIMEOUT_MS=1200
+EIGEN_MEG_NEIGHBOR_EDGE_LIMIT=500
 ```
 
 Memory episode consolidation cron (E3):

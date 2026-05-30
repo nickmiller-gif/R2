@@ -6,8 +6,23 @@ import { corsResponse, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
+import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { consolidateMemoryEpisodes } from '../_shared/memory-episode-consolidate.ts';
+import { isValidMegEntityId } from '../../../src/lib/eigen/chat-entity-context.ts';
+import {
+  isValidEpisodeTopicKey,
+  MAX_EPISODE_TOPIC_KEY_CHARS,
+  parseBoundedConsolidateInt,
+} from '../../../src/lib/eigen/memory-episode-keys.ts';
+
+const ALLOWED_SCOPES = new Set(['session', 'user', 'workspace']);
+
+function parseEpisodeListLimit(raw: string | null): number {
+  const parsed = Number.parseInt(raw ?? '20', 10);
+  if (!Number.isFinite(parsed)) return 20;
+  return Math.max(1, Math.min(parsed, 100));
+}
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -32,7 +47,22 @@ Deno.serve(
         const scope = url.searchParams.get('scope');
         const topicKey = url.searchParams.get('topic_key');
         const sessionId = url.searchParams.get('session_id');
-        const limit = Number.parseInt(url.searchParams.get('limit') ?? '20', 10);
+        const limit = parseEpisodeListLimit(url.searchParams.get('limit'));
+
+        if (scope && !ALLOWED_SCOPES.has(scope)) {
+          return errorResponse('Invalid scope filter', 400);
+        }
+        if (topicKey) {
+          if (topicKey.length > MAX_EPISODE_TOPIC_KEY_CHARS) {
+            return errorResponse('topic_key too long', 400);
+          }
+          if (!isValidEpisodeTopicKey(topicKey)) {
+            return errorResponse('Invalid topic_key format', 400);
+          }
+        }
+        if (sessionId && !isValidMegEntityId(sessionId)) {
+          return errorResponse('Invalid session_id', 400);
+        }
 
         let query = client
           .from('memory_episodes')
@@ -40,7 +70,7 @@ Deno.serve(
             'created_at,entity_ids,id,owner_id,scope,session_id,source_entry_ids,source_turn_ids,summary,topic_key,turn_count,updated_at,window_end,window_start',
           )
           .order('window_end', { ascending: false })
-          .limit(Math.max(1, Math.min(limit, 100)));
+          .limit(limit);
 
         if (!isServiceRole) query = query.eq('owner_id', auth.claims.userId);
         if (scope) query = query.eq('scope', scope);
@@ -57,14 +87,17 @@ Deno.serve(
         return errorResponse('Service role JWT required for consolidate', 403);
       }
 
+      const idemError = requireIdempotencyKey(req);
+      if (idemError) return idemError;
+
       const body = await req.json().catch(() => ({}));
       const resolvedAction =
         action ?? (typeof body.action === 'string' ? body.action : 'consolidate');
 
       if (resolvedAction === 'consolidate') {
         const result = await consolidateMemoryEpisodes(client, {
-          lookbackDays: typeof body.lookback_days === 'number' ? body.lookback_days : undefined,
-          maxSessions: typeof body.max_sessions === 'number' ? body.max_sessions : undefined,
+          lookbackDays: parseBoundedConsolidateInt(body.lookback_days, 14, 1, 90),
+          maxSessions: parseBoundedConsolidateInt(body.max_sessions, 200, 1, 1000),
         });
 
         return jsonResponse({ action: 'consolidate', ...result }, 202);

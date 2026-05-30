@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExecutiveTeam,
   buildRegentReview,
+  citeFramework,
   computeOffer,
   mergeByDomain,
   reviewAgentFleet,
@@ -15,6 +16,7 @@ import {
   type RegentDecision,
   type WorldState,
 } from '../packages/r2-regent/src/review.ts';
+import { buildParalegalSchedule } from '../packages/r2-regent/src/paralegal.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -306,8 +308,59 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(team.tensions[0]!.resolution.length).toBeGreaterThan(0);
   });
 
+  it('grounds frameworks in real CMU corpus citations', () => {
+    const cite = citeFramework(
+      'Economic profit / EVA (Strategy, Performance Measurement & Corporate Governance)',
+    );
+    expect(cite.length).toBeGreaterThanOrEqual(1);
+    expect(cite[0]!.course).toContain('Strategy');
+    const team = buildExecutiveTeam(fixture(), 5);
+    // Every agenda item carries citations; the acting exec has a corpus basis.
+    for (const item of team.agenda) {
+      expect(Array.isArray(item.citations)).toBe(true);
+    }
+    const gc = team.roles.find((r) => r.role === 'General Counsel')!;
+    expect(Array.isArray(gc.corpus_basis)).toBe(true);
+  });
+
+  it('Paralegal builds a dated schedule with statuses', () => {
+    const state: WorldState = {
+      ...fixture(),
+      as_of: '2026-05-30',
+      treasury: {
+        cash_on_hand: 215000,
+        committed_inflows: [
+          { source: 'Past-due grant tranche', amount: 50000, expected_date: '2026-05-01' },
+          { source: 'Future grant tranche', amount: 150000, expected_date: '2026-08-15' },
+        ],
+      },
+      repo_assets: [
+        {
+          repo: 'formahealth',
+          domain_key: 'health_wellness',
+          last_commit_days: 5,
+          tracked_env_files: [],
+        },
+      ],
+    };
+    const sched = buildParalegalSchedule(state, '2026-05-30');
+    expect(sched.items.length).toBeGreaterThan(3);
+    for (const it of sched.items) {
+      expect(it.due_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(['overdue', 'due_soon', 'upcoming']).toContain(it.status);
+      expect(it.owner.length).toBeGreaterThan(0);
+    }
+    // The past-due inflow is overdue; a regulatory review for a regulated domain exists.
+    expect(sched.overdue).toBeGreaterThanOrEqual(1);
+    expect(sched.items.some((i) => i.category === 'regulatory')).toBe(true);
+    expect(sched.items.some((i) => i.owner === 'General Counsel')).toBe(true);
+    // Sorted by urgency (overdue first).
+    expect(sched.items[0]!.days_until).toBeLessThanOrEqual(
+      sched.items[sched.items.length - 1]!.days_until,
+    );
+  });
+
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {
-    const src = readFileSync(join(HERE, '../packages/r2-regent/src/review.ts'), 'utf8');
     const forbidden = [
       'stripe',
       'paypal',
@@ -319,9 +372,12 @@ describe('REGENT — agenda, merge, asset review', () => {
       'send_payment',
       'wire_transfer',
     ];
-    const importLines = src.split('\n').filter((l) => /^\s*import\s/.test(l));
-    for (const line of importLines) {
-      for (const bad of forbidden) expect(line.toLowerCase()).not.toContain(bad);
+    for (const file of ['review.ts', 'corpus.ts', 'paralegal.ts']) {
+      const src = readFileSync(join(HERE, `../packages/r2-regent/src/${file}`), 'utf8');
+      const importLines = src.split('\n').filter((l) => /^\s*import\s/.test(l));
+      for (const line of importLines) {
+        for (const bad of forbidden) expect(line.toLowerCase()).not.toContain(bad);
+      }
     }
   });
 });

@@ -14,6 +14,10 @@
  *      counter-case.
  */
 
+import { citeFramework, corpusBasis, type Citation } from './corpus.ts';
+export type { Citation } from './corpus.ts';
+export { citeFramework, corpusBasis } from './corpus.ts';
+
 export type Confidence = 'high' | 'medium' | 'low';
 
 export interface RegentDecision {
@@ -28,6 +32,8 @@ export interface RegentDecision {
   tradeoff: string;
   counter_case: string;
   confidence: Confidence;
+  /** Verifiable CMU-corpus sources backing the framework cited above. */
+  citations?: Citation[];
   corroborated?: boolean;
   corroboration?: Array<{
     faculty: string;
@@ -659,7 +665,8 @@ export function mergeByDomain(cands: RegentDecision[]): RegentDecision[] {
   return [...out, ...singles];
 }
 
-/** Every faculty's raw candidate decisions (pre-merge), in deterministic order. */
+/** Every faculty's raw candidate decisions (pre-merge), in deterministic order.
+ * Each decision is grounded with the CMU-corpus sources behind its framework. */
 export function collectCandidates(state: WorldState, scored: ScoredDomain[]): RegentDecision[] {
   const tre = treasuryView(state, scored);
   const cands: Array<RegentDecision | null> = [
@@ -677,7 +684,9 @@ export function collectCandidates(state: WorldState, scored: ScoredDomain[]): Re
     reviewRegulatoryFirstPass(state),
     reviewAgentFleet(state),
   ];
-  return cands.filter((c): c is RegentDecision => !!c);
+  return cands
+    .filter((c): c is RegentDecision => !!c)
+    .map((c) => ({ ...c, citations: citeFramework(c.framework) }));
 }
 
 export function buildRegentReview(state: WorldState, topN = 5): RegentReview {
@@ -735,6 +744,8 @@ export interface ExecutiveMemo {
   headline: string;
   stance: string;
   decisions: RegentDecision[];
+  /** The CMU courses this executive's reasoning draws on this cycle. */
+  corpus_basis: string[];
 }
 
 export interface Tension {
@@ -787,6 +798,7 @@ function buildMemo(faculty: string, cands: RegentDecision[], state: WorldState):
     headline,
     stance,
     decisions: mine,
+    corpus_basis: corpusBasis(mine.map((d) => d.framework)),
   };
 }
 

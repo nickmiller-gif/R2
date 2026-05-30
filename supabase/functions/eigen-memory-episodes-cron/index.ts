@@ -16,15 +16,13 @@ Deno.serve(
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-    const expected =
-      Deno.env.get('EIGEN_MEMORY_EPISODES_CRON_TOKEN')?.trim() ??
-      Deno.env.get('AUTONOMOUS_NEWS_CRON_TOKEN')?.trim() ??
-      '';
-    if (expected.length > 0) {
-      const supplied = readBearer(req) ?? '';
-      if (!supplied || !timingSafeEqual(supplied, expected)) {
-        return errorResponse('Unauthorized cron token', 401);
-      }
+    const expected = Deno.env.get('EIGEN_MEMORY_EPISODES_CRON_TOKEN')?.trim() ?? '';
+    if (expected.length === 0) {
+      return errorResponse('EIGEN_MEMORY_EPISODES_CRON_TOKEN must be configured', 503);
+    }
+    const supplied = readBearer(req) ?? '';
+    if (!supplied || !timingSafeEqual(supplied, expected)) {
+      return errorResponse('Unauthorized cron token', 401);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '');

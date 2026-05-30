@@ -98,7 +98,7 @@ Hardening plan for query-time MEG entity resolution, context injection, and retr
 
 ```bash
 npm run typecheck
-npx vitest run tests/eigen/chat-entity-resolver.test.ts tests/eigen/chat-entity-context.test.ts tests/eigen/entity-retrieval-boost.test.ts
+npx vitest run tests/eigen/chat-entity-resolver.test.ts tests/eigen/chat-entity-context.test.ts tests/eigen/entity-retrieval-boost.test.ts tests/eigen/eigen-x1-e3-hardening-scan.test.ts tests/eigen/memory-episode-keys.test.ts
 ```
 
 Post-deploy smoke (eigenx member token):

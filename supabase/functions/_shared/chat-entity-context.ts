@@ -1,5 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { logWarn } from './log.ts';
+import { filterVisibleMegEntityIds } from './eigen-access-control.ts';
+import type { CharterRole } from './rbac.ts';
 import {
   type ChatEntityForPrompt,
   type ChatEntityRelationship,
@@ -360,17 +362,32 @@ function mapEdgesToRelationships(
 export async function fetchMegEntityContextForChat(
   client: SupabaseClient,
   entityScope: string[],
-  maxEntities = 8,
+  options?: {
+    maxEntities?: number;
+    callerUserId?: string;
+    callerRoles?: CharterRole[];
+  },
 ): Promise<ChatEntityForPrompt[]> {
+  const maxEntities = Math.min(Math.max(options?.maxEntities ?? 8, 1), 8);
   const ids = normalizeEntityScopeIds(entityScope, maxEntities);
   if (ids.length === 0) return [];
 
   const redirect = await followMergedIntoIds(client, ids);
-  const resolvedIds = normalizeEntityScopeIds(
+  let resolvedIds = normalizeEntityScopeIds(
     ids.map((id) => redirect.get(id) ?? id),
     maxEntities,
   );
   if (resolvedIds.length === 0) return [];
+
+  if (options?.callerUserId && options?.callerRoles) {
+    resolvedIds = await filterVisibleMegEntityIds(
+      client,
+      options.callerUserId,
+      options.callerRoles,
+      resolvedIds,
+    );
+    if (resolvedIds.length === 0) return [];
+  }
 
   const [entitiesResult, projectionsResult, refsResult, fullContexts] = await Promise.all([
     client

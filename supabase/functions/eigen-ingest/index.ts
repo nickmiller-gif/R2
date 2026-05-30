@@ -11,9 +11,14 @@ import { extractDocumentText } from '../_shared/extract-document.ts';
 import {
   inferCorpusTier,
   normalizeCorpusPolicyTags,
-  applyPersonalUploadPolicyTags,
   POLICY_TAG_RAY_VOICE,
 } from '../_shared/eigen-policy.ts';
+import { assertUserMemberOfGroup, policyTagEigenxGroup } from '../_shared/eigen-access-groups.ts';
+import { assertActiveAccessGroup } from '../_shared/eigen-access-control.ts';
+import {
+  isPersonalUploadSourceSystem,
+  normalizePersonalUploadPolicyTags,
+} from '../../../src/lib/eigen/eigen-access-groups.ts';
 import { logError } from '../_shared/log.ts';
 import {
   buildEigenKosCapabilityDenialBody,
@@ -67,6 +72,7 @@ interface IngestRequestBody {
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  group_id?: string;
   embedding_model?: string;
 }
 
@@ -126,10 +132,21 @@ function resolveOwnerEntityId(entityIds: string[]): string | undefined {
 
 async function ensureEigenDocumentAsset(
   client: SupabaseClient,
-  params: { documentId: string; title: string; sourceSystem: string; ownerEntityId?: string },
+  params: {
+    documentId: string;
+    title: string;
+    sourceSystem: string;
+    ownerUserId: string;
+    ownerEntityId?: string;
+    accessGroupId?: string;
+  },
 ): Promise<void> {
   const label = params.title.trim().slice(0, 500) || params.sourceSystem;
   const row: Record<string, unknown> = {
+    asset_kind: 'document',
+    local_table: 'documents',
+    local_record_id: params.documentId,
+    user_id: params.ownerUserId,
     kind: 'document',
     ref_id: params.documentId,
     domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
@@ -139,14 +156,33 @@ async function ensureEigenDocumentAsset(
   if (params.ownerEntityId) {
     row.owner_entity_id = params.ownerEntityId;
   }
-  const { error } = await client
-    .from('asset_registry')
-    .upsert(row, { onConflict: 'kind,ref_id,domain' });
+  if (params.accessGroupId) {
+    row.access_group_id = params.accessGroupId;
+  }
+  const { error } = await client.from('asset_registry').upsert(row, {
+    onConflict: 'local_table,local_record_id',
+  });
   if (error) {
-    logError('asset_registry upsert failed', {
-      functionName: 'eigen-ingest',
-      error: error.message,
-    });
+    const legacy = await client.from('asset_registry').upsert(
+      {
+        kind: 'document',
+        ref_id: params.documentId,
+        domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
+        label,
+        metadata: row.metadata,
+        user_id: params.ownerUserId,
+        ...(params.ownerEntityId ? { owner_entity_id: params.ownerEntityId } : {}),
+        ...(params.accessGroupId ? { access_group_id: params.accessGroupId } : {}),
+      },
+      { onConflict: 'kind,ref_id,domain' },
+    );
+    if (legacy.error) {
+      logError('asset_registry upsert failed', {
+        functionName: 'eigen-ingest',
+        error: legacy.error.message,
+        primary_error: error.message,
+      });
+    }
   }
 }
 
@@ -354,6 +390,7 @@ async function parseMultipartRequest(req: Request): Promise<{
     chunking_mode: toChunkingMode(form.get('chunking_mode')),
     policy_tags: normalizeStringList(form.get('policy_tags')),
     entity_ids: normalizeStringList(form.get('entity_ids')),
+    group_id: cleanString(form.get('group_id')),
     embedding_model: cleanString(form.get('embedding_model')),
   };
 }
@@ -401,6 +438,7 @@ async function parseJsonRequest(
     chunking_mode: toChunkingMode(body.chunking_mode),
     policy_tags: normalizeStringList(body.policy_tags),
     entity_ids: normalizeStringList(body.entity_ids),
+    group_id: cleanString(body.group_id),
     embedding_model: cleanString(body.embedding_model),
   };
 }
@@ -453,21 +491,24 @@ Deno.serve(
         );
       }
       const sourceSystemLower = requestBody.source_system.toLowerCase();
-      let policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
-      policyTags = applyPersonalUploadPolicyTags(
-        policyTags,
-        ownerUserId,
-        requestBody.source_system,
-      );
-      if (
-        sourceSystemLower.includes('upload') ||
-        sourceSystemLower.includes('manual') ||
-        sourceSystemLower.includes('autonomous')
-      ) {
-        if (!policyTags.includes('user_upload')) {
-          policyTags.push('user_upload');
+      const groupId = requestBody.group_id?.trim() || undefined;
+
+      if (groupId) {
+        await assertActiveAccessGroup(client, groupId);
+        if (!serviceIdentity) {
+          await assertUserMemberOfGroup(client, ownerUserId, groupId);
         }
       }
+
+      let policyTags = isPersonalUploadSourceSystem(requestBody.source_system)
+        ? normalizePersonalUploadPolicyTags(requestBody.policy_tags ?? [], ownerUserId, groupId)
+        : normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+
+      if (groupId && !isPersonalUploadSourceSystem(requestBody.source_system)) {
+        const groupTag = policyTagEigenxGroup(groupId);
+        if (!policyTags.includes(groupTag)) policyTags.push(groupTag);
+      }
+
       if (
         sourceSystemLower.includes('ray_voice') ||
         sourceSystemLower.includes('ray-podcast') ||
@@ -618,7 +659,9 @@ Deno.serve(
             documentId: existingDoc.id as string,
             title: requestBody.document.title,
             sourceSystem: requestBody.source_system,
+            ownerUserId,
             ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
+            accessGroupId: groupId,
           });
           return jsonResponse({
             document_id: existingDoc.id,
@@ -678,6 +721,9 @@ Deno.serve(
         extracted_text_status: 'extracted',
         updated_at: new Date().toISOString(),
       };
+      if (groupId) {
+        upsertPayload.access_group_id = groupId;
+      }
       if (curatorDocumentTags.length > 0) {
         upsertPayload.tags = curatorDocumentTags;
         const summaryLine = buildCuratorSummaryLine(docMeta);
@@ -697,7 +743,9 @@ Deno.serve(
         documentId,
         title: requestBody.document.title,
         sourceSystem: requestBody.source_system,
+        ownerUserId,
         ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
+        accessGroupId: groupId,
       });
 
       const deleteChunks = await client

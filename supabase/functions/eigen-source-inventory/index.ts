@@ -4,6 +4,8 @@ import { requireRole } from '../_shared/rbac.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { fetchSourceInventory } from '../_shared/source-inventory.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
+import { hasFullEigenxAccess } from '../_shared/eigenx-scope.ts';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -16,7 +18,15 @@ Deno.serve(
     if (!roleCheck.ok) return roleCheck.response;
 
     try {
-      const data = await fetchSourceInventory(getServiceClient(), 'all');
+      const client = getServiceClient();
+      const resolvedScope = await resolveEffectiveEigenxScope({
+        client,
+        userId: auth.claims.userId,
+        roles: roleCheck.roles,
+      });
+
+      const mode = hasFullEigenxAccess(roleCheck.roles) ? 'all' : 'scoped';
+      const data = await fetchSourceInventory(client, mode, resolvedScope.effectivePolicyScope);
       return jsonResponse(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

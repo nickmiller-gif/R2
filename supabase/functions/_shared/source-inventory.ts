@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from './eigen-policy.ts';
+import { policyTagsOverlapScope } from '../../../src/lib/eigen/eigen-access-groups.ts';
 
 interface DocumentRow {
   id: string;
@@ -84,7 +85,8 @@ function byUpdatedDesc(a: DocumentRow, b: DocumentRow): number {
 
 export async function fetchSourceInventory(
   client: SupabaseClient,
-  mode: 'all' | 'public',
+  mode: 'all' | 'public' | 'scoped',
+  filterPolicyTags: string[] = [],
 ): Promise<SourceInventoryResult> {
   const limit = readInventoryLimit();
   const docsRes = await client
@@ -123,7 +125,9 @@ export async function fetchSourceInventory(
   const filteredDocs = docs
     .filter((doc) => {
       const tags = byDoc.get(doc.id)?.tags ?? new Set<string>();
+      const tagList = Array.from(tags);
       if (mode === 'public') return tags.has(POLICY_TAG_EIGEN_PUBLIC);
+      if (mode === 'scoped') return policyTagsOverlapScope(tagList, filterPolicyTags);
       return true;
     })
     .sort(byUpdatedDesc);

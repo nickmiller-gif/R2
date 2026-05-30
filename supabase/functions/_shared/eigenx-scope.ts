@@ -3,10 +3,14 @@
  *
  * - Roles in EIGENX_FULL_ACCESS_ROLES (default: admin) use the org-wide default
  *   (EIGENX_DEFAULT_POLICY_SCOPE or eigenx).
- * - Everyone else is limited to personal supplements: eigenx:user:<userId> only,
- *   unless eigen_policy_access_grants expand their allowed tags.
+ * - Everyone else is limited to personal tag + eigenx:group:<id> for each group
+ *   they belong to, unless eigen_policy_access_grants expand their allowed tags.
  */
-import { POLICY_TAG_EIGENX, policyTagEigenxUser } from './eigen-policy.ts';
+import { POLICY_TAG_EIGENX } from './eigen-policy.ts';
+import {
+  buildMemberRetrievePolicyScope,
+  clampMemberExplicitPolicyScope,
+} from '../../../src/lib/eigen/eigen-access-groups.ts';
 import type { CharterRole } from './rbac.ts';
 
 const ALL_ROLES: CharterRole[] = ['member', 'reviewer', 'operator', 'counsel', 'admin'];
@@ -37,36 +41,39 @@ export function hasFullEigenxAccess(roles: CharterRole[]): boolean {
   return roles.some((r) => full.has(r));
 }
 
-/** When the client omits policy_scope: org-wide default vs personal tag only. */
-export function defaultEigenxRetrievePolicyScope(userId: string, roles: CharterRole[]): string[] {
+/** When the client omits policy_scope: org-wide default vs personal + group tags. */
+export function defaultEigenxRetrievePolicyScope(
+  userId: string,
+  roles: CharterRole[],
+  groupIds: string[] = [],
+): string[] {
   if (hasFullEigenxAccess(roles)) return readEigenxEnvDefaultPolicyScope();
-  return [policyTagEigenxUser(userId)];
+  return buildMemberRetrievePolicyScope(userId, groupIds);
 }
 
 /**
  * When the client sends policy_scope: full-access principals may use any requested tags (still
- * intersected with grants). Others may only pass their personal tag or sub-tags
- * (eigenx:user:<id>:...).
+ * intersected with grants). Others may only pass personal, group, or sub-tags thereof.
  */
 export function clampExplicitEigenxPolicyScope(
   userId: string,
   roles: CharterRole[],
   explicit: string[],
+  groupIds: string[] = [],
 ): string[] {
   if (hasFullEigenxAccess(roles)) return explicit;
-  const personal = policyTagEigenxUser(userId);
-  const filtered = explicit.filter((t) => t === personal || t.startsWith(`${personal}:`));
-  return filtered.length > 0 ? filtered : [personal];
+  return clampMemberExplicitPolicyScope(userId, groupIds, explicit);
 }
 
-/** Widget eigenx mode: site registry default for full-access users; personal tag for others. */
+/** Widget eigenx mode: site registry default for full-access users; personal + groups for others. */
 export function widgetEigenxInitialPolicyScope(
   userId: string,
   roles: CharterRole[],
   siteDefaultScope: string[],
+  groupIds: string[] = [],
 ): string[] {
   if (hasFullEigenxAccess(roles)) {
     return siteDefaultScope.length > 0 ? siteDefaultScope : [POLICY_TAG_EIGENX];
   }
-  return [policyTagEigenxUser(userId)];
+  return buildMemberRetrievePolicyScope(userId, groupIds);
 }

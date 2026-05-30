@@ -25,6 +25,19 @@ describe('X1/E3 hardening static audit', () => {
     expect(src).toMatch(/normalizeEntityScopeIds\(payload\.meg_neighbor_scope/);
     expect(src).toMatch(/loadMegOneHopNeighborIds/);
     expect(src).toMatch(/client input ignored/);
+    expect(src).toMatch(/Always load graph neighbors server-side/);
+    expect(src).not.toMatch(/payload\.meg_neighbor_scope \?\? \(await loadMegOneHopNeighborIds/);
+  });
+
+  it('parseEigenRetrieveRequest strips meg_neighbor_scope from ingress', () => {
+    const src = readFileSync(
+      join(ROOT, 'supabase/functions/_shared/eigen-retrieve-core.ts'),
+      'utf8',
+    );
+    const parseStart = src.indexOf('export function parseEigenRetrieveRequest');
+    const parseEnd = src.indexOf('function parseRerankerOverrides', parseStart);
+    const parseBlock = src.slice(parseStart, parseEnd);
+    expect(parseBlock).not.toMatch(/meg_neighbor_scope/);
   });
 
   it('memory episode consolidate caps turns, validates UUIDs, and bounds entity episodes', () => {
@@ -67,6 +80,8 @@ describe('X1/E3 hardening static audit', () => {
     );
     expect(src).toMatch(/timingSafeEqual/);
     expect(src).toMatch(/EIGEN_MEMORY_EPISODES_CRON_TOKEN/);
+    expect(src).toMatch(/EIGEN_MEMORY_EPISODES_CRON_TOKEN must be configured/);
+    expect(src).not.toMatch(/AUTONOMOUS_NEWS_CRON_TOKEN/);
   });
 
   it('memory episode keys reject malformed session and entity ids', () => {

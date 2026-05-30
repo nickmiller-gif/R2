@@ -761,8 +761,8 @@ export async function executeEigenRetrieve(
       );
       const neighborBoost = readMegNeighborBoost();
       if (neighborBoost > 0) {
-        const neighbors =
-          payload.meg_neighbor_scope ?? (await loadMegOneHopNeighborIds(client, entityScopeSet));
+        // Always load graph neighbors server-side; never trust caller-supplied scope.
+        const neighbors = await loadMegOneHopNeighborIds(client, entityScopeSet);
         payload.meg_neighbor_scope = neighbors;
         if (neighbors.length > 0) {
           droppedReasons.push(

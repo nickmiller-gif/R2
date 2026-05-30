@@ -4,6 +4,7 @@ import {
   EIGEN_CHAT_DOMAIN_FOCUS,
   EIGEN_CHAT_PROSE_STYLE,
   EIGEN_CHAT_TECHNICAL_BOUNDARY,
+  EIGEN_RAY_CORRESPONDENCE_STYLE,
   EIGENX_DEFAULT_NO_CONTEXT_RESPONSE,
   defaultEigenxSystemPrompt,
   withEigenChatProseStyle,
@@ -25,6 +26,16 @@ describe('withEigenChatProseStyle', () => {
     expect(out).toContain('software architecture');
     expect(out).toContain('knowledgeable chatbot');
   });
+
+  it('adds Ray correspondence style when ray voice is active', () => {
+    const out = withEigenChatProseStyle('Base.', true);
+    expect(out).toContain(EIGEN_RAY_CORRESPONDENCE_STYLE);
+  });
+
+  it('omits Ray correspondence style when ray voice is inactive', () => {
+    const out = withEigenChatProseStyle('Base.', false);
+    expect(out).not.toContain('correspondence examples');
+  });
 });
 
 describe('defaultEigenxSystemPrompt', () => {
@@ -33,6 +44,7 @@ describe('defaultEigenxSystemPrompt', () => {
     expect(out.toLowerCase()).toContain('clients');
     expect(out.toLowerCase()).toContain('properties');
     expect(out.toLowerCase()).toContain('people');
+    expect(out.toLowerCase()).toContain('correspondence');
   });
 
   it('invites clarification when no context exists', () => {

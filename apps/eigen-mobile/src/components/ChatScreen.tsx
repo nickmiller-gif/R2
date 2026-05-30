@@ -16,10 +16,15 @@ import { MessageBubble } from './MessageBubble';
 
 interface ChatScreenProps {
   accessToken: string;
-  userEmail: string;
 }
 
-export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
+const STARTER_PROMPTS = [
+  'Who should I follow up with this week?',
+  'Summarize where we stand with a client',
+  'What do we know about a property?',
+];
+
+export function ChatScreen({ accessToken }: ChatScreenProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [entityLabel, setEntityLabel] = useState('');
@@ -28,52 +33,48 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  const send = useCallback(async () => {
-    const trimmed = input.trim();
-    if (!trimmed || loading) return;
+  const send = useCallback(
+    async (text?: string) => {
+      const trimmed = (text ?? input).trim();
+      if (!trimmed || loading) return;
 
-    const userMsg: ChatMessage = {
-      id: `${Date.now()}-user`,
-      role: 'user',
-      content: trimmed,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await sendChatMessage({
-        accessToken,
-        message: trimmed,
-        sessionId,
-        entityLabel: entityLabel.trim() || undefined,
-      });
-
-      setSessionId(result.session_id);
-
-      const assistantMsg: ChatMessage = {
-        id: `${Date.now()}-assistant`,
-        role: 'assistant',
-        content: result.response,
-        citations: result.citations,
-        confidence: result.confidence,
-        effective_policy_scope: result.effective_policy_scope,
-        entity_scope_applied: result.entity_scope_applied,
-        entity_scope_mode: result.entity_scope_mode,
-        entity_resolution_sources: result.entity_resolution_sources,
-        entity_context_count: result.entity_context_count,
+      const userMsg: ChatMessage = {
+        id: `${Date.now()}-user`,
+        role: 'user',
+        content: trimmed,
       };
 
-      setMessages((prev) => [...prev, assistantMsg]);
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, entityLabel, input, loading, sessionId]);
+      setMessages((prev) => [...prev, userMsg]);
+      setInput('');
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await sendChatMessage({
+          accessToken,
+          message: trimmed,
+          sessionId,
+          entityLabel: entityLabel.trim() || undefined,
+        });
+
+        setSessionId(result.session_id);
+
+        const assistantMsg: ChatMessage = {
+          id: `${Date.now()}-assistant`,
+          role: 'assistant',
+          content: result.response,
+        };
+
+        setMessages((prev) => [...prev, assistantMsg]);
+        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Request failed');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [accessToken, entityLabel, input, loading, sessionId],
+  );
 
   const clearChat = () => {
     setMessages([]);
@@ -87,13 +88,6 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
     >
-      <View style={styles.headerMeta}>
-        <Text style={styles.headerMetaText}>Signed in as {userEmail}</Text>
-        <Text style={styles.headerMetaHint}>
-          Ask about clients, properties, or people — MEG resolves entities automatically.
-        </Text>
-      </View>
-
       <FlatList
         ref={listRef}
         data={messages}
@@ -102,12 +96,36 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>EigenX Intelligence</Text>
+            <Text style={styles.emptyTitle}>Text with Ray</Text>
             <Text style={styles.emptyBody}>
-              Your answers draw from MEG (clients, properties, people) and knowledge indexed from
-              CentralR2, R2Works, R2Chart, R2-IP, Oracle, and your uploads.
+              Ask anything about clients, properties, or people. Answers come back the way Ray would
+              write — warm, direct, and grounded in what the system knows.
             </Text>
+            <View style={styles.starters}>
+              {STARTER_PROMPTS.map((prompt) => (
+                <Pressable
+                  key={prompt}
+                  style={styles.starterChip}
+                  onPress={() => void send(prompt)}
+                  disabled={loading}
+                >
+                  <Text style={styles.starterText}>{prompt}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
+        }
+        ListFooterComponent={
+          loading ? (
+            <View style={styles.typingRow}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarLabel}>R</Text>
+              </View>
+              <View style={styles.typingBubble}>
+                <ActivityIndicator color="#5eead4" size="small" />
+              </View>
+            </View>
+          ) : null
         }
       />
 
@@ -116,7 +134,7 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
       <View style={styles.composer}>
         <TextInput
           style={styles.entityInput}
-          placeholder="Focus entity (optional) — e.g. Acme Corp"
+          placeholder="About someone or something? (optional)"
           placeholderTextColor="#64748b"
           value={entityLabel}
           onChangeText={setEntityLabel}
@@ -125,14 +143,13 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
-            placeholder="Message Eigen…"
+            placeholder="Message…"
             placeholderTextColor="#64748b"
             value={input}
             onChangeText={setInput}
             editable={!loading}
             multiline
             maxLength={4000}
-            onSubmitEditing={() => void send()}
           />
           <Pressable
             style={[
@@ -142,16 +159,12 @@ export function ChatScreen({ accessToken, userEmail }: ChatScreenProps) {
             onPress={() => void send()}
             disabled={loading || input.trim().length === 0}
           >
-            {loading ? (
-              <ActivityIndicator color="#0f172a" size="small" />
-            ) : (
-              <Text style={styles.sendLabel}>Send</Text>
-            )}
+            <Text style={styles.sendLabel}>Send</Text>
           </Pressable>
         </View>
         {messages.length > 0 ? (
           <Pressable onPress={clearChat} disabled={loading}>
-            <Text style={styles.clearLabel}>Clear chat</Text>
+            <Text style={styles.clearLabel}>New conversation</Text>
           </Pressable>
         ) : null}
       </View>
@@ -164,23 +177,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0f14',
   },
-  headerMeta: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-    gap: 4,
-  },
-  headerMetaText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  headerMetaHint: {
-    color: '#64748b',
-    fontSize: 11,
-    lineHeight: 16,
-  },
   listContent: {
     padding: 16,
     flexGrow: 1,
@@ -188,18 +184,63 @@ const styles = StyleSheet.create({
   empty: {
     flex: 1,
     justifyContent: 'center',
-    paddingTop: 48,
-    gap: 10,
+    paddingTop: 40,
+    gap: 12,
   },
   emptyTitle: {
     color: '#f1f5f9',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '600',
   },
   emptyBody: {
     color: '#94a3b8',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  starters: {
+    marginTop: 8,
+    gap: 8,
+  },
+  starterChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    backgroundColor: '#111827',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  starterText: {
+    color: '#cbd5e1',
     fontSize: 14,
-    lineHeight: 21,
+  },
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#134e4a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLabel: {
+    color: '#ccfbf1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  typingBubble: {
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    borderRadius: 18,
+    borderBottomLeftRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   error: {
     color: '#fca5a5',

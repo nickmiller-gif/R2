@@ -144,7 +144,7 @@ function readSystemPrompt(hasContext: boolean, voiceAddendum = '', retrievalAppe
   const fromEnv = Deno.env.get('EIGENX_SYSTEM_PROMPT')?.trim();
   const base = fromEnv && fromEnv.length > 0 ? fromEnv : defaultEigenxSystemPrompt(hasContext);
   return [
-    withEigenChatProseStyle(base),
+    withEigenChatProseStyle(base, voiceAddendum.trim().length > 0),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
     voiceAddendum,
     retrievalAppend,

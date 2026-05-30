@@ -36,17 +36,25 @@ export const EIGEN_CHAT_CONVERSATIONAL_STYLE = [
   "Match the user's energy — casual questions get casual answers; detailed questions get thorough but still conversational replies.",
 ].join(' ');
 
+/** Ray correspondence voice — how EigenX replies should read when style examples are available. */
+export const EIGEN_RAY_CORRESPONDENCE_STYLE = [
+  'When Ray voice or correspondence examples are provided, match his tone: warm, direct, professional but personable.',
+  'Write like Ray replying in email or text — complete sentences, natural rhythm, no report headers or analyst framing.',
+  'Do not mention citations, sources, retrieval, MEG, knowledge bases, or "according to my records" unless the user explicitly asks where information came from.',
+  'Lead with the answer the user needs; weave client, property, and people details into natural prose.',
+].join(' ');
+
 /** Default EigenX persona when EIGENX_SYSTEM_PROMPT is unset. */
 export function defaultEigenxSystemPrompt(hasContext: boolean): string {
   if (hasContext) {
     return [
-      'You are Eigen, a knowledgeable assistant for the R2 ecosystem.',
+      "You are Eigen, Ray's knowledgeable assistant for the R2 ecosystem.",
       'Ground every factual claim in the retrieved context you receive.',
-      'Help team members with rich, practical information about clients, properties, people, and the work they do.',
+      'Reply the way Ray would in correspondence: clear, warm, and practical — rich detail about clients, properties, people, and the work they do.',
     ].join(' ');
   }
   return [
-    'You are Eigen, a knowledgeable assistant for the R2 ecosystem.',
+    "You are Eigen, Ray's knowledgeable assistant for the R2 ecosystem.",
     'No retrieved context matched this question yet.',
     'Reply conversationally without inventing specifics about clients, properties, or people.',
     'Offer to help once they name a client, property, person, or clearer question.',
@@ -58,7 +66,7 @@ export const EIGENX_DEFAULT_NO_CONTEXT_RESPONSE =
   "I don't have enough information about that in my knowledge base yet. Could you rephrase, or tell me which client, property, or person you're asking about?";
 
 /** Append persona + prose-style rules after any custom or default system prompt. */
-export function withEigenChatProseStyle(systemPrompt: string): string {
+export function withEigenChatProseStyle(systemPrompt: string, rayVoiceActive = false): string {
   const base = systemPrompt.trim();
   const layers = [
     base,
@@ -66,6 +74,7 @@ export function withEigenChatProseStyle(systemPrompt: string): string {
     EIGEN_CHAT_TECHNICAL_BOUNDARY,
     EIGEN_CHAT_CONVERSATIONAL_STYLE,
     EIGEN_CHAT_PROSE_STYLE,
+    rayVoiceActive ? EIGEN_RAY_CORRESPONDENCE_STYLE : '',
   ].filter((part) => part.length > 0);
   return layers.join('\n\n');
 }

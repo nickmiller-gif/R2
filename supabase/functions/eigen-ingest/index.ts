@@ -454,7 +454,11 @@ Deno.serve(
           policyTags.push('user_upload');
         }
       }
-      if (sourceSystemLower.includes('ray_voice') || sourceSystemLower.includes('ray-podcast')) {
+      if (
+        sourceSystemLower.includes('ray_voice') ||
+        sourceSystemLower.includes('ray-podcast') ||
+        sourceSystemLower.includes('ray_correspondence')
+      ) {
         if (!policyTags.includes(POLICY_TAG_RAY_VOICE)) {
           policyTags.push(POLICY_TAG_RAY_VOICE);
         }

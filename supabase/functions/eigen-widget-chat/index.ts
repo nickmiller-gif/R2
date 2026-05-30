@@ -222,7 +222,7 @@ async function synthesize(
   });
   const retrievalAppend = eigenRetrievalQualityAppend(chunks, confidenceLabel);
   const systemPrompt = [
-    withEigenChatProseStyle(basePrompt),
+    withEigenChatProseStyle(basePrompt, voiceStyleAddendum.trim().length > 0),
     'Primary domain corpus decides answer direction; secondary corpus is additive only.',
     voiceStyleAddendum,
     retrievalAppend,

@@ -56,9 +56,10 @@ export function AuthScreen({ onSignedIn }: AuthScreenProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.card}>
-        <Text style={styles.title}>EigenX</Text>
+        <Text style={styles.title}>Ray</Text>
         <Text style={styles.subtitle}>
-          Sign in to chat with your MEG graph and knowledge across R2 apps.
+          Sign in to text with Ray&apos;s assistant — answers in his voice, grounded in what you
+          know about clients, properties, and people.
         </Text>
 
         {missingConfig ? (

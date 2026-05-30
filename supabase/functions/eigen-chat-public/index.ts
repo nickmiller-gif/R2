@@ -176,6 +176,7 @@ async function synthesizePublicResponse(
   });
   const basePrompt = withEigenChatProseStyle(
     envPrompt && envPrompt.length > 0 ? envPrompt : defaultPublicPrompt(format, hasContext),
+    voiceStyleAddendum.trim().length > 0,
   );
   const retrievalAppend = eigenRetrievalQualityAppend(retrievedChunks, confidenceLabel);
   const systemPrompt = [

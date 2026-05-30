@@ -1,70 +1,49 @@
-# Eigen Mobile (EigenX native)
+# Eigen Mobile (Ray voice chat)
 
-Native Expo app for **EigenX members** — sign in with Supabase, chat against R2 `eigen-chat`, and see what MEG and cross-app knowledge was used to answer.
+Native Expo app for **EigenX members** — sign in, text naturally, and get answers in **Ray's correspondence voice** grounded in MEG and your R2 knowledge.
 
-## What it does
+## What it feels like
 
-- **Sign in** with your R2 Supabase account (member role required for `eigen-chat`)
-- **Chat** with EigenX intelligence — MEG entity resolution, memory episodes, multi-app corpus retrieval
-- **Context panel** on each reply shows:
-  - MEG entities in scope and graph nodes injected
-  - Policy scope applied
-  - Citations grouped by app (CentralR2, R2Works, R2Chart, R2-IP, Oracle, uploads, etc.)
-- **Sources tab** loads `eigen-source-inventory` — document/chunk counts per source system
-
-All intelligence stays in R2 edge functions; this app is a thin native client.
+- Plain **chat bubbles** — no citations panel, no source counts in the UI
+- Answers written like **Ray in email or text**: warm, direct, conversational
+- Backend pulls **Ray correspondence examples** from the voice library (`ray_correspondence_*`, `ray_voice_*`) to match tone
+- MEG entity resolution and cross-app retrieval still happen behind the scenes — you just see the answer
 
 ## Prerequisites
 
 - Node 20+
-- [Expo Go](https://expo.dev/go) on your phone, or Xcode / Android Studio for simulators
+- [Expo Go](https://expo.dev/go) on your phone, or Xcode / Android Studio
 - Supabase anon key for project `zudslxucibosjwefojtm`
-- An EigenX member account (Charter `member` role)
+- EigenX **member** account
 
 ## Setup
 
 ```bash
 cd apps/eigen-mobile
 cp .env.example .env
-# Set EXPO_PUBLIC_SUPABASE_ANON_KEY (Dashboard → Settings → API → anon public)
+# Set EXPO_PUBLIC_SUPABASE_ANON_KEY
 npm install
-```
-
-## Run
-
-```bash
 npm start
 ```
 
-Scan the QR code with Expo Go, or press `i` / `a` for simulators.
+## Ray correspondence library
+
+Ingest Ray's emails, texts, and written answers via `eigen-ingest`:
+
+| `source_system`                          | Use                                        |
+| ---------------------------------------- | ------------------------------------------ |
+| `ray_correspondence_public`              | Published / shareable correspondence       |
+| `ray_correspondence_private`             | EigenX-only correspondence (member policy) |
+| `ray_voice_public` / `ray_voice_private` | Podcast and voice transcripts              |
+
+Policy tags `ray_voice` and `voice_style` are applied automatically. The more correspondence you index, the closer the chat tone matches Ray.
 
 ## Environment
 
-| Variable                        | Purpose                                       |
-| ------------------------------- | --------------------------------------------- |
-| `EXPO_PUBLIC_SUPABASE_URL`      | R2 Supabase project URL (default: production) |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Anon key for auth session                     |
-
-## Architecture
-
-```
-App.tsx
-  ├── AuthScreen → supabase.auth.signInWithPassword
-  ├── ChatScreen → POST /functions/v1/eigen-chat
-  │     └── ContextPanel ← entity_scope_applied, entity_context_count, citations
-  └── SourcesScreen → GET /functions/v1/eigen-source-inventory
-```
-
-Optional **Focus entity** field maps to `entity_label` on `eigen-chat` — the backend resolves MEG UUIDs from natural language (client/property/person names).
-
-## Production builds
-
-```bash
-npx eas-cli build --platform ios
-npx eas-cli build --platform android
-```
-
-Set env vars in [EAS environment secrets](https://docs.expo.dev/eas/environment-variables/) before building.
+| Variable                        | Purpose                 |
+| ------------------------------- | ----------------------- |
+| `EXPO_PUBLIC_SUPABASE_URL`      | R2 Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Anon key for auth       |
 
 ## Typecheck
 

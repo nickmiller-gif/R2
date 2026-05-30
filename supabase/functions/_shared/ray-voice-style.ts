@@ -4,8 +4,10 @@ import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from './eigen-policy.ts';
 
 const PUBLIC_VOICE_SOURCE_SYSTEMS = ['ray_voice_public', 'ray_podcast_public'];
 const PRIVATE_VOICE_SOURCE_SYSTEMS = ['ray_voice_private', 'ray_podcast_private'];
+const PUBLIC_CORRESPONDENCE_SOURCE_SYSTEMS = ['ray_correspondence_public'];
+const PRIVATE_CORRESPONDENCE_SOURCE_SYSTEMS = ['ray_correspondence_private'];
 
-function truncateSentence(value: string, maxChars = 180): string {
+function truncateSentence(value: string, maxChars = 220): string {
   const clean = value.replace(/\s+/g, ' ').trim();
   if (clean.length <= maxChars) return clean;
   return `${clean.slice(0, maxChars)}...`;
@@ -30,37 +32,87 @@ export interface RayVoiceStyleOptions {
   policyScope: string[];
 }
 
+async function retrieveStyleChunks(
+  client: SupabaseClient,
+  options: {
+    message: string;
+    sourceSystems: string[];
+    policyScope: string[];
+    maxChunks: number;
+    siteBoost: number;
+  },
+): Promise<EigenRetrieveChunk[]> {
+  const retrieve = await executeEigenRetrieve(client, {
+    query: options.message,
+    policy_scope: options.policyScope,
+    site_source_systems: options.sourceSystems,
+    site_boost: options.siteBoost,
+    global_penalty: -0.7,
+    site_relevance_min: 0.18,
+    cross_source_max_ratio: 0.25,
+    allow_cross_source_when_low_confidence: true,
+    budget_profile: { max_chunks: options.maxChunks, max_tokens: 900 },
+    rerank: true,
+    include_provenance: false,
+  });
+  if (!retrieve.ok) return [];
+  return retrieve.body.chunks;
+}
+
 export async function fetchRayVoiceStyleAddendum(
   client: SupabaseClient,
   options: RayVoiceStyleOptions,
 ): Promise<string> {
-  const sourceSystems = options.includePrivate
-    ? [...PUBLIC_VOICE_SOURCE_SYSTEMS, ...PRIVATE_VOICE_SOURCE_SYSTEMS]
-    : [...PUBLIC_VOICE_SOURCE_SYSTEMS];
   const policyScope = options.includePrivate
     ? Array.from(new Set([...options.policyScope, POLICY_TAG_EIGENX]))
     : [POLICY_TAG_EIGEN_PUBLIC];
 
-  const retrieve = await executeEigenRetrieve(client, {
-    query: options.message,
-    policy_scope: policyScope,
-    site_source_systems: sourceSystems,
-    site_boost: 0.8,
-    global_penalty: -0.7,
-    site_relevance_min: 0.2,
-    cross_source_max_ratio: 0.25,
-    allow_cross_source_when_low_confidence: true,
-    budget_profile: { max_chunks: 3, max_tokens: 600 },
-    rerank: true,
-    include_provenance: false,
-  });
-  if (!retrieve.ok || retrieve.body.chunks.length === 0) return '';
+  const correspondenceSystems = options.includePrivate
+    ? [...PUBLIC_CORRESPONDENCE_SOURCE_SYSTEMS, ...PRIVATE_CORRESPONDENCE_SOURCE_SYSTEMS]
+    : [...PUBLIC_CORRESPONDENCE_SOURCE_SYSTEMS];
 
-  const lines = extractVoiceLines(retrieve.body.chunks, 2);
+  const voiceSystems = options.includePrivate
+    ? [...PUBLIC_VOICE_SOURCE_SYSTEMS, ...PRIVATE_VOICE_SOURCE_SYSTEMS]
+    : [...PUBLIC_VOICE_SOURCE_SYSTEMS];
+
+  const [correspondenceChunks, voiceChunks] = await Promise.all([
+    retrieveStyleChunks(client, {
+      message: options.message,
+      sourceSystems: correspondenceSystems,
+      policyScope,
+      maxChunks: 4,
+      siteBoost: 0.95,
+    }),
+    retrieveStyleChunks(client, {
+      message: options.message,
+      sourceSystems: voiceSystems,
+      policyScope,
+      maxChunks: 2,
+      siteBoost: 0.75,
+    }),
+  ]);
+
+  const correspondenceLines = extractVoiceLines(correspondenceChunks, 3);
+  const voiceLines = extractVoiceLines(voiceChunks, 2);
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const line of [...correspondenceLines, ...voiceLines]) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+    if (lines.length >= 4) break;
+  }
+
   if (lines.length === 0) return '';
+
+  const correspondenceUsed = correspondenceLines.length > 0;
+  const intro = correspondenceUsed
+    ? "Ray's correspondence examples (match tone and phrasing — style only, not factual authority):"
+    : 'Ray voice guidance (style only, not factual authority):';
+
   return [
-    'Ray voice guidance (style only, not factual authority):',
+    intro,
     ...lines.map((line) => `- ${line}`),
-    'Use this only to shape tone and phrasing; do not let it change topic selection.',
+    'Answer in the same conversational register Ray uses in email and text. Do not quote these examples verbatim.',
   ].join('\n');
 }

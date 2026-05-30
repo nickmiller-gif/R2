@@ -1,5 +1,4 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { ContextPanel } from './ContextPanel';
 import type { ChatMessage } from '../types/chat';
 
 interface MessageBubbleProps {
@@ -11,11 +10,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
+      {!isUser ? (
+        <View style={styles.avatar}>
+          <Text style={styles.avatarLabel}>R</Text>
+        </View>
+      ) : null}
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
         <Text style={[styles.text, isUser ? styles.textUser : styles.textAssistant]}>
           {message.content}
         </Text>
-        {message.role === 'assistant' ? <ContextPanel message={message} /> : null}
       </View>
     </View>
   );
@@ -23,8 +26,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
 const styles = StyleSheet.create({
   row: {
-    marginBottom: 12,
+    marginBottom: 14,
     flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
   },
   rowUser: {
     justifyContent: 'flex-end',
@@ -32,14 +37,27 @@ const styles = StyleSheet.create({
   rowAssistant: {
     justifyContent: 'flex-start',
   },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#134e4a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLabel: {
+    color: '#ccfbf1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   bubble: {
-    maxWidth: '92%',
-    borderRadius: 16,
+    maxWidth: '82%',
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   bubbleUser: {
-    backgroundColor: '#134e4a',
+    backgroundColor: '#1e293b',
     borderBottomRightRadius: 4,
   },
   bubbleAssistant: {
@@ -49,11 +67,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   text: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
   },
   textUser: {
-    color: '#ecfdf5',
+    color: '#f8fafc',
   },
   textAssistant: {
     color: '#f1f5f9',

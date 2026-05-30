@@ -47,7 +47,7 @@ export async function sendChatMessage(input: SendChatInput): Promise<EigenChatRe
   const body: Record<string, unknown> = {
     message: input.message,
     conversation_context: 'auto',
-    response_format: 'structured',
+    response_format: 'freeform',
     session_id: input.sessionId,
   };
 

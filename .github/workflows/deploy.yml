@@ -195,23 +195,23 @@ jobs:
           # `oracle-whitespace-runs` remains skipped until the Deno bundling blocker
           # called out in docs/production-deploy-checklist.md is resolved.
           SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
-          # Gateway JWT verification is sourced from supabase/config.toml (single
-          # source of truth). IMPORTANT: `supabase functions deploy <name>` does
-          # NOT read per-function `verify_jwt` from config.toml — without
-          # `--no-verify-jwt` the CLI defaults verify_jwt=TRUE. A previous
-          # hardcoded 6-function allowlist meant every other config-false function
-          # (autonomous-*, oracle-*, eigen-ingest, meg-*, charter-*, …) was
-          # re-deployed with verify_jwt=true on every push to main, gateway-401'ing
-          # cron/HMAC/public callers and silently breaking the autonomous loop,
-          # KB-four ingest, and the Oracle pipeline. We now derive the
-          # --no-verify-jwt set directly from config.toml so the two never drift.
-          # (Self-heal companion: scripts/fix-verify-jwt-drift.mjs.)
-          mapfile -t NO_VERIFY < <(awk '
-            /^\[functions\./ { fn=$0; sub(/^\[functions\./,"",fn); sub(/\].*$/,"",fn); next }
-            /^[[:space:]]*verify_jwt[[:space:]]*=[[:space:]]*false/ { if (fn!="") print fn }
-            /^\[/ && $0 !~ /^\[functions\./ { fn="" }
-          ' supabase/config.toml)
-          echo "Functions pinned verify_jwt=false from config.toml: ${#NO_VERIFY[@]}"
+          # Functions that must deploy with verify_jwt=false (gateway lets the
+          # request through; the function does its own auth — widget tokens, HMAC,
+          # custom cron headers, or RLS-evaluated anon reads).
+          #
+          # IMPORTANT: `supabase functions deploy <name>` does NOT read
+          # per-function verify_jwt from config.toml — without `--no-verify-jwt`
+          # the CLI defaults verify_jwt=TRUE. config.toml is ALSO gitignored, so
+          # it does not exist in CI. A previous hardcoded 6-function allowlist
+          # therefore left every other should-be-false function (autonomous-*,
+          # oracle-*, eigen-ingest, meg-*, charter-*, …) deployed verify_jwt=true
+          # on every push to main — gateway-401'ing cron/HMAC/public callers and
+          # silently breaking the autonomous loop, KB-four ingest, and the Oracle
+          # pipeline. The tracked file below is the CI source of truth (generated
+          # from config.toml; keep in sync when adding no-verify functions).
+          # Self-heal companion: scripts/fix-verify-jwt-drift.mjs.
+          mapfile -t NO_VERIFY < <(grep -vE '^[[:space:]]*(#|$)' supabase/functions-no-verify-jwt.txt)
+          echo "Functions pinned verify_jwt=false (tracked list): ${#NO_VERIFY[@]}"
           is_no_verify() { local f="$1"; for n in "${NO_VERIFY[@]}"; do [ "$n" = "$f" ] && return 0; done; return 1; }
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")

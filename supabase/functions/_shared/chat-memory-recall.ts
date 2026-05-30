@@ -67,27 +67,39 @@ export async function loadChatMemoryRecallForChat(
       }
     }
 
-    const entityIds = normalizeEntityScopeIds(entityScope, MAX_ENTITY_EPISODE_LOOKUPS);
-    for (const entityId of entityIds) {
-      const topicKey = entityEpisodeTopicKey(entityId);
-      if (!topicKey) continue;
-      const { data: entityEpisode, error: entityEpisodeError } = await client
+    const entityTopicKeys = normalizeEntityScopeIds(entityScope, MAX_ENTITY_EPISODE_LOOKUPS)
+      .map(entityEpisodeTopicKey)
+      .filter((topicKey): topicKey is string => Boolean(topicKey));
+
+    if (entityTopicKeys.length > 0) {
+      const { data: entityEpisodes, error: entityEpisodeError } = await client
         .from('memory_episodes')
         .select('summary,turn_count,window_end,topic_key')
         .eq('owner_id', ownerId)
         .eq('scope', 'session')
-        .eq('topic_key', topicKey)
-        .maybeSingle();
-      if (entityEpisodeError || !entityEpisode?.summary) continue;
-      const row = entityEpisode as EpisodeRow;
-      const block = formatMemoryEpisodeForLlm({
-        summary: row.summary,
-        turnCount: row.turn_count,
-        windowEnd: row.window_end,
-        topicKey: row.topic_key,
-      });
-      if (block) {
-        return { block, source: 'episode', intro: EIGEN_MEMORY_EPISODE_INTRO };
+        .in('topic_key', entityTopicKeys);
+
+      if (!entityEpisodeError && entityEpisodes?.length) {
+        const episodesByTopicKey = new Map<string, EpisodeRow>();
+        for (const row of entityEpisodes as EpisodeRow[]) {
+          if (row.summary) {
+            episodesByTopicKey.set(row.topic_key, row);
+          }
+        }
+
+        for (const topicKey of entityTopicKeys) {
+          const row = episodesByTopicKey.get(topicKey);
+          if (!row) continue;
+          const block = formatMemoryEpisodeForLlm({
+            summary: row.summary,
+            turnCount: row.turn_count,
+            windowEnd: row.window_end,
+            topicKey: row.topic_key,
+          });
+          if (block) {
+            return { block, source: 'episode', intro: EIGEN_MEMORY_EPISODE_INTRO };
+          }
+        }
       }
     }
 

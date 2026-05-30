@@ -83,6 +83,18 @@ For shared team supplements, tag with `eigenx:group:<group_uuid>` or pass `group
 
 **Member uploads:** `eigen-ingest` auto-tags personal uploads with `eigenx:user:<owner_id>` (no org-wide `eigenx` tag). Optional `group_id` adds the group tag when the uploader is a member.
 
+### Asset registry (`asset_registry`)
+
+Reads are scoped by RLS (see migration `20260528160000_asset_registry_scoped_rls`):
+
+| Who                                           | Visible assets                                        |
+| --------------------------------------------- | ----------------------------------------------------- |
+| **Admin** (`charter_user_roles.role = admin`) | All rows                                              |
+| **Owner**                                     | `user_id = auth.uid()`                                |
+| **Group member**                              | `access_group_id` matches a group the user belongs to |
+
+Ingest sets `user_id` to the uploader and optional `access_group_id` from `group_id`. Evidence links require **both** endpoint assets to be visible.
+
 ### Migration
 
 If you previously relied on “no grants = everyone searches full `eigenx`”, deploy only after: (1) org corpus stays tagged `eigenx` (or your `EIGENX_DEFAULT_POLICY_SCOPE`), (2) every user who should still see that corpus has role `admin` or is listed in `EIGENX_FULL_ACCESS_ROLES`, (3) personal material for everyone else is ingested under `eigenx:user:<their id>`.

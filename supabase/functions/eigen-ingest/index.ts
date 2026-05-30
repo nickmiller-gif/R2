@@ -131,10 +131,21 @@ function resolveOwnerEntityId(entityIds: string[]): string | undefined {
 
 async function ensureEigenDocumentAsset(
   client: SupabaseClient,
-  params: { documentId: string; title: string; sourceSystem: string; ownerEntityId?: string },
+  params: {
+    documentId: string;
+    title: string;
+    sourceSystem: string;
+    ownerUserId: string;
+    ownerEntityId?: string;
+    accessGroupId?: string;
+  },
 ): Promise<void> {
   const label = params.title.trim().slice(0, 500) || params.sourceSystem;
   const row: Record<string, unknown> = {
+    asset_kind: 'document',
+    local_table: 'documents',
+    local_record_id: params.documentId,
+    user_id: params.ownerUserId,
     kind: 'document',
     ref_id: params.documentId,
     domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
@@ -144,14 +155,33 @@ async function ensureEigenDocumentAsset(
   if (params.ownerEntityId) {
     row.owner_entity_id = params.ownerEntityId;
   }
-  const { error } = await client
-    .from('asset_registry')
-    .upsert(row, { onConflict: 'kind,ref_id,domain' });
+  if (params.accessGroupId) {
+    row.access_group_id = params.accessGroupId;
+  }
+  const { error } = await client.from('asset_registry').upsert(row, {
+    onConflict: 'local_table,local_record_id',
+  });
   if (error) {
-    logError('asset_registry upsert failed', {
-      functionName: 'eigen-ingest',
-      error: error.message,
-    });
+    const legacy = await client.from('asset_registry').upsert(
+      {
+        kind: 'document',
+        ref_id: params.documentId,
+        domain: EIGEN_DOCUMENT_ASSET_DOMAIN,
+        label,
+        metadata: row.metadata,
+        user_id: params.ownerUserId,
+        ...(params.ownerEntityId ? { owner_entity_id: params.ownerEntityId } : {}),
+        ...(params.accessGroupId ? { access_group_id: params.accessGroupId } : {}),
+      },
+      { onConflict: 'kind,ref_id,domain' },
+    );
+    if (legacy.error) {
+      logError('asset_registry upsert failed', {
+        functionName: 'eigen-ingest',
+        error: legacy.error.message,
+        primary_error: error.message,
+      });
+    }
   }
 }
 
@@ -625,7 +655,9 @@ Deno.serve(
             documentId: existingDoc.id as string,
             title: requestBody.document.title,
             sourceSystem: requestBody.source_system,
+            ownerUserId,
             ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
+            accessGroupId: groupId,
           });
           return jsonResponse({
             document_id: existingDoc.id,
@@ -704,7 +736,9 @@ Deno.serve(
         documentId,
         title: requestBody.document.title,
         sourceSystem: requestBody.source_system,
+        ownerUserId,
         ownerEntityId: resolveOwnerEntityId(requestBody.entity_ids ?? []),
+        accessGroupId: groupId,
       });
 
       const deleteChunks = await client

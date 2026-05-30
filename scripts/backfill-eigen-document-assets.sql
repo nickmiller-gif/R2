@@ -7,7 +7,10 @@
 --
 -- Only registers documents that already have at least one knowledge_chunk.
 
-INSERT INTO public.asset_registry (kind, ref_id, domain, label, metadata)
+INSERT INTO public.asset_registry (
+  kind, ref_id, domain, label, metadata,
+  asset_kind, local_table, local_record_id, user_id
+)
 SELECT
   'document'::public.asset_kind,
   d.id,
@@ -16,7 +19,11 @@ SELECT
   jsonb_build_object(
     'source_system', d.source_system,
     'backfill', true
-  )
+  ),
+  'document'::public.asset_kind,
+  'documents',
+  d.id,
+  d.owner_id
 FROM public.documents d
 WHERE EXISTS (
   SELECT 1 FROM public.knowledge_chunks k WHERE k.document_id = d.id

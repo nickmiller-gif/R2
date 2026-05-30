@@ -26,6 +26,7 @@ export interface DbEigenChatCitationRow {
 }
 
 export interface EigenChatCitationDb {
+  assertTurnOwnedBy(chatTurnId: string, ownerId: string): Promise<void>;
   deleteForTurn(chatTurnId: string): Promise<void>;
   insertMany(
     rows: Array<Omit<DbEigenChatCitationRow, 'id' | 'created_at'>>,
@@ -73,6 +74,8 @@ export function createEigenChatCitationService(db: EigenChatCitationDb): EigenCh
         throw new Error('chat_turn_id and owner_id required');
       }
       if (input.citations.length === 0) return [];
+
+      await db.assertTurnOwnedBy(chatTurnId, ownerId);
 
       const rows = input.citations.map((citation, index) => ({
         chat_turn_id: chatTurnId,

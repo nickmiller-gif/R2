@@ -174,4 +174,16 @@ describe('EigenAccessGroupService', () => {
     await expect(svc.addMember({ groupId: GROUP_A, userId: USER })).rejects.toThrow(/archived/);
     await expect(svc.removeMember({ groupId: GROUP_A, userId: USER })).rejects.toThrow(/archived/);
   });
+
+  it('rejects archive when group does not exist', async () => {
+    const svc = createEigenAccessGroupService(makeMockDb());
+    await expect(svc.archiveGroup(GROUP_A)).rejects.toThrow(/group not found/);
+  });
+
+  it('archiving an already-archived group is idempotent', async () => {
+    const db = makeMockDb({ groups: [baseGroup({ status: 'archived' })] });
+    const svc = createEigenAccessGroupService(db);
+    await expect(svc.archiveGroup(GROUP_A)).resolves.toBeUndefined();
+    expect(db.groups[0].status).toBe('archived');
+  });
 });

@@ -14,10 +14,20 @@ const OWNER_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const CHUNK_A = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const CHUNK_B = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 
-function makeMockDb(): EigenChatCitationDb & { rows: DbEigenChatCitationRow[] } {
+function makeMockDb(): EigenChatCitationDb & {
+  rows: DbEigenChatCitationRow[];
+  ownedTurns: Set<string>;
+} {
   const rows: DbEigenChatCitationRow[] = [];
+  const ownedTurns = new Set<string>([`${TURN_ID}:${OWNER_ID}`]);
   return {
     rows,
+    ownedTurns,
+    async assertTurnOwnedBy(chatTurnId, ownerId) {
+      if (!ownedTurns.has(`${chatTurnId}:${ownerId}`)) {
+        throw new Error('chat turn not found for owner');
+      }
+    },
     async deleteForTurn(chatTurnId) {
       for (let i = rows.length - 1; i >= 0; i -= 1) {
         if (rows[i].chat_turn_id === chatTurnId) {
@@ -149,5 +159,18 @@ describe('EigenChatCitationService', () => {
     });
     expect(persisted[0].policyDecisionId).toBe(policyDecisionId);
     expect(db.rows[0].policy_decision_id).toBe(policyDecisionId);
+  });
+
+  it('rejects persist when turn is not owned by caller', async () => {
+    const db = makeMockDb();
+    db.ownedTurns.clear();
+    const svc = createEigenChatCitationService(db);
+    await expect(
+      svc.persistForTurn({
+        chatTurnId: TURN_ID,
+        ownerId: OWNER_ID,
+        citations: toPersistCitationInputs(SAMPLE_CITATIONS),
+      }),
+    ).rejects.toThrow(/chat turn not found for owner/);
   });
 });

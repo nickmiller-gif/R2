@@ -7,6 +7,11 @@ import {
 import { createEigenChatCitationDb } from './eigen-chat-citation-db.ts';
 import { logWarn } from './log.ts';
 
+export interface PersistChatCitationsResult {
+  citations: ChatCitation[];
+  persisted: boolean;
+}
+
 export async function persistChatCitationsForTurn(
   client: SupabaseClient,
   input: {
@@ -16,8 +21,10 @@ export async function persistChatCitationsForTurn(
     policyDecisionId?: string | null;
     citations: ChatCitation[];
   },
-): Promise<ChatCitation[]> {
-  if (input.citations.length === 0) return input.citations;
+): Promise<PersistChatCitationsResult> {
+  if (input.citations.length === 0) {
+    return { citations: input.citations, persisted: true };
+  }
 
   try {
     const svc = createEigenChatCitationService(createEigenChatCitationDb(client));
@@ -29,12 +36,15 @@ export async function persistChatCitationsForTurn(
       policyDecisionId: input.policyDecisionId ?? null,
       citations: persistInputs,
     });
-    return svc.attachCitationIds(persistInputs, persisted);
+    return {
+      citations: svc.attachCitationIds(persistInputs, persisted),
+      persisted: true,
+    };
   } catch (err) {
     logWarn('persistChatCitationsForTurn failed', {
       functionName: 'persist-chat-citations',
       error: err instanceof Error ? err.message : String(err),
     });
-    return input.citations;
+    return { citations: input.citations, persisted: false };
   }
 }

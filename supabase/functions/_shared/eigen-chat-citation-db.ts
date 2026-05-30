@@ -6,6 +6,19 @@ import type {
 
 export function createEigenChatCitationDb(client: SupabaseClient): EigenChatCitationDb {
   return {
+    async assertTurnOwnedBy(chatTurnId, ownerId) {
+      const { data, error } = await client
+        .from('eigen_chat_turns')
+        .select('id')
+        .eq('id', chatTurnId)
+        .eq('owner_id', ownerId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) {
+        throw new Error('chat turn not found for owner');
+      }
+    },
+
     async deleteForTurn(chatTurnId) {
       const { error } = await client
         .from('eigen_chat_citations')

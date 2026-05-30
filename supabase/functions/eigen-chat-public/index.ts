@@ -237,6 +237,9 @@ Deno.serve(
       }
 
       const body = parseRequest(await req.json());
+      if (body.stream === true) {
+        return errorResponse('stream is not supported on public chat', 400);
+      }
       const retreatScoped = body.site_id === 'raysretreat';
       const r2AppScoped = body.site_id === 'r2app';
       const outsideDomainIntent = inferOutsideDomainIntent(body.message);

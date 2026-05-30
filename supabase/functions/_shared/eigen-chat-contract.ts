@@ -17,6 +17,7 @@ export interface ChatConfidence {
 }
 
 export interface ChatCitation {
+  citation_id?: string;
   chunk_id: string;
   source: string;
   section?: string;
@@ -37,10 +38,7 @@ function classifyAuthorityTier(chunk: EigenRetrieveChunk): CitationAuthorityTier
 export function buildCitations(chunks: EigenRetrieveChunk[]): ChatCitation[] {
   return chunks.slice(0, 8).map((chunk) => ({
     chunk_id: chunk.chunk_id,
-    source:
-      chunk.provenance?.source_ref ??
-      chunk.provenance?.source_system ??
-      'unknown',
+    source: chunk.provenance?.source_ref ?? chunk.provenance?.source_system ?? 'unknown',
     section:
       chunk.provenance?.heading_path && chunk.provenance.heading_path.length > 0
         ? chunk.provenance.heading_path.join(' › ')
@@ -67,9 +65,7 @@ function toLabel(score: number): ConfidenceLabel {
 
 export function buildCompositeConfidence(citations: ChatCitation[]): ChatConfidence {
   const count = citations.length;
-  const avgRelevance = count > 0
-    ? citations.reduce((sum, c) => sum + c.relevance, 0) / count
-    : 0;
+  const avgRelevance = count > 0 ? citations.reduce((sum, c) => sum + c.relevance, 0) / count : 0;
   const uploadCount = citations.filter((c) => c.authority_tier === 'user_upload').length;
   const uploadRatio = count > 0 ? uploadCount / count : 0;
   const retrievalScore = Math.min(1, (count / 6) * 0.55 + avgRelevance * 0.45);

@@ -22,6 +22,7 @@ import {
 } from '../_shared/eigen-chat-contract.ts';
 import { completeLlmChat, streamLlmChatDeltas } from '../_shared/llm-chat.ts';
 import { loadRecentTurns, persistTurnPair } from '../_shared/eigen-chat-history.ts';
+import { persistChatCitationsForTurn } from '../_shared/persist-chat-citations.ts';
 import {
   trimHistoryToBudget,
   type ConversationTurn,
@@ -681,10 +682,20 @@ Deno.serve(
                 });
               }
 
+              let responseCitations = citations;
+              if (persistResult.ok && persistResult.assistantTurnId) {
+                responseCitations = await persistChatCitationsForTurn(client, {
+                  assistantTurnId: persistResult.assistantTurnId,
+                  ownerId: auth.claims.userId,
+                  retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+                  citations,
+                });
+              }
+
               send({
                 done: true,
                 response: fullText,
-                citations,
+                citations: responseCitations,
                 confidence,
                 retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
                 memory_updated: true,
@@ -814,9 +825,19 @@ Deno.serve(
         });
       }
 
+      let responseCitations = citations;
+      if (persistNonStream.ok && persistNonStream.assistantTurnId) {
+        responseCitations = await persistChatCitationsForTurn(client, {
+          assistantTurnId: persistNonStream.assistantTurnId,
+          ownerId: auth.claims.userId,
+          retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+          citations,
+        });
+      }
+
       return jsonResponse({
         response: responseText,
-        citations,
+        citations: responseCitations,
         confidence,
         retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
         memory_updated: true,

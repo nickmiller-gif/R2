@@ -71,3 +71,11 @@ export {
   type DbEigenAccessGroupRow,
   type DbEigenAccessGroupMemberRow,
 } from './access-group.service.js';
+
+export {
+  createEigenChatCitationService,
+  toPersistCitationInputs,
+  type EigenChatCitationService,
+  type EigenChatCitationDb,
+  type DbEigenChatCitationRow,
+} from './chat-citation.service.js';

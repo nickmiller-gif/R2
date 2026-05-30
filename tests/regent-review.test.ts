@@ -3,10 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  buildExecutiveTeam,
   buildRegentReview,
   computeOffer,
   mergeByDomain,
+  reviewAgentFleet,
   reviewProcessCapability,
+  reviewRegulatoryFirstPass,
   reviewSecretExposure,
   scoreDomain,
   type RegentDecision,
@@ -254,6 +257,53 @@ describe('REGENT — agenda, merge, asset review', () => {
       expect(item.assumptions.length).toBeGreaterThan(0);
       expect(['high', 'medium', 'low']).toContain(item.confidence);
     }
+  });
+
+  it('builds a full executive team with named roles and a Chief of Staff synthesis', () => {
+    const team = buildExecutiveTeam(fixture(), 5);
+    const titles = team.roles.map((r) => r.role);
+    expect(titles).toEqual([
+      'Chief Financial Officer',
+      'Chief Strategy Officer',
+      'Chief Commercial Officer',
+      'Chief Operating Officer',
+      'General Counsel',
+      'Chief of Staff',
+    ]);
+    // Each member has a posture and a stance.
+    for (const r of team.roles) {
+      expect(['act', 'watch', 'hold']).toContain(r.posture);
+      expect(r.stance.length).toBeGreaterThan(0);
+      expect(r.headline.length).toBeGreaterThan(0);
+    }
+    expect(team.chief_of_staff.synthesis).toContain('executive team');
+    expect(team.chief_of_staff.sequencing.length).toBe(team.agenda.length);
+  });
+
+  it('General Counsel files a regulatory first-pass for regulated domains', () => {
+    const d = reviewRegulatoryFirstPass(fixture());
+    expect(d).toBeTruthy();
+    expect(d!.faculty).toBe('Risk');
+    expect(d!.observation).toMatch(/FDA\/FTC|FHA|UPL|501/);
+  });
+
+  it('Chief of Staff flags a silent peer bot (orchestration)', () => {
+    const state = {
+      ...fixture(),
+      agent_activity: [{ bot: 'autonomous-news-rss-cron', last_seen_days: 21, recent_count: 0 }],
+    };
+    const d = reviewAgentFleet(state);
+    expect(d).toBeTruthy();
+    expect(d!.faculty).toBe('People & Orchestration');
+    expect(d!.title).toContain('quiet bot');
+  });
+
+  it('detects a cross-desk tension between CFO and another exec', () => {
+    // Fixture runway 5.6mo < 6 floor (burn 38.5k on 215k) + open gate ⇒ liquidity vs growth.
+    const team = buildExecutiveTeam(fixture(), 5);
+    expect(team.tensions.length).toBeGreaterThanOrEqual(1);
+    expect(team.tensions[0]!.between).toContain('Chief Financial Officer');
+    expect(team.tensions[0]!.resolution.length).toBeGreaterThan(0);
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

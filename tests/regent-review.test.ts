@@ -6,6 +6,7 @@ import {
   buildRegentReview,
   computeOffer,
   mergeByDomain,
+  reviewProcessCapability,
   reviewSecretExposure,
   scoreDomain,
   type RegentDecision,
@@ -198,6 +199,24 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(ip).toBeTruthy();
     expect(ip!.corroborated).toBe(true); // Capital (EVA) + Commercial (LTV:CAC)
     expect(ip!.corroboration?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('process-capability flags only KNOWN gaps (explicit false), never unknown', () => {
+    const base = { cost_of_capital_pct: 18, treasury: { cash_on_hand: 0 }, domains: [] };
+    // Unknown tests/CI (undefined) — must NOT flag (e.g. live-DB-derived sources).
+    expect(
+      reviewProcessCapability({
+        ...base,
+        repo_assets: [{ repo: 'centralr2', last_commit_days: 0 }],
+      }),
+    ).toBeNull();
+    // Explicitly false — a known gap, should flag.
+    const d = reviewProcessCapability({
+      ...base,
+      repo_assets: [{ repo: 'x', last_commit_days: 0, has_tests: false, has_ci: false }],
+    });
+    expect(d).toBeTruthy();
+    expect(d!.faculty).toBe('Operations');
   });
 
   it('flags committed env files as a high-severity Risk decision', () => {

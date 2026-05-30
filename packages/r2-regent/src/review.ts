@@ -490,10 +490,13 @@ export function reviewRepoDrift(state: WorldState): RegentDecision | null {
 }
 
 export function reviewProcessCapability(state: WorldState): RegentDecision | null {
-  const gaps = (state.repo_assets ?? []).filter((a) => !a.has_tests || !a.has_ci);
+  // Only flag a KNOWN gap (fact explicitly false). Unknown (undefined) means the
+  // source could not observe it — e.g. the live-DB-derived path inventories feed
+  // source-systems, not real repos — so it must not read as a defect.
+  const gaps = (state.repo_assets ?? []).filter((a) => a.has_tests === false || a.has_ci === false);
   if (gaps.length === 0) return null;
-  const noTests = gaps.filter((a) => !a.has_tests).map((a) => a.repo);
-  const noCi = gaps.filter((a) => !a.has_ci).map((a) => a.repo);
+  const noTests = gaps.filter((a) => a.has_tests === false).map((a) => a.repo);
+  const noCi = gaps.filter((a) => a.has_ci === false).map((a) => a.repo);
   const bits: string[] = [];
   if (noTests.length)
     bits.push(`no test signal: ${noTests.slice(0, 6).join(', ')}${noTests.length > 6 ? ' …' : ''}`);

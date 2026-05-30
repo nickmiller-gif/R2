@@ -38,20 +38,38 @@ const H = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'
 
 function parseConfig() {
   const here = dirname(fileURLToPath(import.meta.url));
-  const toml = readFileSync(join(here, '..', 'supabase', 'config.toml'), 'utf8');
   const want = new Map();
-  let cur = null;
-  for (const line of toml.split('\n')) {
-    const m = line.match(/^\s*\[functions\.([^\]]+)\]/);
-    if (m) {
-      cur = m[1];
-      continue;
+  // Primary source: tracked list of functions that must be verify_jwt=false.
+  // supabase/config.toml is gitignored (absent in CI), so this list file —
+  // generated from config.toml — is the CI source of truth.
+  try {
+    const list = readFileSync(join(here, '..', 'supabase', 'functions-no-verify-jwt.txt'), 'utf8');
+    for (const raw of list.split('\n')) {
+      const slug = raw.trim();
+      if (!slug || slug.startsWith('#')) continue;
+      want.set(slug, false);
     }
-    const v = line.match(/^\s*verify_jwt\s*=\s*(true|false)/);
-    if (v && cur) {
-      want.set(cur, v[1] === 'true');
-      cur = null;
+  } catch {
+    /* fall through to config.toml */
+  }
+  // Local fallback: read config.toml when present (also captures verify_jwt=true).
+  try {
+    const toml = readFileSync(join(here, '..', 'supabase', 'config.toml'), 'utf8');
+    let cur = null;
+    for (const line of toml.split('\n')) {
+      const m = line.match(/^\s*\[functions\.([^\]]+)\]/);
+      if (m) {
+        cur = m[1];
+        continue;
+      }
+      const v = line.match(/^\s*verify_jwt\s*=\s*(true|false)/);
+      if (v && cur) {
+        if (!want.has(cur)) want.set(cur, v[1] === 'true');
+        cur = null;
+      }
     }
+  } catch {
+    /* config.toml gitignored/absent — list file already loaded */
   }
   return want;
 }

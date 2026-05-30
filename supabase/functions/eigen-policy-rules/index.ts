@@ -7,6 +7,10 @@ import { ROLE_HIERARCHY, type CharterRole } from '../_shared/roles.ts';
 import { extractRequestMeta, withRequestMeta } from '../_shared/correlation.ts';
 import { logError } from '../_shared/log.ts';
 import { insertEigenPolicyRuleHistoryEvent } from '../_shared/eigen-policy-rule-audit.ts';
+import {
+  buildSupersedePatchPayload,
+  callSupersedePolicyRuleRpc,
+} from '../_shared/eigen-policy-rule-supersede.ts';
 
 const supabaseClients = createSupabaseClientFactory();
 
@@ -304,52 +308,21 @@ Deno.serve(
           return errorResponse('id required in path or body', 400);
         }
 
-        // Load the predecessor first so we can snapshot it into history and
-        // validate it's still the active version.
-        const { data: predecessor, error: predecessorErr } = await serviceClient
-          .from('eigen_policy_rules')
-          .select('*')
-          .eq('id', ruleId)
-          .single();
-        if (predecessorErr || !predecessor) {
-          return errorResponse(predecessorErr?.message ?? 'Rule not found', 404);
-        }
-        if (predecessor.is_active === false) {
-          return errorResponse(
-            'Cannot supersede an already-inactive rule; start from its active successor',
-            409,
-          );
-        }
-
-        // Build the successor row by copying predecessor fields and layering
-        // the allowlisted patches. Narrow to exactly the PATCH-able surface so
-        // the client can't smuggle version / is_active / superseded_by / id.
-        const next: Record<string, unknown> = {
-          policy_tag: predecessor.policy_tag,
-          capability_tag_pattern: predecessor.capability_tag_pattern,
-          effect: predecessor.effect,
-          required_role: predecessor.required_role ?? null,
-          rationale: predecessor.rationale ?? null,
-          metadata: predecessor.metadata ?? {},
-          version: (predecessor.version ?? 1) + 1,
-          is_active: true,
-        };
-
+        // Validate only the fields the caller actually sent. Carry-over of
+        // unspecified columns from the predecessor happens server-side in
+        // the supersede RPC; the edge function only enforces input bounds.
         if (obj.policy_tag !== undefined) {
           const err = validatePolicyTag(obj.policy_tag);
           if (err) return errorResponse(err, 400);
-          next.policy_tag = obj.policy_tag;
         }
         if (obj.capability_tag_pattern !== undefined) {
           const err = validateCapabilityTagPattern(obj.capability_tag_pattern);
           if (err) return errorResponse(err, 400);
-          next.capability_tag_pattern = obj.capability_tag_pattern;
         }
         if (obj.effect !== undefined) {
           if (typeof obj.effect !== 'string' || !EFFECTS.has(obj.effect)) {
             return errorResponse('effect must be allow or deny', 400);
           }
-          next.effect = obj.effect;
         }
         if (obj.required_role !== undefined) {
           if (obj.required_role !== null && typeof obj.required_role !== 'string') {
@@ -358,62 +331,16 @@ Deno.serve(
           if (typeof obj.required_role === 'string' && !isCharterRole(obj.required_role)) {
             return errorResponse(`required_role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
           }
-          next.required_role = obj.required_role;
         }
         if (obj.rationale !== undefined) {
           const err = validateRationale(obj.rationale);
           if (err) return errorResponse(err, 400);
-          next.rationale = obj.rationale;
         }
         if (obj.metadata !== undefined) {
           const err = validateMetadata(obj.metadata);
           if (err) return errorResponse(err, 400);
-          next.metadata = obj.metadata;
         }
 
-        // Versioned supersede: insert the new row, then mark the predecessor
-        // inactive and point it at the new id. The partial unique index on
-        // active rows means we must flip predecessor's is_active *before* the
-        // new row acquires the index slot — do it in that order.
-        const { data: inserted, error: insertErr } = await serviceClient
-          .from('eigen_policy_rules')
-          .insert([next])
-          .select()
-          .single();
-        if (insertErr || !inserted) {
-          return errorResponse(insertErr?.message ?? 'Failed to insert superseding rule', 400);
-        }
-        const newId = inserted.id as string;
-
-        // Now retire the predecessor. If this fails we have a duplicate
-        // active rule (both predecessor and successor) — flag loudly.
-        const { data: supersededPredecessor, error: supersedeErr } = await serviceClient
-          .from('eigen_policy_rules')
-          .update({
-            is_active: false,
-            superseded_by: newId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', ruleId)
-          .select()
-          .single();
-        if (supersedeErr || !supersededPredecessor) {
-          logError('eigen-policy-rules supersede predecessor flip failed', {
-            functionName: 'eigen-policy-rules',
-            predecessorId: ruleId,
-            newId,
-            error: supersedeErr?.message,
-            correlationId: meta.correlationId,
-          });
-          return errorResponse(
-            `Superseding rule created (${newId}) but predecessor flip failed: ${
-              supersedeErr?.message ?? 'unknown'
-            }`,
-            500,
-          );
-        }
-
-        const auditWarnings: string[] = [];
         const notes =
           typeof obj.notes === 'string'
             ? obj.notes
@@ -421,61 +348,34 @@ Deno.serve(
               ? (obj.rationale as string)
               : null;
 
-        const supersedeAudit = await insertEigenPolicyRuleHistoryEvent(serviceClient, {
+        // Versioned supersede is atomic on the DB side (migration
+        // 20260530160000): flip predecessor inactive, insert successor,
+        // write both history rows — all in one transaction. Any failure
+        // (including an audit insert) rolls the whole supersede back, so
+        // we no longer emit auditWarnings on PATCH.
+        const rpcResult = await callSupersedePolicyRuleRpc(serviceClient, {
           ruleId,
-          action: 'supersede',
-          beforeState: snapshotRule(predecessor as Record<string, unknown>),
-          afterState: snapshotRule(supersededPredecessor as Record<string, unknown>),
+          patch: buildSupersedePatchPayload(obj),
           actorId: auth.claims.userId,
           correlationId: meta.correlationId,
           rationale: notes,
-          metadata: {
+          historyMetadata: {
             surface: 'eigen-policy-rules',
             http_method: 'PATCH',
-            successor_rule_id: newId,
           },
         });
-        if (supersedeAudit) {
-          logError('eigen-policy-rules supersede audit failed', {
-            functionName: 'eigen-policy-rules',
-            predecessorId: ruleId,
-            newId,
-            error: supersedeAudit,
-            correlationId: meta.correlationId,
-          });
-          auditWarnings.push(`supersede:${supersedeAudit}`);
+        if (!rpcResult.ok) {
+          if (rpcResult.status >= 500) {
+            logError('eigen-policy-rules supersede rpc failed', {
+              functionName: 'eigen-policy-rules',
+              ruleId,
+              error: rpcResult.error,
+              correlationId: meta.correlationId,
+            });
+          }
+          return errorResponse(rpcResult.error ?? 'Supersede failed', rpcResult.status);
         }
-
-        const createAudit = await insertEigenPolicyRuleHistoryEvent(serviceClient, {
-          ruleId: newId,
-          action: 'create',
-          beforeState: null,
-          afterState: snapshotRule(inserted as Record<string, unknown>),
-          actorId: auth.claims.userId,
-          correlationId: meta.correlationId,
-          rationale: notes,
-          metadata: {
-            surface: 'eigen-policy-rules',
-            http_method: 'PATCH',
-            predecessor_rule_id: ruleId,
-          },
-        });
-        if (createAudit) {
-          logError('eigen-policy-rules successor create audit failed', {
-            functionName: 'eigen-policy-rules',
-            predecessorId: ruleId,
-            newId,
-            error: createAudit,
-            correlationId: meta.correlationId,
-          });
-          auditWarnings.push(`create_successor:${createAudit}`);
-        }
-
-        const responseBody =
-          auditWarnings.length > 0 && inserted && typeof inserted === 'object'
-            ? { ...(inserted as Record<string, unknown>), auditWarnings }
-            : inserted;
-        return jsonResponse(responseBody, 201);
+        return jsonResponse(rpcResult.data, 201);
       }
 
       if (req.method === 'DELETE') {

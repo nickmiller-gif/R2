@@ -81,6 +81,8 @@ describe('X1/E3 hardening static audit', () => {
     expect(src).toMatch(/timingSafeEqual/);
     expect(src).toMatch(/EIGEN_MEMORY_EPISODES_CRON_TOKEN/);
     expect(src).toMatch(/EIGEN_MEMORY_EPISODES_CRON_TOKEN must be configured/);
+    expect(src).toMatch(/resolveConsolidateServiceToken/);
+    expect(src).toMatch(/validatedCronBearer/);
     expect(src).not.toMatch(/AUTONOMOUS_NEWS_CRON_TOKEN/);
   });
 

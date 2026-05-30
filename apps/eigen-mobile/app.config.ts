@@ -1,14 +1,14 @@
 import type { ExpoConfig } from 'expo/config';
 
-const eigenChatUrl =
-  process.env.EXPO_PUBLIC_EIGEN_CHAT_URL?.trim() || 'https://eigen-chat.pages.dev';
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() || 'https://zudslxucibosjwefojtm.supabase.co';
 
 const config: ExpoConfig = {
   name: 'Eigen',
   slug: 'eigen-mobile',
-  version: '0.1.0',
+  version: '0.2.0',
   orientation: 'portrait',
-  userInterfaceStyle: 'automatic',
+  userInterfaceStyle: 'dark',
   newArchEnabled: true,
   scheme: 'eigen',
   ios: {
@@ -22,7 +22,8 @@ const config: ExpoConfig = {
     package: 'com.r2.eigen',
   },
   extra: {
-    eigenChatUrl,
+    supabaseUrl,
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '',
   },
 };
 

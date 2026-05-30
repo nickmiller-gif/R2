@@ -1,75 +1,92 @@
-import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import Constants from 'expo-constants';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import WebView, { type WebViewNavigation } from 'react-native-webview';
+import type { Session } from '@supabase/supabase-js';
+import { AuthScreen } from './src/components/AuthScreen';
+import { ChatScreen } from './src/components/ChatScreen';
+import { SourcesScreen } from './src/components/SourcesScreen';
+import { supabase } from './src/lib/supabase';
 
-const EIGEN_CHAT_URL =
-  (Constants.expoConfig?.extra?.eigenChatUrl as string | undefined)?.trim() ||
-  'https://eigen-chat.pages.dev';
+type TabId = 'chat' | 'sources';
 
 export default function App() {
-  const webRef = useRef<WebView>(null);
-  const [loading, setLoading] = useState(true);
-  const [canGoBack, setCanGoBack] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [booting, setBooting] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabId>('chat');
 
-  const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
-    setCanGoBack(nav.canGoBack);
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setBooting(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  const reload = useCallback(() => {
-    setError(null);
-    setLoading(true);
-    webRef.current?.reload();
-  }, []);
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setActiveTab('chat');
+  };
+
+  if (booting) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color="#5eead4" />
+      </View>
+    );
+  }
+
+  if (!session?.access_token) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+          <StatusBar style="light" />
+          <AuthScreen onSignedIn={() => {}} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  const userEmail = session.user.email ?? 'member';
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>Could not load Eigen</Text>
-            <Text style={styles.errorBody}>{error}</Text>
-            <Pressable style={styles.retryButton} onPress={reload}>
-              <Text style={styles.retryLabel}>Retry</Text>
+        <View style={styles.header}>
+          <Text style={styles.brand}>Eigen</Text>
+          <View style={styles.tabs}>
+            <Pressable
+              style={[styles.tab, activeTab === 'chat' && styles.tabActive]}
+              onPress={() => setActiveTab('chat')}
+            >
+              <Text style={[styles.tabLabel, activeTab === 'chat' && styles.tabLabelActive]}>
+                Chat
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.tab, activeTab === 'sources' && styles.tabActive]}
+              onPress={() => setActiveTab('sources')}
+            >
+              <Text style={[styles.tabLabel, activeTab === 'sources' && styles.tabLabelActive]}>
+                Sources
+              </Text>
             </Pressable>
           </View>
+          <Pressable onPress={() => void signOut()} hitSlop={8}>
+            <Text style={styles.signOut}>Sign out</Text>
+          </Pressable>
+        </View>
+
+        {activeTab === 'chat' ? (
+          <ChatScreen accessToken={session.access_token} userEmail={userEmail} />
         ) : (
-          <>
-            {loading ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#5eead4" />
-              </View>
-            ) : null}
-            <WebView
-              ref={webRef}
-              source={{ uri: EIGEN_CHAT_URL }}
-              style={styles.webview}
-              onLoadStart={() => setLoading(true)}
-              onLoadEnd={() => setLoading(false)}
-              onError={(event) => {
-                setLoading(false);
-                setError(event.nativeEvent.description || 'Network error');
-              }}
-              onHttpError={(event) => {
-                if (event.nativeEvent.statusCode >= 400) {
-                  setLoading(false);
-                  setError(`HTTP ${event.nativeEvent.statusCode}`);
-                }
-              }}
-              onNavigationStateChange={onNavigationStateChange}
-              domStorageEnabled
-              sharedCookiesEnabled
-              thirdPartyCookiesEnabled={Platform.OS === 'android'}
-              allowsBackForwardNavigationGestures={canGoBack}
-              setSupportMultipleWindows={false}
-              originWhitelist={['https://*', 'http://localhost:*', 'http://127.0.0.1:*']}
-              applicationNameForUserAgent={`EigenMobile/0.1 (${Platform.OS})`}
-            />
-          </>
+          <SourcesScreen accessToken={session.access_token} />
         )}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -77,48 +94,54 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  boot: {
+    flex: 1,
+    backgroundColor: '#0a0f14',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   safe: {
     flex: 1,
     backgroundColor: '#0a0f14',
   },
-  webview: {
-    flex: 1,
-    backgroundColor: '#0a0f14',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0a0f14',
-    zIndex: 2,
-  },
-  errorBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
     gap: 12,
   },
-  errorTitle: {
+  brand: {
     color: '#f1f5f9',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
+    letterSpacing: -0.3,
   },
-  errorBody: {
-    color: '#94a3b8',
-    fontSize: 14,
-    textAlign: 'center',
+  tabs: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
   },
-  retryButton: {
-    marginTop: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  tab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
+  },
+  tabActive: {
     backgroundColor: '#134e4a',
   },
-  retryLabel: {
-    color: '#ccfbf1',
+  tabLabel: {
+    color: '#64748b',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  tabLabelActive: {
+    color: '#ccfbf1',
+  },
+  signOut: {
+    color: '#94a3b8',
+    fontSize: 13,
   },
 });

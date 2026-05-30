@@ -62,3 +62,11 @@ export {
   type EigenSiteRegistryDb,
   type DbEigenSiteRegistryRow,
 } from './site-registry.service.js';
+
+export {
+  createEigenChatCitationService,
+  toPersistCitationInputs,
+  type EigenChatCitationService,
+  type EigenChatCitationDb,
+  type DbEigenChatCitationRow,
+} from './chat-citation.service.js';

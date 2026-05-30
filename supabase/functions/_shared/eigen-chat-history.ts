@@ -84,43 +84,51 @@ export interface PersistTurnPairInput {
 export async function persistTurnPair(
   client: SupabaseClient,
   input: PersistTurnPairInput,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; assistantTurnId?: string; error?: string }> {
   // Let the DB assign created_at via its now() default.
   // Use turn_index (0 = user, 1 = assistant) as a deterministic tie-breaker
   // for ordering within the same pair, avoiding client-clock drift issues.
-  const { error } = await client.from('eigen_chat_turns').insert([
-    {
-      session_id: input.sessionId,
-      owner_id: input.ownerId,
-      role: 'user',
-      turn_index: 0,
-      content: input.userMessage,
-      retrieval_run_id: null,
-      citations: [],
-      confidence: null,
-      llm_provider: null,
-      llm_model: null,
-      llm_fallback_used: false,
-      llm_critic_used: false,
-      latency_ms: null,
-    },
-    {
-      session_id: input.sessionId,
-      owner_id: input.ownerId,
-      role: 'assistant',
-      turn_index: 1,
-      content: input.assistantMessage,
-      retrieval_run_id: input.retrievalRunId,
-      citations: input.citations,
-      confidence: input.confidence,
-      llm_provider: input.llmProvider,
-      llm_model: input.llmModel,
-      llm_fallback_used: input.llmFallbackUsed,
-      llm_critic_used: input.llmCriticUsed,
-      latency_ms: input.latencyMs,
-    },
-  ]);
+  const { data, error } = await client
+    .from('eigen_chat_turns')
+    .insert([
+      {
+        session_id: input.sessionId,
+        owner_id: input.ownerId,
+        role: 'user',
+        turn_index: 0,
+        content: input.userMessage,
+        retrieval_run_id: null,
+        citations: [],
+        confidence: null,
+        llm_provider: null,
+        llm_model: null,
+        llm_fallback_used: false,
+        llm_critic_used: false,
+        latency_ms: null,
+      },
+      {
+        session_id: input.sessionId,
+        owner_id: input.ownerId,
+        role: 'assistant',
+        turn_index: 1,
+        content: input.assistantMessage,
+        retrieval_run_id: input.retrievalRunId,
+        citations: input.citations,
+        confidence: input.confidence,
+        llm_provider: input.llmProvider,
+        llm_model: input.llmModel,
+        llm_fallback_used: input.llmFallbackUsed,
+        llm_critic_used: input.llmCriticUsed,
+        latency_ms: input.latencyMs,
+      },
+    ])
+    .select('id, role');
 
   if (error) return { ok: false, error: error.message };
-  return { ok: true };
+
+  const assistantTurnId = (data as Array<{ id: string; role: string }> | null)?.find(
+    (row) => row.role === 'assistant',
+  )?.id;
+
+  return { ok: true, assistantTurnId };
 }

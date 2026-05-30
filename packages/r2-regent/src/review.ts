@@ -83,6 +83,14 @@ export interface RepoAsset {
   tracked_env_files?: string[];
 }
 
+/** One peer autonomous bot in the R2 fleet, as the Chief of Staff sees it. */
+export interface AgentActivity {
+  bot: string;
+  last_seen_days: number;
+  recent_count: number;
+  domains?: string[];
+}
+
 export interface WorldState {
   _SYNTHETIC?: string;
   as_of?: string;
@@ -93,10 +101,13 @@ export interface WorldState {
   repo_stale_after_days?: number;
   ltv_cac_target?: number;
   churn_warn_pct?: number;
+  agent_silent_after_days?: number;
   treasury: { cash_on_hand: number; committed_inflows?: Array<Record<string, unknown>> };
   funding?: { active_phase?: number; phases?: Array<Record<string, unknown>> };
   domains: Domain[];
   repo_assets?: RepoAsset[];
+  /** The other autonomous bots' recent activity — the Chief of Staff's purview. */
+  agent_activity?: AgentActivity[];
 }
 
 export interface ScoredDomain extends Domain {
@@ -543,6 +554,71 @@ export function reviewHealthRegister(state: WorldState): RegentDecision | null {
 }
 
 // --------------------------------------------------------------------------- //
+// General Counsel — standing regulatory first-pass (by domain present)         //
+// --------------------------------------------------------------------------- //
+
+const DOMAIN_REGULATORY: Record<string, string> = {
+  health_wellness: 'FDA/FTC (health claims, substantiation)',
+  retreat_commerce: 'FHA (real-estate intelligence, disparate impact)',
+  ip_patent: 'UPL (unauthorized practice of law)',
+  productivity_memory: '501(c)(3) private-benefit (Foundation editorial boundary)',
+};
+
+export function reviewRegulatoryFirstPass(state: WorldState): RegentDecision | null {
+  const present = state.domains
+    .filter((d) => DOMAIN_REGULATORY[d.key])
+    .map((d) => `${d.name} → ${DOMAIN_REGULATORY[d.key]}`);
+  if (present.length === 0) return null;
+  return {
+    severity: 40,
+    faculty: 'Risk',
+    title: `General Counsel first-pass: ${present.length} regulated boundary(ies) in scope`,
+    framework: 'Standing regulatory register (Ethics & Leadership; Governance)',
+    observation: `Boundaries the portfolio touches this cycle: ${present.join('; ')}.`,
+    assumptions: ['Each listed domain is live or producing user-facing surfaces this cycle.'],
+    recommendation:
+      'Hold the line on each boundary: no health/efficacy claim without substantiation, no real-estate output without a disparate-impact check, no IP output that reads as legal advice, no Foundation activity conferring private benefit. Flag any new surface to counsel before launch.',
+    tradeoff:
+      'A standing register costs review time; skipping it concentrates regulatory risk at launch.',
+    counter_case:
+      'A domain with no user-facing claims this cycle can carry a light register entry — scope to actual exposure.',
+    confidence: 'medium',
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Chief of Staff — orchestrate the other autonomous bots                       //
+// --------------------------------------------------------------------------- //
+
+export function reviewAgentFleet(state: WorldState): RegentDecision | null {
+  const fleet = state.agent_activity ?? [];
+  if (fleet.length === 0) return null;
+  const silentAfter = state.agent_silent_after_days ?? 10;
+  const silent = fleet
+    .filter((a) => a.last_seen_days > silentAfter)
+    .sort((a, b) => b.last_seen_days - a.last_seen_days);
+  if (silent.length === 0) return null;
+  const names = silent.map((a) => `${a.bot} (${a.last_seen_days}d)`).join(', ');
+  return {
+    severity: 47,
+    faculty: 'People & Orchestration',
+    title: `Re-trigger or retire ${silent.length} quiet bot(s) in the fleet`,
+    framework: 'Orchestration & span of control (Managing Networks and Organizations)',
+    observation: `Autonomous bots silent beyond ${silentAfter}d: ${names}. A bot that has stopped emitting is either blocked or done — neither should sit undeclared.`,
+    assumptions: [
+      'Emission recency proxies for a working bot; some bots are event-driven and legitimately quiet.',
+    ],
+    recommendation:
+      'Re-trigger each quiet bot once; if it stays silent, mark it event-driven (expected) or schedule a fix. Keep the fleet either running or explicitly parked.',
+    tradeoff:
+      'Chasing event-driven bots wastes cycles; ignoring a blocked bot loses an intelligence stream.',
+    counter_case:
+      'A bot designed to fire only on a rare trigger is healthy when quiet — confirm cadence before acting.',
+    confidence: 'medium',
+  };
+}
+
+// --------------------------------------------------------------------------- //
 // Merge + agenda                                                               //
 // --------------------------------------------------------------------------- //
 
@@ -583,12 +659,9 @@ export function mergeByDomain(cands: RegentDecision[]): RegentDecision[] {
   return [...out, ...singles];
 }
 
-export function buildRegentReview(state: WorldState, topN = 5): RegentReview {
-  const hurdle = state.cost_of_capital_pct;
-  const staleAfter = state.stale_after_days ?? 14;
-  const scored = state.domains.map((d) => scoreDomain(d, hurdle, staleAfter));
+/** Every faculty's raw candidate decisions (pre-merge), in deterministic order. */
+export function collectCandidates(state: WorldState, scored: ScoredDomain[]): RegentDecision[] {
   const tre = treasuryView(state, scored);
-
   const cands: Array<RegentDecision | null> = [
     decisionRunway(state, tre),
     decisionValueDestruction(scored),
@@ -601,9 +674,19 @@ export function buildRegentReview(state: WorldState, topN = 5): RegentReview {
     reviewRepoDrift(state),
     reviewProcessCapability(state),
     reviewHealthRegister(state),
+    reviewRegulatoryFirstPass(state),
+    reviewAgentFleet(state),
   ];
+  return cands.filter((c): c is RegentDecision => !!c);
+}
 
-  const decisions = mergeByDomain(cands.filter((c): c is RegentDecision => !!c));
+export function buildRegentReview(state: WorldState, topN = 5): RegentReview {
+  const hurdle = state.cost_of_capital_pct;
+  const staleAfter = state.stale_after_days ?? 14;
+  const scored = state.domains.map((d) => scoreDomain(d, hurdle, staleAfter));
+  const tre = treasuryView(state, scored);
+
+  const decisions = mergeByDomain(collectCandidates(state, scored));
   decisions.sort((a, b) => b.severity - a.severity);
   return {
     agenda: decisions.slice(0, topN),
@@ -611,5 +694,190 @@ export function buildRegentReview(state: WorldState, topN = 5): RegentReview {
     scored,
     treasury: tre,
     staleDomains: scored.filter((d) => d.stale).map((d) => d.name),
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// The executive team — named roles, per-member memos, tensions, Chief of Staff //
+// --------------------------------------------------------------------------- //
+
+export const ROLE_BY_FACULTY: Record<string, { title: string; mandate: string }> = {
+  Capital: { title: 'Chief Financial Officer', mandate: 'capital, runway, value creation' },
+  Strategy: { title: 'Chief Strategy Officer', mandate: 'portfolio, governance, funding gates' },
+  Commercial: { title: 'Chief Commercial Officer', mandate: 'pricing, growth, unit economics' },
+  Operations: { title: 'Chief Operating Officer', mandate: 'throughput, quality, capacity' },
+  Risk: {
+    title: 'General Counsel',
+    mandate: 'regulatory posture, entity shielding, first-pass legal',
+  },
+  'People & Orchestration': {
+    title: 'Chief of Staff',
+    mandate: 'agent orchestration, reconciliation, sequencing',
+  },
+};
+
+const FACULTY_ORDER = [
+  'Capital',
+  'Strategy',
+  'Commercial',
+  'Operations',
+  'Risk',
+  'People & Orchestration',
+];
+
+export type Posture = 'act' | 'watch' | 'hold';
+
+export interface ExecutiveMemo {
+  role: string;
+  faculty: string;
+  mandate: string;
+  posture: Posture;
+  headline: string;
+  stance: string;
+  decisions: RegentDecision[];
+}
+
+export interface Tension {
+  between: [string, string];
+  over: string;
+  resolution: string;
+}
+
+export interface ExecutiveTeamReview extends RegentReview {
+  roles: ExecutiveMemo[];
+  tensions: Tension[];
+  chief_of_staff: { synthesis: string; sequencing: string[] };
+}
+
+function postureFor(maxSeverity: number): Posture {
+  if (maxSeverity >= 70) return 'act';
+  if (maxSeverity >= 40) return 'watch';
+  return 'hold';
+}
+
+function buildMemo(faculty: string, cands: RegentDecision[], state: WorldState): ExecutiveMemo {
+  const role = ROLE_BY_FACULTY[faculty]!;
+  const mine = cands.filter((c) => c.faculty === faculty).sort((a, b) => b.severity - a.severity);
+  const top = mine[0];
+  const maxSev = top?.severity ?? 0;
+  const posture = postureFor(maxSev);
+
+  let headline: string;
+  let stance: string;
+  if (top) {
+    headline = top.title;
+    stance = `${posture.toUpperCase()} — ${top.recommendation}`;
+  } else if (faculty === 'People & Orchestration') {
+    const fleet = state.agent_activity ?? [];
+    headline = fleet.length
+      ? `Reconciling ${fleet.length} autonomous bot(s) into one agenda`
+      : 'No fleet activity to reconcile this cycle';
+    stance = fleet.length
+      ? 'HOLD — the fleet is emitting and reconciled; no orchestration action needed.'
+      : 'HOLD — no peer bot activity in view.';
+  } else {
+    headline = `No action required from the ${role.title} this week`;
+    stance = 'HOLD — nothing crosses this desk this cycle.';
+  }
+  return {
+    role: role.title,
+    faculty,
+    mandate: role.mandate,
+    posture,
+    headline,
+    stance,
+    decisions: mine,
+  };
+}
+
+function detectTensions(cands: RegentDecision[], state: WorldState): Tension[] {
+  const tensions: Tension[] = [];
+  const has = (pred: (c: RegentDecision) => boolean) => cands.some(pred);
+  const cfo = ROLE_BY_FACULTY.Capital!.title;
+  const cso = ROLE_BY_FACULTY.Strategy!.title;
+  const cco = ROLE_BY_FACULTY.Commercial!.title;
+  const coo = ROLE_BY_FACULTY.Operations!.title;
+
+  const hasRunway = has((c) => c.faculty === 'Capital' && c.title.toLowerCase().includes('runway'));
+  const hasGrowthPush =
+    has((c) => c.faculty === 'Capital' && c.title.startsWith('Reallocate')) ||
+    has((c) => c.faculty === 'Commercial');
+  const hasGate = has((c) => c.title.toLowerCase().includes('gate'));
+  const hasProcessSpend = has((c) => c.faculty === 'Operations');
+
+  if (hasRunway && (hasGrowthPush || hasGate)) {
+    tensions.push({
+      between: [cfo, hasGrowthPush ? cco : cso],
+      over: 'liquidity discipline vs. investing for growth/gate progress',
+      resolution:
+        'Sequence liquidity first: protect the runway floor this week; stage the growth/gate spend behind the next confirmed inflow.',
+    });
+  }
+
+  const destroyBet = cands.find((c) => {
+    if (!(c.faculty === 'Capital' && c.title.startsWith('Fix or sunset'))) return false;
+    const dom = state.domains.find((d) => d.key === c.domain_key);
+    return dom?.strategic_role === 'bet';
+  });
+  if (destroyBet) {
+    tensions.push({
+      between: [cfo, cso],
+      over: `whether to sunset a value-destroying domain that Strategy holds as a bet`,
+      resolution:
+        'Put it on a 90-day turnaround clock with an explicit economic-profit target; sunset only if the clock expires unmet.',
+    });
+  }
+
+  if (hasRunway && hasProcessSpend) {
+    tensions.push({
+      between: [cfo, coo],
+      over: 'operational investment vs. no runway to fund it',
+      resolution:
+        'Fund process improvements by reallocation from the lowest-return line, not new burn, until runway clears the floor.',
+    });
+  }
+
+  return tensions;
+}
+
+export function buildExecutiveTeam(state: WorldState, topN = 5): ExecutiveTeamReview {
+  const hurdle = state.cost_of_capital_pct;
+  const staleAfter = state.stale_after_days ?? 14;
+  const scored = state.domains.map((d) => scoreDomain(d, hurdle, staleAfter));
+  const tre = treasuryView(state, scored);
+
+  const cands = collectCandidates(state, scored);
+  const merged = mergeByDomain(cands);
+  merged.sort((a, b) => b.severity - a.severity);
+  const agenda = merged.slice(0, topN);
+  const deferred = merged.slice(topN);
+
+  const roles = FACULTY_ORDER.map((f) => buildMemo(f, cands, state));
+  const tensions = detectTensions(cands, state);
+
+  const high = agenda.filter((d) => d.severity >= 80).length;
+  const corr = agenda.filter((d) => d.corroborated).length;
+  const actingRoles = roles.filter((r) => r.posture === 'act').map((r) => r.role);
+  const lead = agenda[0];
+  const synthesis =
+    (agenda.length === 0
+      ? 'The executive team reviewed the estate and brings no decision over the action threshold this week — hold course.'
+      : `The executive team brings ${agenda.length} decision(s) to the board this week` +
+        ` (${high} urgent, ${corr} corroborated across desks)` +
+        (tensions.length ? `, with ${tensions.length} cross-desk tension(s) to resolve` : '') +
+        `. ${actingRoles.length ? `${actingRoles.join(', ')} ${actingRoles.length === 1 ? 'is' : 'are'} acting; ` : ''}` +
+        (lead ? `the board's first call is "${lead.title}" (${lead.faculty}).` : '')) +
+    ' REGENT advises; the principal decides; counsel confirms legal and tax moves.';
+  const sequencing = agenda.map((d) => `${d.faculty}: ${d.title}`);
+
+  return {
+    agenda,
+    deferred,
+    scored,
+    treasury: tre,
+    staleDomains: scored.filter((d) => d.stale).map((d) => d.name),
+    roles,
+    tensions,
+    chief_of_staff: { synthesis, sequencing },
   };
 }

@@ -8,9 +8,10 @@ import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { isAutonomousMeshPaused } from '../_shared/autonomous-revolutionary-mesh.ts';
 import {
+  buildExecutiveTeam,
   buildLiveWorldStateFromDb,
-  buildRegentReview,
   emitRegentReviewSignal,
+  fetchAgentActivity,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
 
@@ -106,9 +107,20 @@ Deno.serve(
       return errorResponse(message, 500);
     }
 
+    // Chief of Staff input: reconcile the rest of the bot fleet. Both state
+    // paths get this, since orchestration is inherently a live concern.
+    try {
+      state.agent_activity = await fetchAgentActivity(getServiceClient());
+    } catch (err) {
+      log.error('regent_agent_activity_failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      // Non-fatal: the Chief of Staff simply has no fleet to reconcile.
+    }
+
     let review;
     try {
-      review = buildRegentReview(state, 5);
+      review = buildExecutiveTeam(state, 5);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Review failed';
       log.error('regent_review_failed', { message });
@@ -131,6 +143,9 @@ Deno.serve(
           deferred_count: review.deferred.length,
           stale_domains: review.staleDomains,
           agenda: review.agenda,
+          executive_team: review.roles,
+          tensions: review.tensions,
+          chief_of_staff: review.chief_of_staff,
           signal_id: emitted.signal_id,
           emitted_status: emitted.status,
         },

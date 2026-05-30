@@ -13,8 +13,11 @@
 import { buildSourceSignalKey } from './signal-utils.ts';
 import { getServiceClient } from './supabase.ts';
 import {
+  buildExecutiveTeam,
   buildRegentReview,
+  type AgentActivity,
   type Domain,
+  type ExecutiveTeamReview,
   type RegentDecision,
   type RegentReview,
   type RepoAsset,
@@ -22,13 +25,59 @@ import {
 } from '../../../packages/r2-regent/src/review.ts';
 
 export {
+  buildExecutiveTeam,
   buildRegentReview,
+  type AgentActivity,
   type Domain,
+  type ExecutiveTeamReview,
   type RegentDecision,
   type RegentReview,
   type RepoAsset,
   type WorldState,
 };
+
+/**
+ * The Chief of Staff's view of the rest of the fleet: recent autonomous-bot
+ * signals grouped by generator. Excludes REGENT itself so it does not reconcile
+ * its own output.
+ */
+export async function fetchAgentActivity(
+  client: ReturnType<typeof getServiceClient>,
+): Promise<AgentActivity[]> {
+  const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
+  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await c
+    .from('platform_feed_items')
+    .select('source_event_type,provenance,ingested_at')
+    .eq('source_system', 'autonomous_bot_os')
+    .gte('ingested_at', sinceIso)
+    .order('ingested_at', { ascending: false })
+    .limit(2000);
+  if (error) throw new Error(error.message);
+
+  const byBot = new Map<string, { last: string; count: number }>();
+  for (const row of (data ?? []) as Array<{
+    source_event_type: string;
+    provenance: { tool?: string } | null;
+    ingested_at: string;
+  }>) {
+    const tool = row.provenance?.tool ?? row.source_event_type ?? 'unknown';
+    if (tool === 'autonomous-regent-review') continue; // do not reconcile self
+    const cur = byBot.get(tool);
+    if (cur) {
+      cur.count += 1;
+    } else {
+      byBot.set(tool, { last: row.ingested_at, count: 1 });
+    }
+  }
+
+  const out: AgentActivity[] = [];
+  for (const [bot, v] of byBot) {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(v.last).getTime()) / 86_400_000));
+    out.push({ bot, last_seen_days: days, recent_count: v.count });
+  }
+  return out;
+}
 
 // --------------------------------------------------------------------------- //
 // Live world-state from the Eigen database (when no state is supplied)         //
@@ -153,7 +202,7 @@ export async function buildLiveWorldStateFromDb(
 
 export async function emitRegentReviewSignal(input: {
   idempotencyKey: string;
-  review: RegentReview;
+  review: ExecutiveTeamReview;
   state: WorldState;
 }): Promise<{ signal_id: string | null; status: number }> {
   const { review, state } = input;
@@ -161,6 +210,7 @@ export async function emitRegentReviewSignal(input: {
   const top = review.agenda[0];
   const high = review.agenda.filter((d: RegentDecision) => d.severity >= 80).length;
   const corroborated = review.agenda.filter((d: RegentDecision) => d.corroborated).length;
+  const actingRoles = review.roles.filter((r) => r.posture === 'act').map((r) => r.role);
 
   const envelope = {
     contract_version: '1.0.0',
@@ -171,8 +221,8 @@ export async function emitRegentReviewSignal(input: {
     related_entity_ids: [] as string[],
     event_time: new Date().toISOString(),
     summary: top
-      ? `REGENT executive review: ${review.agenda.length} decisions (${high} high) — top: ${top.title}`
-      : 'REGENT executive review: no decision cleared the threshold this week',
+      ? `REGENT executive team: ${review.agenda.length} decisions (${high} high), ${actingRoles.length} exec(s) acting — top: ${top.title}`
+      : 'REGENT executive team: no decision cleared the threshold this week',
     raw_payload: {
       finding_kind: 'regent_executive_review',
       generator: 'autonomous-regent-review',
@@ -182,6 +232,12 @@ export async function emitRegentReviewSignal(input: {
       agenda: review.agenda,
       deferred: review.deferred.map((d: RegentDecision) => d.title),
       stale_domains: review.staleDomains,
+      // The executive team: each member's memo, cross-desk tensions, and the
+      // Chief of Staff's synthesis.
+      executive_team: review.roles,
+      tensions: review.tensions,
+      chief_of_staff: review.chief_of_staff,
+      acting_roles: actingRoles,
       treasury: {
         cash_on_hand: review.treasury.cash,
         monthly_burn: review.treasury.totalMonthlyBurn,

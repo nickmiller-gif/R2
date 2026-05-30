@@ -52,6 +52,7 @@ import {
   formatOracleSignalsForLlm,
 } from '../../../src/lib/eigen/chat-oracle-signals-context.ts';
 import { fetchOracleSignalsForEntityScope } from '../_shared/chat-oracle-signals.ts';
+import { filterVisibleMegEntityIds } from '../_shared/eigen-access-control.ts';
 import {
   fetchMegEntityContextForChat,
   resolveChatEntityScope,
@@ -400,6 +401,12 @@ Deno.serve(
         };
       });
       body.entity_scope = resolvedEntityScope.entityIds;
+      body.entity_scope = await filterVisibleMegEntityIds(
+        client,
+        auth.claims.userId,
+        roleCheck.roles,
+        body.entity_scope,
+      );
       logInfo('chat entity scope resolved', {
         functionName: 'eigen-chat',
         correlationId: meta.correlationId,
@@ -464,7 +471,10 @@ Deno.serve(
             includePrivate: true,
             policyScope: resolvedScope.effectivePolicyScope,
           }),
-          fetchMegEntityContextForChat(client, body.entity_scope).catch((err) => {
+          fetchMegEntityContextForChat(client, body.entity_scope, {
+            callerUserId: auth.claims.userId,
+            callerRoles: roleCheck.roles,
+          }).catch((err) => {
             logError('fetchMegEntityContextForChat failed', {
               functionName: 'eigen-chat',
               error: err instanceof Error ? err.message : String(err),
@@ -491,7 +501,10 @@ Deno.serve(
             oracleRunId: body.oracle_run_id,
             charterDecisionId: body.charter_decision_id,
           }),
-          fetchOracleSignalsForEntityScope(client, body.entity_scope).catch((err) => {
+          fetchOracleSignalsForEntityScope(client, body.entity_scope, {
+            userId: auth.claims.userId,
+            roles: roleCheck.roles,
+          }).catch((err) => {
             logError('fetchOracleSignalsForEntityScope failed', {
               functionName: 'eigen-chat',
               error: err instanceof Error ? err.message : String(err),

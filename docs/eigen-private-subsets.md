@@ -36,7 +36,7 @@ Use groups when several users should share a private corpus (e.g. a deal team, p
 
 ### Grants (`eigen_policy_access_grants`)
 
-- If **no** grant rows apply to the user, full-access users keep the org default; limited users keep `eigenx:user:<id>` only.
+- If **no** grant rows apply to the user, full-access users keep the org default; limited users keep personal + group tags (`eigenx:user:<id>` and `eigenx:group:<id>` per membership).
 - If grants exist, effective scope is the intersection of the requested tags with granted tags.
 - If that intersection is empty, the request is denied (`403`).
 
@@ -94,6 +94,22 @@ Reads are scoped by RLS (see migration `20260528160000_asset_registry_scoped_rls
 | **Group member**                              | `access_group_id` matches a group the user belongs to |
 
 Ingest sets `user_id` to the uploader and optional `access_group_id` from `group_id`. Evidence links require **both** endpoint assets to be visible.
+
+### Documents (`documents`)
+
+Reads are scoped by RLS (migration `20260528170000_eigen_access_hardening`):
+
+| Who                                      | Visible documents                                     |
+| ---------------------------------------- | ----------------------------------------------------- |
+| **Admin** (`user_has_eigen_full_access`) | All rows                                              |
+| **Owner**                                | `owner_id = auth.uid()`                               |
+| **Group member**                         | `access_group_id` matches a group the user belongs to |
+
+`knowledge_chunks` read policy follows document visibility. Org pipeline corpus (`owner_id` service placeholder) is admin-only for direct reads; members still retrieve via scoped chat.
+
+### Source inventory
+
+`GET /functions/v1/eigen-source-inventory` returns documents whose chunk policy tags overlap the caller's effective scope. Full-access roles receive the org-wide inventory.
 
 ### Migration
 

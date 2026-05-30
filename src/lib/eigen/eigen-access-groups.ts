@@ -62,3 +62,18 @@ export function isPersonalUploadSourceSystem(sourceSystem: string): boolean {
   const lower = sourceSystem.toLowerCase();
   return lower.includes('upload') || lower.includes('manual') || lower.includes('autonomous');
 }
+
+/** True when document chunk tags overlap the caller effective policy scope (ANY match). */
+export function policyTagsOverlapScope(documentTags: string[], effectiveScope: string[]): boolean {
+  if (effectiveScope.length === 0) return false;
+  const scope = new Set(effectiveScope.map((tag) => tag.trim()).filter(Boolean));
+  return documentTags.some((tag) => {
+    const t = tag.trim();
+    if (!t) return false;
+    if (scope.has(t)) return true;
+    for (const root of scope) {
+      if (t.startsWith(`${root}:`)) return true;
+    }
+    return false;
+  });
+}

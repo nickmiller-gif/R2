@@ -57,6 +57,8 @@ import {
   formatOracleSignalsForLlm,
 } from '../../../src/lib/eigen/chat-oracle-signals-context.ts';
 import { fetchOracleSignalsForEntityScope } from '../_shared/chat-oracle-signals.ts';
+import { filterVisibleMegEntityIds } from '../_shared/eigen-access-control.ts';
+import type { CharterRole } from '../_shared/rbac.ts';
 
 function readRetrievalQualityFlags() {
   return resolveEigenRetrievalQualityFlags({
@@ -280,6 +282,7 @@ Deno.serve(
 
       const client = getServiceClient();
       let effectivePolicyScope = claims.default_policy_scope;
+      let eigenxCallerRoles: CharterRole[] | undefined;
       if (claims.mode === 'eigenx' && claims.user_id) {
         const scopeResolution = await resolveEffectiveEigenxScope({
           client,
@@ -300,6 +303,7 @@ Deno.serve(
         // revocation between session issuance and chat invocation correctly denies.
         const roleCheck = await requireRole(claims.user_id, 'member');
         if (!roleCheck.ok) return roleCheck.response;
+        eigenxCallerRoles = roleCheck.roles;
 
         // Enforce the chat KOS capability bundle (search + read:knowledge + ai:synthesis)
         // for the eigenx widget branch. Public widget mode is anonymous (rate-limited,
@@ -354,6 +358,14 @@ Deno.serve(
           };
         });
         effectiveEntityScope = resolvedEntityScope.entityIds;
+        if (claims.user_id && eigenxCallerRoles) {
+          effectiveEntityScope = await filterVisibleMegEntityIds(
+            client,
+            claims.user_id,
+            eigenxCallerRoles,
+            effectiveEntityScope,
+          );
+        }
         entityScopeMode = resolvedEntityScope.scopeMode;
         entityResolutionSources = [...resolvedEntityScope.resolutionSources];
         logInfo('widget chat entity scope resolved', {
@@ -416,14 +428,20 @@ Deno.serve(
       let oracleSignalsBlock = '';
       if (claims.mode === 'eigenx') {
         const [entities, signals] = await Promise.all([
-          fetchMegEntityContextForChat(client, effectiveEntityScope).catch((err) => {
+          fetchMegEntityContextForChat(client, effectiveEntityScope, {
+            callerUserId: claims.user_id,
+            callerRoles: eigenxCallerRoles,
+          }).catch((err) => {
             logError('fetchMegEntityContextForChat failed', {
               functionName: 'eigen-widget-chat',
               error: err instanceof Error ? err.message : String(err),
             });
             return [] as ChatEntityForPrompt[];
           }),
-          fetchOracleSignalsForEntityScope(client, effectiveEntityScope).catch(() => []),
+          fetchOracleSignalsForEntityScope(client, effectiveEntityScope, {
+            userId: claims.user_id,
+            roles: eigenxCallerRoles,
+          }).catch(() => []),
         ]);
         entityContext = entities;
         oracleSignalsBlock = formatOracleSignalsForLlm(signals);

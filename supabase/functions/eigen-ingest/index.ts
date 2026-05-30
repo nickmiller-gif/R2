@@ -14,6 +14,7 @@ import {
   POLICY_TAG_RAY_VOICE,
 } from '../_shared/eigen-policy.ts';
 import { assertUserMemberOfGroup, policyTagEigenxGroup } from '../_shared/eigen-access-groups.ts';
+import { assertActiveAccessGroup } from '../_shared/eigen-access-control.ts';
 import {
   isPersonalUploadSourceSystem,
   normalizePersonalUploadPolicyTags,
@@ -492,8 +493,11 @@ Deno.serve(
       const sourceSystemLower = requestBody.source_system.toLowerCase();
       const groupId = requestBody.group_id?.trim() || undefined;
 
-      if (groupId && !serviceIdentity) {
-        await assertUserMemberOfGroup(client, ownerUserId, groupId);
+      if (groupId) {
+        await assertActiveAccessGroup(client, groupId);
+        if (!serviceIdentity) {
+          await assertUserMemberOfGroup(client, ownerUserId, groupId);
+        }
       }
 
       let policyTags = isPersonalUploadSourceSystem(requestBody.source_system)
@@ -717,6 +721,9 @@ Deno.serve(
         extracted_text_status: 'extracted',
         updated_at: new Date().toISOString(),
       };
+      if (groupId) {
+        upsertPayload.access_group_id = groupId;
+      }
       if (curatorDocumentTags.length > 0) {
         upsertPayload.tags = curatorDocumentTags;
         const summaryLine = buildCuratorSummaryLine(docMeta);

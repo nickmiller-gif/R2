@@ -6,6 +6,7 @@ import {
   normalizePersonalUploadPolicyTags,
   policyTagEigenxGroup,
   policyTagEigenxUser,
+  policyTagsOverlapScope,
 } from '../../src/lib/eigen/eigen-access-groups.ts';
 
 const USER = '11111111-1111-1111-1111-111111111111';
@@ -57,5 +58,15 @@ describe('isPersonalUploadSourceSystem', () => {
   it('detects manual uploads', () => {
     expect(isPersonalUploadSourceSystem('manual-upload')).toBe(true);
     expect(isPersonalUploadSourceSystem('centralr2-core')).toBe(false);
+  });
+});
+
+describe('policyTagsOverlapScope', () => {
+  it('matches exact and nested tags', () => {
+    expect(policyTagsOverlapScope(['eigenx:user:abc', 'user_upload'], ['eigenx:user:abc'])).toBe(
+      true,
+    );
+    expect(policyTagsOverlapScope(['eigenx:finance:q1'], ['eigenx:finance'])).toBe(true);
+    expect(policyTagsOverlapScope(['eigenx'], ['eigenx:user:abc'])).toBe(false);
   });
 });

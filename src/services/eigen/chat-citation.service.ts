@@ -26,6 +26,7 @@ export interface DbEigenChatCitationRow {
 }
 
 export interface EigenChatCitationDb {
+  deleteForTurn(chatTurnId: string): Promise<void>;
   insertMany(
     rows: Array<Omit<DbEigenChatCitationRow, 'id' | 'created_at'>>,
   ): Promise<DbEigenChatCitationRow[]>;
@@ -87,6 +88,9 @@ export function createEigenChatCitationService(db: EigenChatCitationDb): EigenCh
         retrieval_run_id: input.retrievalRunId?.trim() ?? null,
       }));
 
+      // Replace semantics: retries or duplicate persist calls for the same turn
+      // should not accumulate rows (enforced by UNIQUE(chat_turn_id, rank_index)).
+      await db.deleteForTurn(chatTurnId);
       const inserted = await db.insertMany(rows);
       return inserted.map(rowToEntity);
     },

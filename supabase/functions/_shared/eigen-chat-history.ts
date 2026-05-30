@@ -70,6 +70,23 @@ export interface PersistTurnPairInput {
   llmFallbackUsed: boolean;
   llmCriticUsed: boolean;
   latencyMs: number;
+  idempotencyKey?: string | null;
+}
+
+async function findAssistantTurnByIdempotencyKey(
+  client: SupabaseClient,
+  ownerId: string,
+  idempotencyKey: string,
+): Promise<string | null> {
+  const { data, error } = await client
+    .from('eigen_chat_turns')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .eq('idempotency_key', idempotencyKey)
+    .eq('role', 'assistant')
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data as { id: string }).id;
 }
 
 /**
@@ -85,6 +102,18 @@ export async function persistTurnPair(
   client: SupabaseClient,
   input: PersistTurnPairInput,
 ): Promise<{ ok: boolean; assistantTurnId?: string; error?: string }> {
+  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  if (idempotencyKey) {
+    const existingAssistantTurnId = await findAssistantTurnByIdempotencyKey(
+      client,
+      input.ownerId,
+      idempotencyKey,
+    );
+    if (existingAssistantTurnId) {
+      return { ok: true, assistantTurnId: existingAssistantTurnId };
+    }
+  }
+
   // Let the DB assign created_at via its now() default.
   // Use turn_index (0 = user, 1 = assistant) as a deterministic tie-breaker
   // for ordering within the same pair, avoiding client-clock drift issues.
@@ -120,11 +149,24 @@ export async function persistTurnPair(
         llm_fallback_used: input.llmFallbackUsed,
         llm_critic_used: input.llmCriticUsed,
         latency_ms: input.latencyMs,
+        idempotency_key: idempotencyKey,
       },
     ])
     .select('id, role');
 
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if ((error as { code?: string }).code === '23505' && idempotencyKey) {
+      const existingAssistantTurnId = await findAssistantTurnByIdempotencyKey(
+        client,
+        input.ownerId,
+        idempotencyKey,
+      );
+      if (existingAssistantTurnId) {
+        return { ok: true, assistantTurnId: existingAssistantTurnId };
+      }
+    }
+    return { ok: false, error: error.message };
+  }
 
   const assistantTurnId = (data as Array<{ id: string; role: string }> | null)?.find(
     (row) => row.role === 'assistant',

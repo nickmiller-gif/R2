@@ -674,6 +674,7 @@ Deno.serve(
                 llmFallbackUsed: resolvedLlmFallbackUsed,
                 llmCriticUsed: resolvedLlmCriticUsed,
                 latencyMs: turnLatencyMs,
+                idempotencyKey: meta.idempotencyKey,
               });
               if (!persistResult.ok) {
                 logError('persistTurnPair failed', {
@@ -688,6 +689,7 @@ Deno.serve(
                   assistantTurnId: persistResult.assistantTurnId,
                   ownerId: auth.claims.userId,
                   retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+                  policyDecisionId: kos.policyDecisionId ?? null,
                   citations,
                 });
               }
@@ -817,6 +819,7 @@ Deno.serve(
         llmFallbackUsed: !hasAnswerContext ? false : llmFallbackUsed,
         llmCriticUsed: !hasAnswerContext ? false : llmCriticUsed,
         latencyMs: nonStreamTurnLatencyMs,
+        idempotencyKey: meta.idempotencyKey,
       });
       if (!persistNonStream.ok) {
         logError('persistTurnPair failed', {
@@ -831,6 +834,7 @@ Deno.serve(
           assistantTurnId: persistNonStream.assistantTurnId,
           ownerId: auth.claims.userId,
           retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+          policyDecisionId: kos.policyDecisionId ?? null,
           citations,
         });
       }

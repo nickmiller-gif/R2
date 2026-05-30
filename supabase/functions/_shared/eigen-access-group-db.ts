@@ -27,6 +27,16 @@ export function createEigenAccessGroupDb(client: SupabaseClient): EigenAccessGro
       return (data ?? []) as DbEigenAccessGroupRow[];
     },
 
+    async getGroupById(groupId) {
+      const { data, error } = await client
+        .from('eigen_access_groups')
+        .select('id, slug, label, status, metadata, created_at, updated_at')
+        .eq('id', groupId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data as DbEigenAccessGroupRow | null) ?? null;
+    },
+
     async listMembershipsForUser(userId) {
       const { data, error } = await client
         .from('eigen_access_group_members')

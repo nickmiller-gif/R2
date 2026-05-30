@@ -237,6 +237,9 @@ describe('enforceEigenKosCapabilityBundle recording wire-up', () => {
       audit: { callerSubject: 'user-42', correlationId: 'req-1' },
     });
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.policyDecisionId).toBeTruthy();
+    }
     expect(recording.inserted).toHaveLength(1);
     const row = recording.inserted[0];
     expect(row.allowed).toBe(true);
@@ -310,6 +313,9 @@ describe('enforceEigenKosCapabilityBundle recording wire-up', () => {
     // Recorder swallowed the simulated blowup — enforcement still returns
     // the real evaluation outcome rather than a 500.
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.policyDecisionId).toBeNull();
+    }
     expect(recording.inserted).toEqual([]);
   });
 });

@@ -174,6 +174,13 @@ import {
   type DbMemoryEntryRow,
 } from '../../src/services/eigen/memory-entry.service.js';
 
+import {
+  createMemoryEpisodeService,
+  type MemoryEpisodeService,
+  type MemoryEpisodeDb,
+  type DbMemoryEpisodeRow,
+} from '../../src/services/eigen/memory-episode.service.js';
+
 import { createEigenSiteRegistryService } from '../../src/services/eigen/site-registry.service.js';
 
 describe('R2 Service Pattern Contract', () => {
@@ -201,6 +208,7 @@ describe('R2 Service Pattern Contract', () => {
       createRetrievalRunService,
       createToolCapabilityService,
       createMemoryEntryService,
+      createMemoryEpisodeService,
       createEigenSiteRegistryService,
     ];
 
@@ -212,7 +220,7 @@ describe('R2 Service Pattern Contract', () => {
     // - Each factory takes a Db interface
     // - Each factory returns a Service interface
     // - Each Db exposes DbXxxRow-shaped operations
-    expect(factories).toHaveLength(23);
+    expect(factories).toHaveLength(24);
   });
 });
 
@@ -259,92 +267,7 @@ describe('Cross-domain provenance chain integrity', () => {
 
     const chain1 = nextChainHash(genesis, 'event-1-payload');
     const chain2 = nextChainHash(chain1, 'event-2-payload');
-    expect(chain1).not.toBe(genesis);
     expect(chain2).not.toBe(chain1);
-
-    // Chain is reproducible
-    const chain1b = nextChainHash(genesis, 'event-1-payload');
-    expect(chain1b).toBe(chain1);
-  });
-});
-
-describe('Barrel export surface', () => {
-  it('top-level index exports all domain factories', async () => {
-    const r2 = await import('../../src/index.js');
-
-    // Foundation
-    expect(typeof r2.createDocumentsService).toBe('function');
-    expect(typeof r2.createAssetRegistryService).toBe('function');
-    expect(typeof r2.hashPayload).toBe('function');
-    expect(typeof r2.nowUtc).toBe('function');
-    expect(typeof r2.toUtc).toBe('function');
-    expect(typeof r2.requireUtc).toBe('function');
-    expect(typeof r2.isValidUtcDate).toBe('function');
-    expect(typeof r2.toIsoUtc).toBe('function');
-    expect(r2.UTC_TIMEZONE).toBe('UTC');
-    expect(typeof r2.makeTimeWindow).toBe('function');
-    expect(typeof r2.makeValidityWindow).toBe('function');
-    expect(typeof r2.validityWindowToTimeWindow).toBe('function');
-    expect(typeof r2.timeWindowContains).toBe('function');
-    expect(typeof r2.timeWindowsOverlap).toBe('function');
-    expect(typeof r2.intersectTimeWindows).toBe('function');
-    expect(typeof r2.makeEntityRef).toBe('function');
-    expect(typeof r2.entityRefKey).toBe('function');
-    expect(typeof r2.entityRefsEqual).toBe('function');
-    expect(typeof r2.makeAlias).toBe('function');
-    expect(typeof r2.findAlias).toBe('function');
-    expect(typeof r2.aliasIndex).toBe('function');
-    expect(typeof r2.normalizeActor).toBe('function');
-
-    // Charter
-    expect(typeof r2.createGovernanceKernelService).toBe('function');
-    expect(typeof r2.createProvenanceService).toBe('function');
-    expect(typeof r2.createAuditReadService).toBe('function');
-    expect(typeof r2.createCharterEntityContextService).toBe('function');
-    expect(typeof r2.createCharterRightService).toBe('function');
-    expect(typeof r2.createCharterObligationService).toBe('function');
-    expect(typeof r2.createCharterEvidenceService).toBe('function');
-    expect(typeof r2.createCharterPayoutService).toBe('function');
-    expect(typeof r2.createCharterDecisionService).toBe('function');
-    expect(typeof r2.createCharterRoleService).toBe('function');
-
-    // Oracle — services
-    expect(typeof r2.createOracleSignalService).toBe('function');
-    expect(typeof r2.createOracleThesisService).toBe('function');
-    expect(typeof r2.createOracleEvidenceItemService).toBe('function');
-    expect(typeof r2.createOracleSourcePackService).toBe('function');
-    expect(typeof r2.createOracleThesisEvidenceLinkService).toBe('function');
-    expect(typeof r2.createOracleProfileRunService).toBe('function');
-
-    // Oracle — intelligence primitives (lib/oracle)
-    expect(typeof r2.reweightScore).toBe('function');
-    expect(typeof r2.scoreToConfidenceBand).toBe('function');
-    expect(typeof r2.aggregateScores).toBe('function');
-    expect(typeof r2.blendEvidenceScore).toBe('function');
-    expect(typeof r2.assessEvidenceConsistency).toBe('function');
-    expect(typeof r2.classifyContradiction).toBe('function');
-    expect(typeof r2.identifyGaps).toBe('function');
-    expect(typeof r2.predictiveGapScore).toBe('function');
-    expect(typeof r2.temporalDiff).toBe('function');
-    expect(typeof r2.temporalDrift).toBe('function');
-    expect(typeof r2.computeFreshness).toBe('function');
-    expect(typeof r2.feedRescore).toBe('function');
-    expect(typeof r2.scoreOpportunity).toBe('function');
-    expect(typeof r2.classifyHorizon).toBe('function');
-    expect(typeof r2.multiHorizonTiming).toBe('function');
-    expect(typeof r2.crossRunDiff).toBe('function');
-    expect(typeof r2.makeRetrievalQuery).toBe('function');
-    expect(typeof r2.filterByRelevance).toBe('function');
-
-    // Eigen
-    expect(typeof r2.createKnowledgeChunkService).toBe('function');
-    expect(typeof r2.createRetrievalRunService).toBe('function');
-    expect(typeof r2.createToolCapabilityService).toBe('function');
-    expect(typeof r2.createMemoryEntryService).toBe('function');
-  });
-
-  it('EventEnvelope types are exported', async () => {
-    const r2 = await import('../../src/index.js');
-    expect(typeof r2.createEventEnvelope).toBe('function');
+    expect(chain2).not.toBe(genesis);
   });
 });

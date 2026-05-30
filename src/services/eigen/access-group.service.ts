@@ -2,9 +2,9 @@
  * EigenX access groups — admin CRUD and member listing (service_role path).
  */
 
-import { policyTagEigenxGroup } from '../../lib/eigen/eigen-access-groups.js';
-import { nowUtc } from '../../lib/provenance/clock.js';
-import { parseJsonbField } from '../oracle/oracle-db-utils.js';
+import { policyTagEigenxGroup } from '../../lib/eigen/eigen-access-groups.ts';
+import { nowUtc } from '../../lib/provenance/clock.ts';
+import { parseJsonbField } from '../oracle/oracle-db-utils.ts';
 import type {
   AddEigenAccessGroupMemberInput,
   CreateEigenAccessGroupInput,
@@ -13,7 +13,7 @@ import type {
   EigenAccessGroupStatus,
   EigenAccessGroupWithMembership,
   RemoveEigenAccessGroupMemberInput,
-} from '../../types/eigen/access-group.js';
+} from '../../types/eigen/access-group.ts';
 
 export interface DbEigenAccessGroupRow {
   id: string;

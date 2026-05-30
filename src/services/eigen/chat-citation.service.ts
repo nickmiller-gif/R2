@@ -7,7 +7,7 @@ import type {
   EigenChatCitation,
   PersistEigenChatCitationInput,
   PersistEigenChatCitationsForTurnInput,
-} from '../../types/eigen/chat-citation.js';
+} from '../../types/eigen/chat-citation.ts';
 
 export interface DbEigenChatCitationRow {
   id: string;

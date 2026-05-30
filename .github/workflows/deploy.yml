@@ -195,13 +195,24 @@ jobs:
           # `oracle-whitespace-runs` remains skipped until the Deno bundling blocker
           # called out in docs/production-deploy-checklist.md is resolved.
           SKIP_FUNCTIONS_REGEX="^(_shared|oracle-whitespace-runs)$"
-          # Functions that bypass gateway JWT verification — either widget
-          # surfaces that accept unauthenticated requests, or callers that
-          # authenticate via a custom header the gateway can't see
-          # (r2-signal-process: pg_cron dispatcher uses
-          # `x-r2-signal-process-token`, validated inside the function by
-          # `resolveTrustedProcessCaller`).
-          NO_VERIFY_JWT_REGEX="^(eigen-widget-session|eigen-widget-chat|eigen-chat-public|eigen-public-sources|r2-signal-process|meg-resolve-bridge)$"
+          # Gateway JWT verification is sourced from supabase/config.toml (single
+          # source of truth). IMPORTANT: `supabase functions deploy <name>` does
+          # NOT read per-function `verify_jwt` from config.toml — without
+          # `--no-verify-jwt` the CLI defaults verify_jwt=TRUE. A previous
+          # hardcoded 6-function allowlist meant every other config-false function
+          # (autonomous-*, oracle-*, eigen-ingest, meg-*, charter-*, …) was
+          # re-deployed with verify_jwt=true on every push to main, gateway-401'ing
+          # cron/HMAC/public callers and silently breaking the autonomous loop,
+          # KB-four ingest, and the Oracle pipeline. We now derive the
+          # --no-verify-jwt set directly from config.toml so the two never drift.
+          # (Self-heal companion: scripts/fix-verify-jwt-drift.mjs.)
+          mapfile -t NO_VERIFY < <(awk '
+            /^\[functions\./ { fn=$0; sub(/^\[functions\./,"",fn); sub(/\].*$/,"",fn); next }
+            /^[[:space:]]*verify_jwt[[:space:]]*=[[:space:]]*false/ { if (fn!="") print fn }
+            /^\[/ && $0 !~ /^\[functions\./ { fn="" }
+          ' supabase/config.toml)
+          echo "Functions pinned verify_jwt=false from config.toml: ${#NO_VERIFY[@]}"
+          is_no_verify() { local f="$1"; for n in "${NO_VERIFY[@]}"; do [ "$n" = "$f" ] && return 0; done; return 1; }
           for dir in supabase/functions/*/; do
             fn_name=$(basename "$dir")
             # skip shared and known non-deployable legacy function
@@ -210,13 +221,16 @@ jobs:
               continue
             fi
             echo "::group::Deploying $fn_name"
-            if [[ "$fn_name" =~ $NO_VERIFY_JWT_REGEX ]]; then
+            if is_no_verify "$fn_name"; then
               supabase functions deploy "$fn_name" --no-verify-jwt
             else
               supabase functions deploy "$fn_name"
             fi
             echo "::endgroup::"
           done
+
+      - name: Re-pin verify_jwt to config.toml (belt-and-suspenders)
+        run: node scripts/fix-verify-jwt-drift.mjs || true
 
       - name: Verify deployment
         run: |

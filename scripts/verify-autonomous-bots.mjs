@@ -54,6 +54,8 @@ for (const fn of [
   'autonomous-information-audit-cron',
   'autonomous-steward-cycle',
   'autonomous-steward-cycle-cron',
+  'autonomous-regent-review',
+  'autonomous-regent-review-cron',
   'meg-kb-four-backfill-links',
 ]) {
   if (config.includes(`[functions.${fn}]`)) pass(`config-${fn}`, 'listed');
@@ -94,6 +96,7 @@ if (!srk) {
   process.env.AUTONOMOUS_UPGRADE_SCOUT_SERVICE_TOKEN ||= srk;
   process.env.INFORMATION_AUDIT_SERVICE_TOKEN ||= srk;
   process.env.REVOLUTIONARY_MESH_SERVICE_TOKEN ||= srk;
+  process.env.REGENT_REVIEW_SERVICE_TOKEN ||= srk;
 }
 
 const smokes = [
@@ -101,6 +104,7 @@ const smokes = [
   ['smoke-audit', 'run-autonomous-information-audit.mjs', []],
   ['smoke-mesh', 'run-autonomous-revolutionary-mesh.mjs', []],
   ['smoke-scout-centralr2', 'run-autonomous-scout-drivers.mjs', ['--driver', 'centralr2']],
+  ['smoke-regent', 'run-autonomous-regent-review.mjs', []],
 ];
 
 for (const [id, script, args] of smokes) {

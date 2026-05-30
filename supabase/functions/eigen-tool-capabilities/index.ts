@@ -5,13 +5,8 @@ import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
 import { resolveEigenCapabilityAccess } from '../_shared/eigen-policy-engine.ts';
-import { resolveEigenxPolicyScope } from '../_shared/eigen-policy-access.ts';
+import { resolveEffectiveEigenxScope } from '../_shared/eigenx-scope-resolver.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
-import {
-  clampExplicitEigenxPolicyScope,
-  defaultEigenxRetrievePolicyScope,
-  readEigenxEnvDefaultPolicyScope,
-} from '../_shared/eigenx-scope.ts';
 
 // Columns the client may populate on CREATE / UPDATE. `id`, `created_at`,
 // `updated_at` are DB-controlled (uuid default + now()). Passing the raw
@@ -90,18 +85,16 @@ Deno.serve(
         if (!roleCheck.ok) return roleCheck.response;
 
         const requestedScope = parseScopeParam(url.searchParams.get('policy_scope'));
-        const preScope =
-          requestedScope.length > 0
-            ? clampExplicitEigenxPolicyScope(auth.claims.userId, roleCheck.roles, requestedScope)
-            : defaultEigenxRetrievePolicyScope(auth.claims.userId, roleCheck.roles);
-        const resolvedScope = await resolveEigenxPolicyScope(serviceClient, {
+        const resolvedScope = await resolveEffectiveEigenxScope({
+          client: serviceClient,
           userId: auth.claims.userId,
-          requestedPolicyScope: preScope,
-          defaultPolicyScope: readEigenxEnvDefaultPolicyScope(),
+          roles: roleCheck.roles,
+          explicitScope: requestedScope.length > 0 ? requestedScope : undefined,
         });
-        if (resolvedScope.grantsConfigured && resolvedScope.effectivePolicyScope.length === 0) {
+        if (resolvedScope.emptyAfterGrantIntersection) {
           return errorResponse('No private policy scope access for this user', 403);
         }
+        const effectivePolicyScope = resolvedScope.effectivePolicyScope;
 
         if (capId) {
           const { data, error } = await serviceClient
@@ -118,7 +111,7 @@ Deno.serve(
           if (capabilityTags.length === 0) return jsonResponse(data);
 
           const access = await resolveEigenCapabilityAccess(serviceClient, {
-            policyTags: resolvedScope.effectivePolicyScope,
+            policyTags: effectivePolicyScope,
             capabilityTags,
             callerRoles: roleCheck.roles,
           });
@@ -154,7 +147,7 @@ Deno.serve(
           if (requestedCapabilityTags.length === 0) return jsonResponse(rows);
 
           const access = await resolveEigenCapabilityAccess(serviceClient, {
-            policyTags: resolvedScope.effectivePolicyScope,
+            policyTags: effectivePolicyScope,
             capabilityTags: requestedCapabilityTags,
             callerRoles: roleCheck.roles,
           });

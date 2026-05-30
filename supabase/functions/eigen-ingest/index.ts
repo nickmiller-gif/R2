@@ -11,9 +11,13 @@ import { extractDocumentText } from '../_shared/extract-document.ts';
 import {
   inferCorpusTier,
   normalizeCorpusPolicyTags,
-  applyPersonalUploadPolicyTags,
   POLICY_TAG_RAY_VOICE,
 } from '../_shared/eigen-policy.ts';
+import { assertUserMemberOfGroup, policyTagEigenxGroup } from '../_shared/eigen-access-groups.ts';
+import {
+  isPersonalUploadSourceSystem,
+  normalizePersonalUploadPolicyTags,
+} from '../../../src/lib/eigen/eigen-access-groups.ts';
 import { logError } from '../_shared/log.ts';
 import {
   buildEigenKosCapabilityDenialBody,
@@ -67,6 +71,7 @@ interface IngestRequestBody {
   chunking_mode?: 'hierarchical' | 'flat';
   policy_tags?: string[];
   entity_ids?: string[];
+  group_id?: string;
   embedding_model?: string;
 }
 
@@ -354,6 +359,7 @@ async function parseMultipartRequest(req: Request): Promise<{
     chunking_mode: toChunkingMode(form.get('chunking_mode')),
     policy_tags: normalizeStringList(form.get('policy_tags')),
     entity_ids: normalizeStringList(form.get('entity_ids')),
+    group_id: cleanString(form.get('group_id')),
     embedding_model: cleanString(form.get('embedding_model')),
   };
 }
@@ -401,6 +407,7 @@ async function parseJsonRequest(
     chunking_mode: toChunkingMode(body.chunking_mode),
     policy_tags: normalizeStringList(body.policy_tags),
     entity_ids: normalizeStringList(body.entity_ids),
+    group_id: cleanString(body.group_id),
     embedding_model: cleanString(body.embedding_model),
   };
 }
@@ -453,21 +460,21 @@ Deno.serve(
         );
       }
       const sourceSystemLower = requestBody.source_system.toLowerCase();
-      let policyTags = normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
-      policyTags = applyPersonalUploadPolicyTags(
-        policyTags,
-        ownerUserId,
-        requestBody.source_system,
-      );
-      if (
-        sourceSystemLower.includes('upload') ||
-        sourceSystemLower.includes('manual') ||
-        sourceSystemLower.includes('autonomous')
-      ) {
-        if (!policyTags.includes('user_upload')) {
-          policyTags.push('user_upload');
-        }
+      const groupId = requestBody.group_id?.trim() || undefined;
+
+      if (groupId && !serviceIdentity) {
+        await assertUserMemberOfGroup(client, ownerUserId, groupId);
       }
+
+      let policyTags = isPersonalUploadSourceSystem(requestBody.source_system)
+        ? normalizePersonalUploadPolicyTags(requestBody.policy_tags ?? [], ownerUserId, groupId)
+        : normalizeCorpusPolicyTags(requestBody.policy_tags ?? []);
+
+      if (groupId && !isPersonalUploadSourceSystem(requestBody.source_system)) {
+        const groupTag = policyTagEigenxGroup(groupId);
+        if (!policyTags.includes(groupTag)) policyTags.push(groupTag);
+      }
+
       if (
         sourceSystemLower.includes('ray_voice') ||
         sourceSystemLower.includes('ray-podcast') ||

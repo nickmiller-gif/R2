@@ -10,6 +10,28 @@ function readBearer(req: Request): string | null {
   return match ? (match[1] ?? null) : null;
 }
 
+/** Skip empty env values so a blank custom secret does not block fallbacks. */
+function firstNonEmpty(...values: Array<string | undefined | null>): string {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+/**
+ * Token for the cron → eigen-memory-episodes consolidate hop.
+ * Vault/pg_cron often stores the service-role JWT as the cron bearer; reuse it
+ * when no dedicated service token is configured.
+ */
+function resolveConsolidateServiceToken(validatedCronBearer: string): string {
+  return firstNonEmpty(
+    Deno.env.get('EIGEN_MEMORY_EPISODES_SERVICE_TOKEN'),
+    validatedCronBearer,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+  );
+}
+
 Deno.serve(
   withRequestMeta(async (req, meta) => {
     const log = withLogger(meta, 'eigen-memory-episodes-cron');
@@ -26,9 +48,7 @@ Deno.serve(
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '');
-    const serviceToken =
-      Deno.env.get('EIGEN_MEMORY_EPISODES_SERVICE_TOKEN')?.trim() ??
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+    const serviceToken = resolveConsolidateServiceToken(supplied);
     if (!supabaseUrl || !serviceToken) {
       return errorResponse('SUPABASE_URL and service token must be configured', 500);
     }
@@ -52,8 +72,12 @@ Deno.serve(
     const body = await response.json().catch(() => ({ error: 'non-json response' }));
     if (!response.ok) {
       log.error('memory_episodes_cron_failed', { status: response.status, body });
+      const hint =
+        response.status === 401
+          ? ' Check EIGEN_MEMORY_EPISODES_SERVICE_TOKEN is a valid service_role JWT, or remove it to use SUPABASE_SERVICE_ROLE_KEY / the cron bearer.'
+          : '';
       return errorResponse(
-        `eigen-memory-episodes failed (${response.status})`,
+        `eigen-memory-episodes failed (${response.status}).${hint}`,
         response.status >= 500 ? 500 : 400,
       );
     }

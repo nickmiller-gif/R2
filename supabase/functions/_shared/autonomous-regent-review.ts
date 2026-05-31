@@ -19,6 +19,7 @@ import {
   type AgentActivity,
   type Domain,
   type ExecutiveTeamReview,
+  type PriorAgendaItem,
   type RegentDecision,
   type RegentFinancials,
   type RegentReview,
@@ -33,12 +34,41 @@ export {
   type AgentActivity,
   type Domain,
   type ExecutiveTeamReview,
+  type PriorAgendaItem,
   type RegentDecision,
   type RegentFinancials,
   type RegentReview,
   type RepoAsset,
   type WorldState,
 };
+
+/**
+ * The previous week's agenda (titles + severities) from the last
+ * regent_executive_review signal — REGENT's institutional memory for the diff.
+ */
+export async function fetchPreviousRegentAgenda(
+  client: ReturnType<typeof getServiceClient>,
+): Promise<PriorAgendaItem[] | null> {
+  const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
+  const { data, error } = await c
+    .from('platform_feed_items')
+    .select('payload')
+    .eq('source_system', 'autonomous_bot_os')
+    .eq('source_event_type', 'regent_executive_review')
+    .order('ingested_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const agenda = (data.payload as { agenda?: Array<{ title?: unknown; severity?: unknown }> })
+    ?.agenda;
+  if (!Array.isArray(agenda)) return null;
+  return agenda
+    .map((a) => ({
+      title: typeof a.title === 'string' ? a.title : '',
+      severity: typeof a.severity === 'number' ? a.severity : 0,
+    }))
+    .filter((a) => a.title);
+}
 
 /**
  * Load the latest principal-attested financial inputs from regent_world_state.
@@ -277,6 +307,7 @@ export async function emitRegentReviewSignal(input: {
       executive_team: review.roles,
       tensions: review.tensions,
       chief_of_staff: review.chief_of_staff,
+      delta: review.delta ?? null,
       acting_roles: actingRoles,
       treasury: {
         cash_on_hand: review.treasury.cash,

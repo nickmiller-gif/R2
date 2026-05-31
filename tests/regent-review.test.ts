@@ -7,6 +7,7 @@ import {
   buildExecutiveTeam,
   buildRegentReview,
   citeFramework,
+  diffAgendas,
   computeOffer,
   mergeByDomain,
   reviewAgentFleet,
@@ -460,6 +461,28 @@ describe('REGENT — agenda, merge, asset review', () => {
     const cco = team.roles.find((r) => r.role === 'Chief Commercial Officer')!;
     expect(cco.posture).not.toBe('hold'); // CCO now has a unit-economics decision
     expect(cco.decisions.some((d) => d.title.includes('unit economics'))).toBe(true);
+  });
+
+  it('week-over-week diff classifies new/resolved/moved/carried', () => {
+    const current = [
+      { title: 'A', severity: 90 },
+      { title: 'B', severity: 60 },
+      { title: 'C', severity: 50 },
+    ] as RegentDecision[];
+    const previous = [
+      { title: 'A', severity: 90 },
+      { title: 'B', severity: 40 },
+      { title: 'D', severity: 70 },
+    ];
+    const delta = diffAgendas(current, previous)!;
+    expect(delta.new).toEqual(['C']);
+    expect(delta.resolved).toEqual(['D']);
+    expect(delta.moved).toEqual([{ title: 'B', from: 40, to: 60 }]);
+    expect(delta.carried).toEqual(['A']);
+    expect(diffAgendas(current, null)).toBeNull();
+    const team = buildExecutiveTeam(fixture(), 5, [{ title: 'old item', severity: 50 }]);
+    expect(team.delta).not.toBeNull();
+    expect(team.chief_of_staff.synthesis).toContain('Since last week');
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

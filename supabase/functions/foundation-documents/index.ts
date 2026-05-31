@@ -4,12 +4,57 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
 
 // Explicit `documents` projection so GET responses are stable across schema
 // additions. New columns must be added here deliberately rather than leaking
 // through a `select('*')` wildcard (advisor lint 0022).
 const DOCUMENTS_SELECT_COLUMNS =
   'body,captured_at,confidence,content_hash,content_type,created_at,embedding_status,entities_mentioned,extracted_text_status,file_path,file_size_bytes,file_url,id,index_status,indexed_at,meg_canonical_id,meg_entity_id,mime_type,owner_id,related_entity_id,related_entity_type,rights_constraints,source_authority_tier,source_license,source_ref,source_system,source_title,source_type,source_url,status,storage_bucket,storage_path,summary,tags,title,updated_at,user_id,vector_store_ref,visibility';
+
+// Client-settable columns for create/update. Generous allowlist (all
+// producer-controllable `documents` columns) minus the db/server-managed
+// `id`/`created_at`/`updated_at`. The write path uses the service-role client
+// (RLS bypass), so an explicit allowlist prevents mass-assignment of those
+// immutable columns via raw req.json().
+const DOCUMENT_WRITE_FIELDS = [
+  'body',
+  'captured_at',
+  'confidence',
+  'content_hash',
+  'content_type',
+  'embedding_status',
+  'entities_mentioned',
+  'extracted_text_status',
+  'file_path',
+  'file_size_bytes',
+  'file_url',
+  'index_status',
+  'indexed_at',
+  'meg_canonical_id',
+  'meg_entity_id',
+  'mime_type',
+  'owner_id',
+  'related_entity_id',
+  'related_entity_type',
+  'rights_constraints',
+  'source_authority_tier',
+  'source_license',
+  'source_ref',
+  'source_system',
+  'source_title',
+  'source_type',
+  'source_url',
+  'status',
+  'storage_bucket',
+  'storage_path',
+  'summary',
+  'tags',
+  'title',
+  'user_id',
+  'vector_store_ref',
+  'visibility',
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -117,7 +162,12 @@ Deno.serve(
           return jsonResponse(data);
         } else {
           // CREATE document
-          const { data, error } = await client.from('documents').insert([body]).select().single();
+          const insertRow = pickFields(body, DOCUMENT_WRITE_FIELDS);
+          const { data, error } = await client
+            .from('documents')
+            .insert([insertRow])
+            .select()
+            .single();
 
           if (error) {
             return errorResponse(error.message, 400);
@@ -137,9 +187,14 @@ Deno.serve(
           return errorResponse('id required in body', 400);
         }
 
+        const updateRow = {
+          ...pickFields(body, DOCUMENT_WRITE_FIELDS),
+          updated_at: new Date().toISOString(),
+        };
+
         const { data, error } = await client
           .from('documents')
-          .update(body)
+          .update(updateRow)
           .eq('id', id)
           .select()
           .single();

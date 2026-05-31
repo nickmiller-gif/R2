@@ -493,7 +493,7 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(diffAgendas(current, null)).toBeNull();
     const team = buildExecutiveTeam(fixture(), 5, [{ title: 'old item', severity: 50 }]);
     expect(team.delta).not.toBeNull();
-    expect(team.chief_of_staff.synthesis).toContain('Since last week');
+    expect(team.chief_of_staff.synthesis).toContain('Since the last review');
   });
 
   it('Chief of Staff reconciles peer-bot findings: covered vs net-new vs silent', () => {

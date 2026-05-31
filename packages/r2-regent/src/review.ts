@@ -1162,9 +1162,9 @@ export function buildExecutiveTeam(
   // General Counsel first-pass: queue risk items that must reach counsel.
   const counsel_queue = flagCounselReview(merged);
 
-  // Outcome-aware escalation: a decision carried >= 3 weeks is chronically stuck;
-  // bump its severity so REGENT flags it louder until it resolves (the bot learns
-  // that ignored recommendations should rise, not fade).
+  // Outcome-aware escalation: a decision carried >= 3 reviews is chronically
+  // stuck; bump its severity so REGENT flags it louder until it resolves (the bot
+  // learns that ignored recommendations should rise, not fade).
   const ages = computeAges(
     merged.map((d) => d.title),
     previousAges,
@@ -1211,19 +1211,19 @@ export function buildExecutiveTeam(
   );
   const outcomes = scoreOutcomes(delta, agendaAges, agenda.length);
   const deltaLine = delta
-    ? ` Since last week: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
+    ? ` Since the last review: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
       `${delta.moved.length} moved, ${delta.carried.length} carried` +
       (outcomes.resolution_rate !== null
         ? ` (resolution rate ${Math.round(outcomes.resolution_rate * 100)}%)`
         : '') +
       (outcomes.stuck.length
-        ? `; ${outcomes.stuck.length} stuck >=3wk, escalated: ${outcomes.stuck.slice(0, 3).join('; ')}${outcomes.stuck.length > 3 ? ' …' : ''}.`
+        ? `; ${outcomes.stuck.length} stuck >=3 reviews, escalated: ${outcomes.stuck.slice(0, 3).join('; ')}${outcomes.stuck.length > 3 ? ' …' : ''}.`
         : '.')
     : '';
   const synthesis =
     (agenda.length === 0
-      ? 'The executive team reviewed the estate and brings no decision over the action threshold this week — hold course.'
-      : `The executive team brings ${agenda.length} decision(s) to the board this week` +
+      ? 'The executive team reviewed the estate and brings no decision over the action threshold right now — hold course.'
+      : `The executive team brings ${agenda.length} decision(s) to the board today` +
         ` (${high} urgent, ${corr} corroborated across desks)` +
         (tensions.length ? `, with ${tensions.length} cross-desk tension(s) to resolve` : '') +
         `. ${actingRoles.length ? `${actingRoles.join(', ')} ${actingRoles.length === 1 ? 'is' : 'are'} acting; ` : ''}` +

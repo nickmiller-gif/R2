@@ -34,6 +34,8 @@ export interface RegentDecision {
   confidence: Confidence;
   /** Verifiable CMU-corpus sources backing the framework cited above. */
   citations?: Citation[];
+  /** Weeks this decision has been carried on the agenda (outcome scoring). */
+  stuck_weeks?: number;
   corroborated?: boolean;
   corroboration?: Array<{
     faculty: string;
@@ -934,6 +936,51 @@ export function diffAgendas(
   return delta;
 }
 
+/**
+ * Age each current agenda item: a title carried from last week ages +1; a new
+ * title starts at 1; resolved titles drop out. Ages are persisted in the signal
+ * payload so they accumulate across weeks — the basis for outcome scoring.
+ */
+export function computeAges(
+  currentTitles: string[],
+  previousAges: Record<string, number> | null | undefined,
+): Record<string, number> {
+  const prev = previousAges ?? {};
+  const ages: Record<string, number> = {};
+  for (const t of currentTitles) ages[t] = (prev[t] ?? 0) + 1;
+  return ages;
+}
+
+export interface OutcomeScore {
+  /** Of the items open last week, the fraction that resolved this week (null on first run). */
+  resolution_rate: number | null;
+  resolved_count: number;
+  open_count: number;
+  /** Titles carried >= 3 weeks — chronically stuck, escalated. */
+  stuck: string[];
+}
+
+/** Score outcomes from the week-over-week delta + accumulated ages. */
+export function scoreOutcomes(
+  delta: AgendaDelta | null,
+  ages: Record<string, number>,
+  openCount: number,
+): OutcomeScore {
+  const stuck = Object.entries(ages)
+    .filter(([, age]) => age >= 3)
+    .map(([title]) => title);
+  if (!delta) return { resolution_rate: null, resolved_count: 0, open_count: openCount, stuck };
+  const lastWeekOpen = delta.resolved.length + delta.carried.length + delta.moved.length;
+  return {
+    resolution_rate: lastWeekOpen
+      ? Number((delta.resolved.length / lastWeekOpen).toFixed(2))
+      : null,
+    resolved_count: delta.resolved.length,
+    open_count: openCount,
+    stuck,
+  };
+}
+
 export interface FleetReconciliation {
   /** Peer-bot findings whose domain is already on the REGENT agenda. */
   covered: Array<{ bot: string; domain: string }>;
@@ -976,6 +1023,8 @@ export interface ExecutiveTeamReview extends RegentReview {
   tensions: Tension[];
   chief_of_staff: { synthesis: string; sequencing: string[]; fleet?: FleetReconciliation };
   delta?: AgendaDelta | null;
+  outcomes?: OutcomeScore;
+  agenda_ages?: Record<string, number>;
 }
 
 function postureFor(maxSeverity: number): Posture {
@@ -1074,6 +1123,7 @@ export function buildExecutiveTeam(
   state: WorldState,
   topN = 5,
   previousAgenda?: PriorAgendaItem[] | null,
+  previousAges?: Record<string, number> | null,
 ): ExecutiveTeamReview {
   const hurdle = state.cost_of_capital_pct;
   const staleAfter = state.stale_after_days ?? 14;
@@ -1082,6 +1132,22 @@ export function buildExecutiveTeam(
 
   const cands = collectCandidates(state, scored);
   const merged = mergeByDomain(cands);
+
+  // Outcome-aware escalation: a decision carried >= 3 weeks is chronically stuck;
+  // bump its severity so REGENT flags it louder until it resolves (the bot learns
+  // that ignored recommendations should rise, not fade).
+  const ages = computeAges(
+    merged.map((d) => d.title),
+    previousAges,
+  );
+  for (const d of merged) {
+    const age = ages[d.title] ?? 1;
+    if (age >= 3) {
+      d.stuck_weeks = age;
+      d.severity = Math.min(100, d.severity + (age - 2) * 3);
+    }
+  }
+
   merged.sort((a, b) => b.severity - a.severity);
   const agenda = merged.slice(0, topN);
   const deferred = merged.slice(topN);
@@ -1110,11 +1176,19 @@ export function buildExecutiveTeam(
           : '.')
       : '';
   const delta = diffAgendas(agenda, previousAgenda);
+  const agendaAges = computeAges(
+    agenda.map((d) => d.title),
+    previousAges,
+  );
+  const outcomes = scoreOutcomes(delta, agendaAges, agenda.length);
   const deltaLine = delta
     ? ` Since last week: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
       `${delta.moved.length} moved, ${delta.carried.length} carried` +
-      (delta.carried.length
-        ? ` (carrying: ${delta.carried.slice(0, 3).join('; ')}${delta.carried.length > 3 ? ' …' : ''} — stuck items deserve escalation).`
+      (outcomes.resolution_rate !== null
+        ? ` (resolution rate ${Math.round(outcomes.resolution_rate * 100)}%)`
+        : '') +
+      (outcomes.stuck.length
+        ? `; ${outcomes.stuck.length} stuck >=3wk, escalated: ${outcomes.stuck.slice(0, 3).join('; ')}${outcomes.stuck.length > 3 ? ' …' : ''}.`
         : '.')
     : '';
   const synthesis =
@@ -1140,5 +1214,7 @@ export function buildExecutiveTeam(
     tensions,
     chief_of_staff: { synthesis, sequencing, fleet },
     delta,
+    outcomes,
+    agenda_ages: agendaAges,
   };
 }

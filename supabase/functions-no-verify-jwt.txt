@@ -1,6 +1,8 @@
 autonomous-capture-ingest
 autonomous-information-audit
 autonomous-information-audit-cron
+autonomous-fleet-health
+autonomous-fleet-health-cron
 autonomous-news-rss-cron
 autonomous-paralegal-schedule
 autonomous-paralegal-schedule-cron

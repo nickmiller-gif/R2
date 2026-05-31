@@ -54,7 +54,8 @@ Deno.serve(
     let report;
     try {
       const client = getServiceClient();
-      const bots = await fetchAgentActivity(client);
+      // Include REGENT itself — the watchdog must confirm REGENT is running.
+      const bots = await fetchAgentActivity(client, { excludeBot: null });
       const failures = await fetchFleetFailureCounts(client);
       report = assessFleetHealth({
         bots,

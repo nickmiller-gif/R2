@@ -8,6 +8,7 @@ import {
   buildRegentReview,
   citeFramework,
   diffAgendas,
+  reconcileFleet,
   computeOffer,
   mergeByDomain,
   reviewAgentFleet,
@@ -483,6 +484,33 @@ describe('REGENT — agenda, merge, asset review', () => {
     const team = buildExecutiveTeam(fixture(), 5, [{ title: 'old item', severity: 50 }]);
     expect(team.delta).not.toBeNull();
     expect(team.chief_of_staff.synthesis).toContain('Since last week');
+  });
+
+  it('Chief of Staff reconciles peer-bot findings: covered vs net-new vs silent', () => {
+    const agenda = [
+      { title: 'Fix IP', domain_key: 'ip_patent' },
+      { title: 'Restore reporting', domain_key: null },
+    ] as RegentDecision[];
+    const fleet = [
+      {
+        bot: 'autonomous-information-audit',
+        last_seen_days: 2,
+        recent_count: 5,
+        domains: ['ip_patent', 'health_wellness'],
+      },
+      { bot: 'autonomous-news-rss-cron', last_seen_days: 21, recent_count: 0, domains: [] },
+    ];
+    const rec = reconcileFleet(agenda, fleet, 10);
+    expect(rec.covered).toEqual([{ bot: 'autonomous-information-audit', domain: 'ip_patent' }]);
+    expect(rec.net_new).toEqual([
+      { bot: 'autonomous-information-audit', domain: 'health_wellness' },
+    ]);
+    expect(rec.silent).toEqual(['autonomous-news-rss-cron']);
+    // Surfaced in the synthesis + chief_of_staff.fleet.
+    const state = { ...fixture(), agent_activity: fleet };
+    const team = buildExecutiveTeam(state, 5);
+    expect(team.chief_of_staff.fleet).toBeTruthy();
+    expect(team.chief_of_staff.synthesis).toContain('Fleet reconciliation');
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

@@ -16,6 +16,7 @@ import type {
   OracleProfileRunFilter,
 } from '../../types/oracle/profile-run.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleProfileRunService {
@@ -106,7 +107,7 @@ export function createOracleProfileRunService(db: OracleProfileRunDb): OraclePro
     },
 
     async list(filter) {
-      const rows = await db.queryRuns(filter);
+      const rows = await db.queryRuns(withPagination(filter));
       return rows.map(rowToRun);
     },
 

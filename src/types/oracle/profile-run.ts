@@ -39,4 +39,6 @@ export interface OracleProfileRunFilter {
   entityAssetId?: string;
   status?: OracleProfileRunStatus;
   triggeredBy?: string;
+  limit?: number;
+  offset?: number;
 }

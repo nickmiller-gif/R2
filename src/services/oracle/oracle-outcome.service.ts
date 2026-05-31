@@ -15,6 +15,7 @@ import type {
   OracleOutcomeFilter,
 } from '../../types/oracle/outcome.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import { parseJsonbField, parseJsonbStringArray } from './oracle-db-utils.ts';
 
 export interface OracleOutcomeService {
@@ -94,7 +95,7 @@ export function createOracleOutcomeService(db: OracleOutcomeDb): OracleOutcomeSe
     },
 
     async list(filter) {
-      const rows = await db.queryOutcomes(filter);
+      const rows = await db.queryOutcomes(withPagination(filter));
       return rows.map(rowToOutcome);
     },
 

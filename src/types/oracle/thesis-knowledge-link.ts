@@ -9,10 +9,10 @@
  */
 
 export type ThesisKnowledgeLinkType =
-  | 'generated'    // Thesis generated this chunk
-  | 'validated'    // Thesis validated existing chunk
+  | 'generated' // Thesis generated this chunk
+  | 'validated' // Thesis validated existing chunk
   | 'contradicted' // Thesis contradicted existing chunk
-  | 'refined';     // Thesis refined/updated existing chunk
+  | 'refined'; // Thesis refined/updated existing chunk
 
 export type ThesisKnowledgeLinkStatus = 'active' | 'superseded' | 'retracted';
 
@@ -50,4 +50,6 @@ export interface ThesisKnowledgeLinkFilter {
   knowledgeChunkId?: string;
   linkType?: ThesisKnowledgeLinkType;
   status?: ThesisKnowledgeLinkStatus;
+  limit?: number;
+  offset?: number;
 }

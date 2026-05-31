@@ -23,6 +23,8 @@ export interface EigenSiteRegistry {
 export interface EigenSiteRegistryFilter {
   status?: EigenSiteStatus;
   mode?: EigenSiteMode;
+  limit?: number;
+  offset?: number;
 }
 
 export interface UpdateEigenSiteRegistryPolicyMetaInput {

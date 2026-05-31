@@ -16,6 +16,7 @@ import type {
   ThesisKnowledgeLinkFilter,
 } from '../../types/oracle/thesis-knowledge-link.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleThesisKnowledgeLinkService {
@@ -45,7 +46,10 @@ export interface OracleThesisKnowledgeLinkDb {
   insertLink(row: DbOracleThesisKnowledgeLinkRow): Promise<DbOracleThesisKnowledgeLinkRow>;
   findLinkById(id: string): Promise<DbOracleThesisKnowledgeLinkRow | null>;
   queryLinks(filter?: ThesisKnowledgeLinkFilter): Promise<DbOracleThesisKnowledgeLinkRow[]>;
-  updateLink(id: string, patch: Partial<DbOracleThesisKnowledgeLinkRow>): Promise<DbOracleThesisKnowledgeLinkRow>;
+  updateLink(
+    id: string,
+    patch: Partial<DbOracleThesisKnowledgeLinkRow>,
+  ): Promise<DbOracleThesisKnowledgeLinkRow>;
 }
 
 function rowToLink(row: DbOracleThesisKnowledgeLinkRow): ThesisKnowledgeLink {
@@ -90,7 +94,7 @@ export function createOracleThesisKnowledgeLinkService(
     },
 
     async list(filter) {
-      const rows = await db.queryLinks(filter);
+      const rows = await db.queryLinks(withPagination(filter));
       return rows.map(rowToLink);
     },
 

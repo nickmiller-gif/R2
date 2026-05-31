@@ -13,6 +13,7 @@ import type {
   OracleSourcePackFilter,
 } from '../../types/oracle/source-pack.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.ts';
 
 export interface OracleSourcePackService {
@@ -83,7 +84,7 @@ export function createOracleSourcePackService(db: OracleSourcePackDb): OracleSou
     },
 
     async list(filter) {
-      const rows = await db.querySourcePacks(filter);
+      const rows = await db.querySourcePacks(withPagination(filter));
       return rows.map(rowToSourcePack);
     },
   };

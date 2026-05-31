@@ -26,7 +26,8 @@ function makeMockDb(): OracleEvidenceItemDb & { rows: DbOracleEvidenceItemRow[] 
         if (filter.sourceLane && r.source_lane !== filter.sourceLane) return false;
         if (filter.sourceClass && r.source_class !== filter.sourceClass) return false;
         if (filter.signalId && r.signal_id !== filter.signalId) return false;
-        if (filter.minStrength !== undefined && r.evidence_strength !== filter.minStrength) return false;
+        if (filter.minStrength !== undefined && r.evidence_strength !== filter.minStrength)
+          return false;
         return true;
       });
     },
@@ -55,6 +56,27 @@ describe('OracleEvidenceItemService', () => {
     expect(item.evidenceStrength).toBe(0);
     expect(item.citationRef).toBeNull();
     expect(item.excerpt).toBeNull();
+  });
+
+  it('list() forwards withPagination defaults (limit 50, offset 0) to the DB port', async () => {
+    let receivedFilter: OracleEvidenceItemFilter | undefined;
+    const db = makeMockDb();
+    const original = db.queryEvidenceItems.bind(db);
+    db.queryEvidenceItems = async (filter) => {
+      receivedFilter = filter;
+      return original(filter);
+    };
+    const service = createOracleEvidenceItemService(db);
+
+    await service.list();
+    expect(receivedFilter).toMatchObject({ limit: 50, offset: 0 });
+
+    await service.list({ sourceLane: 'internal_canonical', limit: 9000, offset: -3 });
+    expect(receivedFilter).toMatchObject({
+      sourceLane: 'internal_canonical',
+      limit: 1000,
+      offset: 0,
+    });
   });
 
   it('returns null for nonexistent evidence item', async () => {

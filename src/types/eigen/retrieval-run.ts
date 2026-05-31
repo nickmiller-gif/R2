@@ -28,4 +28,6 @@ export interface RetrievalRunFilter {
   status?: RetrievalRunStatus;
   minLatency?: number;
   maxLatency?: number;
+  limit?: number;
+  offset?: number;
 }

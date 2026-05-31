@@ -41,4 +41,5 @@ export interface MemoryEpisodeFilter {
   sessionId?: string;
   entityId?: string;
   limit?: number;
+  offset?: number;
 }

@@ -831,7 +831,7 @@ export function collectCandidates(state: WorldState, scored: ScoredDomain[]): Re
   ];
   return cands
     .filter((c): c is RegentDecision => !!c)
-    .map((c) => ({ ...c, citations: citeFramework(c.framework) }));
+    .map((c) => ({ ...c, citations: citeFramework(c.framework, c.observation) }));
 }
 
 export function buildRegentReview(state: WorldState, topN = 5): RegentReview {

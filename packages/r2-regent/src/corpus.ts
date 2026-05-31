@@ -70,9 +70,9 @@ const KEYWORDS = [
 
 function bestSource(
   course: (typeof CORPUS_INDEX)[string],
-  framework: string,
+  haystack: string,
 ): { source?: string; kind?: 'reading' | 'model' } {
-  const hay = framework.toLowerCase();
+  const hay = haystack.toLowerCase();
   const hit = (list: string[]) =>
     list.find((t) => KEYWORDS.some((k) => hay.includes(k) && t.toLowerCase().includes(k)));
   const r = hit(course.readings);
@@ -84,15 +84,20 @@ function bestSource(
   return {};
 }
 
-/** Resolve a framework string to corpus citations (course + best-matching source). */
-export function citeFramework(framework: string): Citation[] {
+/**
+ * Resolve a framework to corpus citations (course + best-matching source).
+ * `context` (e.g. the decision's observation) sharpens which reading is cited —
+ * reading-level retrieval over the corpus, not just a course-level label.
+ */
+export function citeFramework(framework: string, context = ''): Citation[] {
   const out: Citation[] = [];
+  const haystack = `${framework} ${context}`;
   for (const name of citedCourses(framework)) {
     const key0 = normalizeCourse(name);
     const key = CORPUS_INDEX[key0] ? key0 : (ALIASES[key0] ?? key0);
     const course = CORPUS_INDEX[key];
     if (!course) continue;
-    const { source, kind } = bestSource(course, framework);
+    const { source, kind } = bestSource(course, haystack);
     out.push({ course: course.course, source, kind });
   }
   return out;

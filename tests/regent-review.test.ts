@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  applyFinancials,
   buildExecutiveTeam,
   buildRegentReview,
   citeFramework,
@@ -358,6 +359,65 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(sched.items[0]!.days_until).toBeLessThanOrEqual(
       sched.items[sched.items.length - 1]!.days_until,
     );
+  });
+
+  it('applyFinancials overlays attested figures and scores those domains', () => {
+    // Start from an all-unsourced (stale) state, like the live-DB path.
+    const unsourced: WorldState = {
+      cost_of_capital_pct: 18,
+      stale_after_days: 14,
+      treasury: { cash_on_hand: 0 },
+      domains: [
+        {
+          key: 'health_wellness',
+          name: 'Health & Wellness',
+          series: 'B',
+          stage: 'revenue',
+          strategic_role: 'bet',
+          monthly_burn: 0,
+          invested_capital: 0,
+          data_freshness_days: 9999,
+        },
+        {
+          key: 'ip_patent',
+          name: 'IP & Patent Intelligence',
+          series: 'C',
+          stage: 'revenue',
+          strategic_role: 'bet',
+          monthly_burn: 0,
+          invested_capital: 0,
+          data_freshness_days: 9999,
+        },
+      ],
+    };
+    const merged = applyFinancials(unsourced, {
+      as_of: '2026-05-30',
+      cash_on_hand: 215000,
+      domains: [
+        {
+          key: 'health_wellness',
+          ttm_revenue: 145000,
+          ttm_direct_cost: 95000,
+          invested_capital: 210000,
+          monthly_burn: 6000,
+        },
+        // ip_patent intentionally omitted — must remain unsourced/stale.
+      ],
+      source: 'principal',
+    });
+    expect(merged.treasury.cash_on_hand).toBe(215000);
+    const health = merged.domains.find((d) => d.key === 'health_wellness')!;
+    expect(health.ttm_revenue).toBe(145000);
+    expect(health.data_freshness_days).toBe(0); // supplied ⇒ fresh ⇒ scored
+    const ip = merged.domains.find((d) => d.key === 'ip_patent')!;
+    expect(ip.data_freshness_days).toBe(9999); // not supplied ⇒ stays unsourced
+    // The CFO now sees a scored, value-creating domain.
+    const team = buildExecutiveTeam(merged, 5);
+    const scoredHealth = team.scored.find((d) => d.key === 'health_wellness')!;
+    expect(scoredHealth.flag).toBe('CREATING');
+    expect(scoredHealth.stale).toBe(false);
+    // Empty financials is a no-op (stays unsourced — never fabricated).
+    expect(applyFinancials(unsourced, null)).toBe(unsourced);
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

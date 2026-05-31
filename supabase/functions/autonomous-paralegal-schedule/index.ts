@@ -8,8 +8,10 @@ import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { isAutonomousMeshPaused } from '../_shared/autonomous-revolutionary-mesh.ts';
 import {
+  applyFinancials,
   buildLiveWorldStateFromDb,
   fetchAgentActivity,
+  loadRegentFinancials,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
 import {
@@ -99,6 +101,14 @@ Deno.serve(
       state.agent_activity = await fetchAgentActivity(getServiceClient());
     } catch {
       // Non-fatal — fleet-health review item is simply omitted.
+    }
+
+    // Real committed-inflow deadlines / funding-gate state come from the
+    // principal-attested financials when present.
+    try {
+      state = applyFinancials(state, await loadRegentFinancials(getServiceClient()));
+    } catch {
+      // Non-fatal — schedule omits inflow deadlines when financials are unsourced.
     }
 
     const schedule = buildParalegalSchedule(state);

@@ -13,28 +13,68 @@
 import { buildSourceSignalKey } from './signal-utils.ts';
 import { getServiceClient } from './supabase.ts';
 import {
+  applyFinancials,
   buildExecutiveTeam,
   buildRegentReview,
   type AgentActivity,
   type Domain,
   type ExecutiveTeamReview,
   type RegentDecision,
+  type RegentFinancials,
   type RegentReview,
   type RepoAsset,
   type WorldState,
 } from '../../../packages/r2-regent/src/review.ts';
 
 export {
+  applyFinancials,
   buildExecutiveTeam,
   buildRegentReview,
   type AgentActivity,
   type Domain,
   type ExecutiveTeamReview,
   type RegentDecision,
+  type RegentFinancials,
   type RegentReview,
   type RepoAsset,
   type WorldState,
 };
+
+/**
+ * Load the latest principal-attested financial inputs from regent_world_state.
+ * Returns null when the table is empty — financials then stay UNSOURCED and the
+ * faculties name the gap rather than guess (invariant #2).
+ */
+export async function loadRegentFinancials(
+  client: ReturnType<typeof getServiceClient>,
+): Promise<RegentFinancials | null> {
+  const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
+  const { data, error } = await c
+    .from('regent_world_state')
+    .select(
+      'as_of,cash_on_hand,cost_of_capital_pct,runway_floor_months,domains,committed_inflows,funding,source',
+    )
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    // Table absent or unreadable — treat as unsourced, do not fail the run.
+    return null;
+  }
+  if (!data) return null;
+  return {
+    as_of: typeof data.as_of === 'string' ? data.as_of : undefined,
+    cash_on_hand: typeof data.cash_on_hand === 'number' ? data.cash_on_hand : undefined,
+    cost_of_capital_pct:
+      typeof data.cost_of_capital_pct === 'number' ? data.cost_of_capital_pct : undefined,
+    runway_floor_months:
+      typeof data.runway_floor_months === 'number' ? data.runway_floor_months : undefined,
+    committed_inflows: Array.isArray(data.committed_inflows) ? data.committed_inflows : undefined,
+    domains: Array.isArray(data.domains) ? data.domains : undefined,
+    funding: data.funding ?? undefined,
+    source: typeof data.source === 'string' ? data.source : 'regent_world_state',
+  };
+}
 
 /**
  * The Chief of Staff's view of the rest of the fleet: recent autonomous-bot

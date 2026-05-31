@@ -8,10 +8,12 @@ import { withLogger } from '../_shared/log.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { isAutonomousMeshPaused } from '../_shared/autonomous-revolutionary-mesh.ts';
 import {
+  applyFinancials,
   buildExecutiveTeam,
   buildLiveWorldStateFromDb,
   emitRegentReviewSignal,
   fetchAgentActivity,
+  loadRegentFinancials,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
 
@@ -116,6 +118,16 @@ Deno.serve(
         message: err instanceof Error ? err.message : String(err),
       });
       // Non-fatal: the Chief of Staff simply has no fleet to reconcile.
+    }
+
+    // Overlay principal-attested financials (single source of truth). Empty →
+    // financials stay unsourced and the Capital/Commercial faculties name the gap.
+    try {
+      state = applyFinancials(state, await loadRegentFinancials(getServiceClient()));
+    } catch (err) {
+      log.error('regent_financials_failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
 
     let review;

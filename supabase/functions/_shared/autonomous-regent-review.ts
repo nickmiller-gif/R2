@@ -20,6 +20,7 @@ import {
   type Domain,
   type ExecutiveTeamReview,
   type PriorAgendaItem,
+  type PriorReviewSnapshot,
   type RegentDecision,
   type RegentFinancials,
   type RegentReview,
@@ -35,6 +36,7 @@ export {
   type Domain,
   type ExecutiveTeamReview,
   type PriorAgendaItem,
+  type PriorReviewSnapshot,
   type RegentDecision,
   type RegentFinancials,
   type RegentReview,
@@ -49,7 +51,7 @@ export {
  */
 export async function fetchPreviousRegentReview(
   client: ReturnType<typeof getServiceClient>,
-): Promise<{ agenda: PriorAgendaItem[]; ages: Record<string, number> } | null> {
+): Promise<PriorReviewSnapshot | null> {
   const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
   const { data, error } = await c
     .from('platform_feed_items')
@@ -63,6 +65,8 @@ export async function fetchPreviousRegentReview(
   const payload = data.payload as {
     agenda?: Array<{ title?: unknown; severity?: unknown }>;
     agenda_ages?: Record<string, unknown>;
+    stale_domains?: unknown;
+    deferred?: unknown;
   };
   if (!Array.isArray(payload?.agenda)) return null;
   const agenda = payload.agenda
@@ -77,7 +81,13 @@ export async function fetchPreviousRegentReview(
       if (typeof v === 'number') ages[k] = v;
     }
   }
-  return { agenda, ages };
+  const stale_domains = Array.isArray(payload.stale_domains)
+    ? payload.stale_domains.filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+    : [];
+  const deferred = Array.isArray(payload.deferred)
+    ? payload.deferred.filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+    : [];
+  return { agenda, ages, stale_domains, deferred };
 }
 
 /**

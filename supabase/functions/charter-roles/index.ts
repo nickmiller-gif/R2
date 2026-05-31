@@ -26,6 +26,12 @@ Deno.serve(
       const id = pathname.split('/').pop() === 'charter-roles' ? null : pathname.split('/').pop();
 
       if (req.method === 'GET') {
+        // Role assignments are operator-only reads: RLS on charter_user_roles
+        // permits any authenticated user to read, so enforce RBAC at the edge
+        // to prevent role enumeration across all users.
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+
         // Reads use the caller's token context (RLS applies)
         const client = getSupabaseClient(req);
 

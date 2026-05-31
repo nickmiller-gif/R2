@@ -1,6 +1,7 @@
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { getSupabaseClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
+import { requireRole } from '../_shared/rbac.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
 Deno.serve(
@@ -9,6 +10,12 @@ Deno.serve(
 
     const auth = await guardAuth(req);
     if (!auth.ok) return auth.response;
+
+    // Governance audit log is operator-only: the underlying view is readable by
+    // any authenticated role under RLS, so RBAC must be enforced at the edge to
+    // prevent any logged-in user from enumerating the full audit trail.
+    const roleCheck = await requireRole(auth.claims.userId, 'operator');
+    if (!roleCheck.ok) return roleCheck.response;
 
     try {
       if (req.method !== 'GET') {

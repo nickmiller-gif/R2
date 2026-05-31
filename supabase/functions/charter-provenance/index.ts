@@ -42,6 +42,12 @@ Deno.serve(
       const client = req.method === 'GET' ? getSupabaseClient(req) : getServiceClient();
 
       if (req.method === 'GET') {
+        // Provenance is the immutable audit trail; RLS allows any authenticated
+        // role to read, so enforce operator RBAC at the edge to keep the chain
+        // an operator-only read surface.
+        const roleCheck = await requireRole(auth.claims.userId, 'operator');
+        if (!roleCheck.ok) return roleCheck.response;
+
         if (id) {
           const { data, error } = await client
             .from('charter_provenance_events')

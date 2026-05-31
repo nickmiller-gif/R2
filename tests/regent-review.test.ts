@@ -7,8 +7,10 @@ import {
   buildExecutiveTeam,
   buildRegentReview,
   citeFramework,
+  computeAges,
   diffAgendas,
   reconcileFleet,
+  scoreOutcomes,
   computeOffer,
   mergeByDomain,
   reviewAgentFleet,
@@ -511,6 +513,28 @@ describe('REGENT — agenda, merge, asset review', () => {
     const team = buildExecutiveTeam(state, 5);
     expect(team.chief_of_staff.fleet).toBeTruthy();
     expect(team.chief_of_staff.synthesis).toContain('Fleet reconciliation');
+  });
+
+  it('outcome scoring: ages accumulate, resolution rate + stuck escalation', () => {
+    expect(computeAges(['A', 'B'], { A: 2 })).toEqual({ A: 3, B: 1 });
+    const delta = { new: ['B'], resolved: ['D'], moved: [], carried: ['A'] };
+    const outcomes = scoreOutcomes(delta, { A: 3, B: 1 }, 2);
+    expect(outcomes.resolution_rate).toBeCloseTo(0.5, 2); // 1 resolved of 2 open last week
+    expect(outcomes.resolved_count).toBe(1);
+    expect(outcomes.stuck).toEqual(['A']); // age >= 3
+    expect(scoreOutcomes(null, { A: 1 }, 1).resolution_rate).toBeNull();
+    // buildExecutiveTeam threads ages + escalates stuck items.
+    const team = buildExecutiveTeam(fixture(), 5);
+    expect(team.outcomes).toBeTruthy();
+    expect(team.agenda_ages).toBeTruthy();
+    // Re-run feeding the prior ages high enough to make an item stuck → severity bumped.
+    const titles = team.agenda.map((d) => d.title);
+    const priorAges: Record<string, number> = {};
+    titles.forEach((t) => (priorAges[t] = 5));
+    const team2 = buildExecutiveTeam(fixture(), 5, null, priorAges);
+    const stuckItem = team2.agenda.find((d) => d.stuck_weeks);
+    expect(stuckItem).toBeTruthy();
+    expect(stuckItem!.stuck_weeks).toBeGreaterThanOrEqual(3);
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

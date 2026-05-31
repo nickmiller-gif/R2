@@ -43,12 +43,13 @@ export {
 };
 
 /**
- * The previous week's agenda (titles + severities) from the last
- * regent_executive_review signal — REGENT's institutional memory for the diff.
+ * The previous week's agenda (titles + severities) AND accumulated ages from
+ * the last regent_executive_review signal — REGENT's institutional memory for
+ * the diff and outcome scoring.
  */
-export async function fetchPreviousRegentAgenda(
+export async function fetchPreviousRegentReview(
   client: ReturnType<typeof getServiceClient>,
-): Promise<PriorAgendaItem[] | null> {
+): Promise<{ agenda: PriorAgendaItem[]; ages: Record<string, number> } | null> {
   const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
   const { data, error } = await c
     .from('platform_feed_items')
@@ -59,15 +60,24 @@ export async function fetchPreviousRegentAgenda(
     .limit(1)
     .maybeSingle();
   if (error || !data) return null;
-  const agenda = (data.payload as { agenda?: Array<{ title?: unknown; severity?: unknown }> })
-    ?.agenda;
-  if (!Array.isArray(agenda)) return null;
-  return agenda
+  const payload = data.payload as {
+    agenda?: Array<{ title?: unknown; severity?: unknown }>;
+    agenda_ages?: Record<string, unknown>;
+  };
+  if (!Array.isArray(payload?.agenda)) return null;
+  const agenda = payload.agenda
     .map((a) => ({
       title: typeof a.title === 'string' ? a.title : '',
       severity: typeof a.severity === 'number' ? a.severity : 0,
     }))
     .filter((a) => a.title);
+  const ages: Record<string, number> = {};
+  if (payload.agenda_ages && typeof payload.agenda_ages === 'object') {
+    for (const [k, v] of Object.entries(payload.agenda_ages)) {
+      if (typeof v === 'number') ages[k] = v;
+    }
+  }
+  return { agenda, ages };
 }
 
 /**
@@ -345,6 +355,8 @@ export async function emitRegentReviewSignal(input: {
       tensions: review.tensions,
       chief_of_staff: review.chief_of_staff,
       delta: review.delta ?? null,
+      outcomes: review.outcomes ?? null,
+      agenda_ages: review.agenda_ages ?? {},
       acting_roles: actingRoles,
       treasury: {
         cash_on_hand: review.treasury.cash,

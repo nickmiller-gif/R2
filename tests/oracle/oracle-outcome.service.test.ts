@@ -63,6 +63,21 @@ describe('OracleOutcomeService', () => {
     expect(outcome.updatedAt).toBeInstanceOf(Date);
   });
 
+  it('rejects creation with an empty thesisId or summary', async () => {
+    const db = makeMockDb();
+    const service = createOracleOutcomeService(db);
+
+    await expect(
+      service.create({ thesisId: '', verdict: 'confirmed', summary: 'ok' }),
+    ).rejects.toThrow('thesisId must not be empty');
+
+    await expect(
+      service.create({ thesisId: 'thesis-1', verdict: 'confirmed', summary: '   ' }),
+    ).rejects.toThrow('summary must not be empty');
+
+    expect(db.rows).toHaveLength(0);
+  });
+
   it('creates outcome with all optional fields set', async () => {
     const db = makeMockDb();
     const service = createOracleOutcomeService(db);

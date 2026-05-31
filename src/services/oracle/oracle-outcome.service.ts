@@ -16,6 +16,7 @@ import type {
 } from '../../types/oracle/outcome.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
 import { withPagination } from '../../lib/service-utils/pagination.ts';
+import { assertNonEmpty } from '../../lib/charter/validate.ts';
 import { parseJsonbField, parseJsonbStringArray } from './oracle-db-utils.ts';
 
 export interface OracleOutcomeService {
@@ -70,6 +71,8 @@ function rowToOutcome(row: DbOracleOutcomeRow): OracleOutcome {
 export function createOracleOutcomeService(db: OracleOutcomeDb): OracleOutcomeService {
   return {
     async create(input) {
+      assertNonEmpty(input.thesisId, 'thesisId');
+      assertNonEmpty(input.summary, 'summary');
       const now = nowUtc().toISOString();
       const row = await db.insertOutcome({
         id: crypto.randomUUID(),

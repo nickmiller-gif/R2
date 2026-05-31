@@ -15,6 +15,7 @@ import type {
 } from '../../types/oracle/evidence-item.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
 import { withPagination } from '../../lib/service-utils/pagination.ts';
+import { assertConfidence } from '../../lib/charter/validate.ts';
 import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleEvidenceItemService {
@@ -75,6 +76,7 @@ export function createOracleEvidenceItemService(
 ): OracleEvidenceItemService {
   return {
     async create(input) {
+      if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertEvidenceItem({
         id: crypto.randomUUID(),

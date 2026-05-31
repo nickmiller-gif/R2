@@ -16,7 +16,7 @@ import type {
 import type { OracleGovernanceMetadata } from '../../types/oracle/shared.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
 import { parseJsonbField, parseJsonbStringArray } from './oracle-db-utils.ts';
-import { assertConfidence } from '../../lib/charter/validate.ts';
+import { assertConfidence, assertNonEmpty } from '../../lib/charter/validate.ts';
 import { withPagination } from '../../lib/service-utils/pagination.ts';
 
 const THESIS_STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -107,6 +107,8 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
 export function createOracleThesisService(db: OracleThesisDb): OracleThesisService {
   return {
     async create(input) {
+      assertNonEmpty(input.title, 'title');
+      assertNonEmpty(input.thesisStatement, 'thesisStatement');
       if (input.confidence !== undefined) assertConfidence(input.confidence);
       const now = nowUtc().toISOString();
       const row = await db.insertThesis({

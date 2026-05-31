@@ -119,6 +119,9 @@ export function createMegEntityService(db: MegEntityDb): MegEntityService {
     },
 
     async merge(sourceId, targetId) {
+      if (sourceId === targetId) {
+        throw new Error('Cannot merge an entity into itself');
+      }
       const now = nowUtc().toISOString();
       const row = await db.updateEntity(sourceId, {
         status: 'merged',

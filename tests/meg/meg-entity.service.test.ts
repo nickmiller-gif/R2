@@ -183,6 +183,20 @@ describe('MegEntityService', () => {
     expect(merged.mergedIntoId).toBe(target.id);
   });
 
+  it('rejects merging an entity into itself', async () => {
+    const db = makeMockDb();
+    const service = createMegEntityService(db);
+
+    const entity = await service.create({ entityType: 'org', canonicalName: 'Self Corp' });
+
+    await expect(service.merge(entity.id, entity.id)).rejects.toThrow(
+      'Cannot merge an entity into itself',
+    );
+
+    const reloaded = await service.getById(entity.id);
+    expect(reloaded!.status).toBe('active');
+  });
+
   it('archive sets status to archived', async () => {
     const db = makeMockDb();
     const service = createMegEntityService(db);

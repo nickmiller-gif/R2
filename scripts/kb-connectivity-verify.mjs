@@ -64,7 +64,7 @@ const DRIVERS = [
       'friction_collapse_draft',
       'friction_collapse_validated',
     ],
-    smokeTypes: [],
+    smokeTypes: ['post_merge_stream_d_smoke', 'kb_four_smoke'],
   },
 ];
 
@@ -165,10 +165,14 @@ function classify(driver, rows) {
   const isLive = driver.liveTypes.some((t) => latest.source_event_type === t);
 
   const published = latest.processing_status === 'published';
-  if (isLive && ageOk && published)
+  const scored = latest.processing_status === 'scored';
+  const processedOk = published || scored;
+  if (isLive && ageOk && processedOk)
     return {
       status: 'green',
-      reason: `live ${latest.source_event_type} (published)${syntheticNote}`,
+      reason: published
+        ? `live ${latest.source_event_type} (published)${syntheticNote}`
+        : `live ${latest.source_event_type} (scored — ingest + process OK; publication boundary)${syntheticNote}`,
       latest,
     };
   if (isLive && ageOk)

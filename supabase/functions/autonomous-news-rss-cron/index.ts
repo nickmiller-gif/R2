@@ -202,11 +202,12 @@ Deno.serve(
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
     const expected = expectedCronToken();
-    if (expected.length > 0) {
-      const supplied = readBearer(req) ?? '';
-      if (!supplied || !timingSafeEqual(supplied, expected)) {
-        return errorResponse('Unauthorized cron token', 401);
-      }
+    if (expected.length === 0) {
+      return errorResponse('autonomous-news-rss cron token must be configured', 503);
+    }
+    const supplied = readBearer(req) ?? '';
+    if (!supplied || !timingSafeEqual(supplied, expected)) {
+      return errorResponse('Unauthorized cron token', 401);
     }
 
     let drivers: KbDriverId[];

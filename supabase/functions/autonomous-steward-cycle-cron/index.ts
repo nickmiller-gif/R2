@@ -20,11 +20,15 @@ Deno.serve(
       Deno.env.get('AUTONOMOUS_STEWARD_CRON_TOKEN')?.trim() ??
       Deno.env.get('AUTONOMOUS_NEWS_CRON_TOKEN')?.trim() ??
       '';
-    if (expected.length > 0) {
-      const supplied = readBearer(req) ?? '';
-      if (!supplied || !timingSafeEqual(supplied, expected)) {
-        return errorResponse('Unauthorized cron token', 401);
-      }
+    if (expected.length === 0) {
+      return errorResponse(
+        'AUTONOMOUS_STEWARD_CRON_TOKEN (or AUTONOMOUS_NEWS_CRON_TOKEN) must be configured',
+        503,
+      );
+    }
+    const supplied = readBearer(req) ?? '';
+    if (!supplied || !timingSafeEqual(supplied, expected)) {
+      return errorResponse('Unauthorized cron token', 401);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '');

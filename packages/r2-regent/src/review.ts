@@ -665,6 +665,85 @@ export function mergeByDomain(cands: RegentDecision[]): RegentDecision[] {
   return [...out, ...singles];
 }
 
+// --------------------------------------------------------------------------- //
+// Financial inputs — overlay real, principal-attested figures onto the state.  //
+// --------------------------------------------------------------------------- //
+
+export interface DomainFinancials {
+  key: string;
+  ttm_revenue?: number;
+  ttm_direct_cost?: number;
+  invested_capital?: number;
+  monthly_burn?: number;
+  data_freshness_days?: number;
+}
+
+export interface RegentFinancials {
+  as_of?: string;
+  cash_on_hand?: number;
+  cost_of_capital_pct?: number;
+  runway_floor_months?: number;
+  committed_inflows?: Array<Record<string, unknown>>;
+  domains?: DomainFinancials[];
+  funding?: { active_phase?: number; phases?: Array<Record<string, unknown>> };
+  /** Provenance. When it contains "illustrative"/"example", the state stays banner-flagged. */
+  source?: string;
+}
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+/**
+ * Overlay real financial figures onto a world-state. Only fields actually
+ * supplied take effect; a domain with no supplied figures keeps its unsourced,
+ * stale default (so it is excluded from scoring and NAMED — invariant #2 holds).
+ * Supplying a domain's figures marks it fresh (scored) unless an explicit
+ * freshness is given. Never invents a number.
+ */
+export function applyFinancials(
+  state: WorldState,
+  fin: RegentFinancials | null | undefined,
+): WorldState {
+  if (!fin) return state;
+  const byKey = new Map<string, DomainFinancials>();
+  for (const d of fin.domains ?? []) byKey.set(d.key, d);
+
+  const domains: Domain[] = state.domains.map((d) => {
+    const f = byKey.get(d.key);
+    if (!f) return d;
+    const supplied =
+      num(f.ttm_revenue) !== undefined ||
+      num(f.ttm_direct_cost) !== undefined ||
+      num(f.invested_capital) !== undefined ||
+      num(f.monthly_burn) !== undefined;
+    return {
+      ...d,
+      ttm_revenue: num(f.ttm_revenue) ?? d.ttm_revenue,
+      ttm_direct_cost: num(f.ttm_direct_cost) ?? d.ttm_direct_cost,
+      invested_capital: num(f.invested_capital) ?? d.invested_capital,
+      monthly_burn: num(f.monthly_burn) ?? d.monthly_burn,
+      data_freshness_days: num(f.data_freshness_days) ?? (supplied ? 0 : d.data_freshness_days),
+    };
+  });
+
+  const illustrative = /illustrative|example|synthetic|placeholder/i.test(fin.source ?? '');
+  return {
+    ...state,
+    domains,
+    as_of: fin.as_of ?? state.as_of,
+    cost_of_capital_pct: num(fin.cost_of_capital_pct) ?? state.cost_of_capital_pct,
+    runway_floor_months: num(fin.runway_floor_months) ?? state.runway_floor_months,
+    treasury: {
+      cash_on_hand: num(fin.cash_on_hand) ?? state.treasury.cash_on_hand,
+      committed_inflows: fin.committed_inflows ?? state.treasury.committed_inflows,
+    },
+    funding: fin.funding ?? state.funding,
+    _SYNTHETIC: illustrative
+      ? (state._SYNTHETIC ?? 'ILLUSTRATIVE financial inputs — not attested actuals.')
+      : undefined,
+  };
+}
+
 /** Every faculty's raw candidate decisions (pre-merge), in deterministic order.
  * Each decision is grounded with the CMU-corpus sources behind its framework. */
 export function collectCandidates(state: WorldState, scored: ScoredDomain[]): RegentDecision[] {

@@ -15,6 +15,10 @@ export interface Citation {
   course: string;
   source?: string;
   kind?: 'reading' | 'model';
+  /** A retrieved passage excerpt (set when the OpenAI vector store backs the citation). */
+  snippet?: string;
+  /** True when this citation came from semantic retrieval (vs. the deterministic index). */
+  retrieved?: boolean;
 }
 
 function normalizeCourse(name: string): string {

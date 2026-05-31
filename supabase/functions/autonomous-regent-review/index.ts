@@ -17,6 +17,7 @@ import {
   loadRegentFinancials,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
+import { enrichCitationsWithCorpus } from '../_shared/regent-corpus-search.ts';
 
 /**
  * REGENT — autonomous executive review bot.
@@ -149,6 +150,16 @@ Deno.serve(
       const message = err instanceof Error ? err.message : 'Review failed';
       log.error('regent_review_failed', { message });
       return errorResponse(message, 500);
+    }
+
+    // Upgrade citations from filename-level to passage-level via the OpenAI MBA
+    // corpus vector store (no-op when unconfigured — deterministic citations stand).
+    try {
+      await enrichCitationsWithCorpus(review.agenda);
+    } catch (err) {
+      log.error('regent_corpus_enrich_failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
 
     try {

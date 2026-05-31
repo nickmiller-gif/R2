@@ -68,6 +68,46 @@ describe('OracleThesisService', () => {
     expect(result).toBeNull();
   });
 
+  it('maps id-array columns safely (corrupt/non-array jsonb → [] and non-strings filtered)', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    db.rows.push({
+      id: 'thesis-corrupt',
+      profile_id: null,
+      meg_entity_id: null,
+      title: 'Corrupt arrays',
+      thesis_statement: 'Statement',
+      status: 'draft',
+      novelty_status: 'novel',
+      duplicate_of_thesis_id: null,
+      superseded_by_thesis_id: null,
+      inspiration_signal_ids: '["sig-1","sig-2"]', // valid JSON array string
+      inspiration_evidence_item_ids: 'not-json', // corrupt → []
+      validation_evidence_item_ids: '{"k":"v"}', // object, not an array → []
+      contradiction_evidence_item_ids: ['c-1', 42] as unknown as string, // already-parsed; non-strings dropped
+      confidence: 50,
+      evidence_strength: 0,
+      uncertainty_summary: null,
+      publication_state: 'pending_review',
+      published_at: null,
+      published_by: null,
+      last_decision_at: null,
+      last_decision_by: null,
+      decision_metadata: '{}',
+      metadata: '{}',
+      governance: '{}',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+
+    const thesis = await service.getById('thesis-corrupt');
+    expect(thesis!.inspirationSignalIds).toEqual(['sig-1', 'sig-2']);
+    expect(thesis!.inspirationEvidenceItemIds).toEqual([]);
+    expect(thesis!.validationEvidenceItemIds).toEqual([]);
+    expect(thesis!.contradictionEvidenceItemIds).toEqual(['c-1']);
+  });
+
   it('lists theses filtered by status', async () => {
     const db = makeMockDb();
     const service = createOracleThesisService(db);

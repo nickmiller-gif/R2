@@ -43,7 +43,9 @@ export interface EntityContextDb {
 
 export interface EntityGraphLookup {
   resolveCanonicalId(sourcePlatform: string, sourceRecordId: string): Promise<string | null>;
-  fetchUpstreamContext(canonicalId: string): Promise<{ name: string | null; type: string | null } | null>;
+  fetchUpstreamContext(
+    canonicalId: string,
+  ): Promise<{ name: string | null; type: string | null } | null>;
 }
 
 /** Port for deep linking Charter entities into the asset/entity graph. */
@@ -55,7 +57,11 @@ export interface AssetRegistryPort {
 }
 
 export interface CharterEntityContextService {
-  linkEntity(entityId: string, sourcePlatform: string, sourceRecordId: string): Promise<CharterContextSnapshot>;
+  linkEntity(
+    entityId: string,
+    sourcePlatform: string,
+    sourceRecordId: string,
+  ): Promise<CharterContextSnapshot>;
   refreshContext(entityId: string): Promise<CharterContextSnapshot>;
   getContextSnapshot(entityId: string): Promise<CharterContextSnapshot | null>;
   /** Resolve the asset registry entry for a Charter entity via its canonical_entity_id. */
@@ -94,7 +100,10 @@ export function createCharterEntityContextService(
       const row = await db.updateEntity(entityId, {
         source_platform: sourcePlatform,
         source_record_id: sourceRecordId,
-        canonical_entity_id: canonicalId ?? undefined,
+        // Persist explicitly (including null) so re-linking to an unresolved
+        // source clears a previously stored canonical id rather than leaving it
+        // stale alongside an 'unlinked' status.
+        canonical_entity_id: canonicalId,
         context_status: canonicalId ? 'linked' : 'unlinked',
         last_context_sync_at: now,
         updated_at: now,
@@ -118,13 +127,18 @@ export function createCharterEntityContextService(
         throw new Error(`Entity ${entityId} has no linked source`);
       }
 
-      const canonicalId = await graph.resolveCanonicalId(entity.source_platform, entity.source_record_id);
+      const canonicalId = await graph.resolveCanonicalId(
+        entity.source_platform,
+        entity.source_record_id,
+      );
       const upstream = canonicalId ? await graph.fetchUpstreamContext(canonicalId) : null;
       const now = nowUtc().toISOString();
       const newStatus: CharterContextStatus = canonicalId ? 'linked' : 'stale';
 
       const row = await db.updateEntity(entityId, {
-        canonical_entity_id: canonicalId ?? undefined,
+        // Persist explicitly (including null) so a refresh that no longer
+        // resolves a canonical id clears the stale value alongside 'stale'.
+        canonical_entity_id: canonicalId,
         context_status: newStatus,
         last_context_sync_at: now,
         updated_at: now,
@@ -153,7 +167,9 @@ export function createCharterEntityContextService(
         contextStatus: entity.context_status as CharterContextStatus,
         upstreamName: null,
         upstreamType: null,
-        lastContextSyncAt: entity.last_context_sync_at ? new Date(entity.last_context_sync_at) : null,
+        lastContextSyncAt: entity.last_context_sync_at
+          ? new Date(entity.last_context_sync_at)
+          : null,
       };
     },
 
@@ -165,7 +181,11 @@ export function createCharterEntityContextService(
       if (!entity) throw new Error(`Charter entity not found: ${entityId}`);
       if (!entity.canonical_entity_id) throw new Error(`Entity ${entityId} has no canonical ID`);
 
-      const existing = await assets.getAssetByRef('governance_entity', entity.canonical_entity_id, 'charter');
+      const existing = await assets.getAssetByRef(
+        'governance_entity',
+        entity.canonical_entity_id,
+        'charter',
+      );
       if (existing) return existing;
 
       return assets.registerAsset({

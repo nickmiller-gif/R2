@@ -28,7 +28,10 @@ export function withPagination<T extends { limit?: number; offset?: number }>(
 ): T & PaginationParams {
   const defaultLimit = options.defaultLimit ?? DEFAULT_PAGE_LIMIT;
   const maxLimit = options.maxLimit ?? MAX_PAGE_LIMIT;
-  const limit = Math.min(filter?.limit ?? defaultLimit, maxLimit);
-  const offset = filter?.offset ?? 0;
+  // Clamp to [1, maxLimit]. Without the lower bound a negative `limit` survives
+  // Math.min and Postgres interprets `LIMIT -1` as "no limit" — an unbounded
+  // scan. `offset` is likewise floored at 0.
+  const limit = Math.min(Math.max(1, filter?.limit ?? defaultLimit), maxLimit);
+  const offset = Math.max(0, filter?.offset ?? 0);
   return { ...(filter ?? ({} as T)), limit, offset };
 }

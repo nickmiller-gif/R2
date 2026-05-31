@@ -4,6 +4,7 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
 
 // Explicit `asset_registry` projection (the charter-owned governance table
 // with review / provenance columns).
@@ -18,6 +19,17 @@ const ASSET_REGISTRY_SELECT_COLUMNS =
 const EVIDENCE_LINKS_TABLE = 'r2_core_asset_evidence_links';
 const EVIDENCE_LINKS_SELECT_COLUMNS =
   'confidence,created_at,from_asset_id,id,link_kind,metadata,to_asset_id';
+
+// Client-settable columns on evidence-link insert (excludes db-managed
+// `id`/`created_at`). Write path uses the service-role client (RLS bypass),
+// so an explicit allowlist prevents mass-assignment.
+const EVIDENCE_LINK_INSERT_FIELDS = [
+  'from_asset_id',
+  'to_asset_id',
+  'link_kind',
+  'confidence',
+  'metadata',
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -61,10 +73,11 @@ Deno.serve(
           const idemError = requireIdempotencyKey(req);
           if (idemError) return idemError;
           const body = await req.json();
+          const insertRow = pickFields(body, EVIDENCE_LINK_INSERT_FIELDS);
 
           const { data, error } = await client
             .from(EVIDENCE_LINKS_TABLE)
-            .insert([body])
+            .insert([insertRow])
             .select()
             .single();
 

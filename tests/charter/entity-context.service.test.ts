@@ -7,7 +7,10 @@ import {
   type AssetRegistryPort,
   type DbCharterEntityRow,
 } from '../../src/services/charter/entity-context.service.js';
-import type { AssetRegistryEntry, AssetEvidenceLink } from '../../src/types/shared/asset-registry.js';
+import type {
+  AssetRegistryEntry,
+  AssetEvidenceLink,
+} from '../../src/types/shared/asset-registry.js';
 
 describe('CharterEntityContextService', () => {
   const createMockDb = (): EntityContextDb & { seed(row: DbCharterEntityRow): void } => {
@@ -108,6 +111,41 @@ describe('CharterEntityContextService', () => {
       expect(snapshot.contextStatus).toBe('unlinked');
       expect(snapshot.upstreamName).toBeNull();
     });
+
+    it('clears a previously stored canonical id when re-linking to an unresolved source', async () => {
+      // Mimic Supabase/PostgREST wire behavior: undefined keys are dropped by
+      // JSON.stringify, so the service must send an explicit null to clear a
+      // column. (A naive `?? undefined` would leave the stale id in place.)
+      const store = new Map<string, DbCharterEntityRow>();
+      const wireDb: EntityContextDb = {
+        async findEntityById(id) {
+          return store.get(id) ?? null;
+        },
+        async updateEntity(id, patch) {
+          const existing = store.get(id);
+          if (!existing) throw new Error(`Entity ${id} not found`);
+          const wire = JSON.parse(JSON.stringify(patch)) as Partial<DbCharterEntityRow>;
+          const updated = { ...existing, ...wire };
+          store.set(id, updated);
+          return updated;
+        },
+      };
+      const mockGraph = createMockGraph() as any;
+      const service = createCharterEntityContextService(wireDb, mockGraph);
+
+      const entity = createTestEntity('entity-relink');
+      entity.source_platform = 'external-source';
+      entity.source_record_id = 'record-old';
+      entity.canonical_entity_id = 'canonical-stale';
+      entity.context_status = 'linked';
+      store.set(entity.id, entity);
+
+      const snapshot = await service.linkEntity(entity.id, 'unknown-source', 'record-new');
+
+      expect(snapshot.contextStatus).toBe('unlinked');
+      expect(snapshot.canonicalEntityId).toBeNull();
+      expect(store.get(entity.id)!.canonical_entity_id).toBeNull();
+    });
   });
 
   describe('refreshContext', () => {
@@ -116,7 +154,9 @@ describe('CharterEntityContextService', () => {
       const mockGraph = createMockGraph();
       const service = createCharterEntityContextService(mockDb, mockGraph);
 
-      await expect(service.refreshContext('nonexistent')).rejects.toThrow('Charter entity not found');
+      await expect(service.refreshContext('nonexistent')).rejects.toThrow(
+        'Charter entity not found',
+      );
     });
 
     it('should throw when entity has no linked source', async () => {
@@ -337,7 +377,9 @@ describe('CharterEntityContextService', () => {
       const entity = createTestEntity('entity-ear-2');
       mockDb.seed(entity);
 
-      await expect(service.ensureAssetRegistered(entity.id, 'My Entity')).rejects.toThrow('has no canonical ID');
+      await expect(service.ensureAssetRegistered(entity.id, 'My Entity')).rejects.toThrow(
+        'has no canonical ID',
+      );
     });
 
     it('should register a new asset when none exists', async () => {
@@ -396,9 +438,9 @@ describe('CharterEntityContextService', () => {
       entity.canonical_entity_id = 'canonical-la-1';
       mockDb.seed(entity);
 
-      await expect(service.linkEntityToAsset(entity.id, 'target-asset-1', 'references')).rejects.toThrow(
-        'Asset registry port not provided',
-      );
+      await expect(
+        service.linkEntityToAsset(entity.id, 'target-asset-1', 'references'),
+      ).rejects.toThrow('Asset registry port not provided');
     });
 
     it('should throw when entity has no registered asset entry', async () => {
@@ -411,9 +453,9 @@ describe('CharterEntityContextService', () => {
       entity.canonical_entity_id = 'canonical-la-2';
       mockDb.seed(entity);
 
-      await expect(service.linkEntityToAsset(entity.id, 'target-asset-2', 'supports')).rejects.toThrow(
-        'No asset entry found',
-      );
+      await expect(
+        service.linkEntityToAsset(entity.id, 'target-asset-2', 'supports'),
+      ).rejects.toThrow('No asset entry found');
     });
 
     it('should create an evidence link to a target asset', async () => {

@@ -35,3 +35,12 @@ export function parseJsonbArray(value: unknown): unknown[] {
   }
   return Array.isArray(value) ? value : [];
 }
+
+/**
+ * Normalizes a jsonb array of strings (e.g. id lists). Non-string items are
+ * dropped so the result is always a clean string[]; returns [] on parse
+ * failure or when the column does not hold an array.
+ */
+export function parseJsonbStringArray(value: unknown): string[] {
+  return parseJsonbArray(value).filter((item): item is string => typeof item === 'string');
+}

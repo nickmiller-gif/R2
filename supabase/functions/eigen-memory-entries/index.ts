@@ -4,6 +4,22 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { sanitizeUpdate } from '../_shared/sanitize.ts';
+
+// Client-mutable columns on PATCH. Excludes `id`, `owner_id` (ownership is
+// fixed and the row is already scoped by owner_id), and `created_at`/
+// `updated_at` (server/db-managed). The write path uses the service-role
+// client (RLS bypass), so an explicit allowlist prevents mass-assignment.
+const MEMORY_ENTRY_UPDATE_FIELDS = [
+  'key',
+  'value',
+  'scope',
+  'retention_class',
+  'confidence_band',
+  'conflict_group',
+  'expires_at',
+  'superseded_by',
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -209,9 +225,14 @@ Deno.serve(
           return errorResponse('id required in body', 400);
         }
 
+        const updateRow = {
+          ...sanitizeUpdate(body, MEMORY_ENTRY_UPDATE_FIELDS),
+          updated_at: new Date().toISOString(),
+        };
+
         const { data, error } = await client
           .from('memory_entries')
-          .update(body)
+          .update(updateRow)
           .eq('id', id)
           .eq('owner_id', auth.claims.userId)
           .select()

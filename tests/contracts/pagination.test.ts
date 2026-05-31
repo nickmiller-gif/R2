@@ -42,9 +42,10 @@ describe('withPagination', () => {
   });
 
   it('accepts custom defaultLimit and maxLimit', () => {
-    expect(
-      withPagination({ limit: 500 }, { defaultLimit: 10, maxLimit: 100 }),
-    ).toEqual({ limit: 100, offset: 0 });
+    expect(withPagination({ limit: 500 }, { defaultLimit: 10, maxLimit: 100 })).toEqual({
+      limit: 100,
+      offset: 0,
+    });
     expect(withPagination(undefined, { defaultLimit: 10, maxLimit: 100 })).toEqual({
       limit: 10,
       offset: 0,
@@ -54,5 +55,21 @@ describe('withPagination', () => {
   it('preserves unrelated filter fields', () => {
     const result = withPagination({ status: 'active', limit: 10 });
     expect(result).toEqual({ status: 'active', limit: 10, offset: 0 });
+  });
+
+  it('clamps a negative limit up to 1 (avoids Postgres LIMIT -1 unbounded scan)', () => {
+    expect(withPagination({ limit: -1 })).toEqual({ limit: 1, offset: 0 });
+    expect(withPagination({ limit: -1000 })).toEqual({ limit: 1, offset: 0 });
+  });
+
+  it('clamps a zero limit up to 1', () => {
+    expect(withPagination({ limit: 0 })).toEqual({ limit: 1, offset: 0 });
+  });
+
+  it('floors a negative offset at 0', () => {
+    expect(withPagination({ offset: -5 })).toEqual({
+      limit: DEFAULT_PAGE_LIMIT,
+      offset: 0,
+    });
   });
 });

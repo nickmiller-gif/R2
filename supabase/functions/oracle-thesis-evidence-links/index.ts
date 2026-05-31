@@ -4,8 +4,14 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
 import { recalibrateAfterEvidenceLink } from '../_shared/oracle-thesis-confidence-db.ts';
 import type { OracleThesisEvidenceRole } from '../../../src/types/oracle/shared.ts';
+
+// Client-settable columns on insert (excludes the db-managed `created_at`).
+// Write path uses the service-role client (RLS bypass), so an explicit
+// allowlist prevents mass-assignment.
+const LINK_INSERT_FIELDS = ['thesis_id', 'evidence_item_id', 'role', 'weight', 'notes'] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -49,9 +55,10 @@ Deno.serve(
         if (idemError) return idemError;
 
         const body = await req.json();
+        const insertRow = pickFields(body, LINK_INSERT_FIELDS);
         const { data, error } = await client
           .from('oracle_thesis_evidence_links')
-          .insert([body])
+          .insert([insertRow])
           .select()
           .single();
 

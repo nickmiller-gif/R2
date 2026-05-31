@@ -4,11 +4,29 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
 
 // Explicit `retrieval_runs` projection — additions must be added here
 // intentionally so downstream callers see a stable response shape.
 const RETRIEVAL_RUNS_SELECT_COLUMNS =
   'budget_profile,candidate_count,created_at,decomposition,dropped_context_reasons,filtered_count,final_count,id,latency_ms,metadata,oracle_context,query_hash,status';
+
+// Client-settable columns on create (excludes db-managed `id`/`created_at`).
+// Write path uses the service-role client (RLS bypass), so an explicit
+// allowlist prevents mass-assignment.
+const RETRIEVAL_RUN_INSERT_FIELDS = [
+  'query_hash',
+  'budget_profile',
+  'decomposition',
+  'oracle_context',
+  'metadata',
+  'status',
+  'candidate_count',
+  'filtered_count',
+  'final_count',
+  'latency_ms',
+  'dropped_context_reasons',
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -108,9 +126,10 @@ Deno.serve(
           return jsonResponse(data);
         } else {
           // CREATE run
+          const insertRow = pickFields(body, RETRIEVAL_RUN_INSERT_FIELDS);
           const { data, error } = await client
             .from('retrieval_runs')
-            .insert([body])
+            .insert([insertRow])
             .select()
             .single();
 

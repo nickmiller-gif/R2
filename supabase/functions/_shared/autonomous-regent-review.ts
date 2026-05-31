@@ -118,35 +118,72 @@ export async function fetchAgentActivity(
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await c
     .from('platform_feed_items')
-    .select('source_event_type,provenance,ingested_at')
+    .select('source_event_type,provenance,payload,ingested_at')
     .eq('source_system', 'autonomous_bot_os')
     .gte('ingested_at', sinceIso)
     .order('ingested_at', { ascending: false })
     .limit(2000);
   if (error) throw new Error(error.message);
 
-  const byBot = new Map<string, { last: string; count: number }>();
+  const byBot = new Map<string, { last: string; count: number; domains: Set<string> }>();
   for (const row of (data ?? []) as Array<{
     source_event_type: string;
     provenance: { tool?: string } | null;
+    payload: Record<string, unknown> | null;
     ingested_at: string;
   }>) {
     const tool = row.provenance?.tool ?? row.source_event_type ?? 'unknown';
     if (tool === 'autonomous-regent-review') continue; // do not reconcile self
     const cur = byBot.get(tool);
-    if (cur) {
-      cur.count += 1;
-    } else {
-      byBot.set(tool, { last: row.ingested_at, count: 1 });
-    }
+    const entry = cur ?? { last: row.ingested_at, count: 0, domains: new Set<string>() };
+    entry.count += 1;
+    for (const d of extractPeerDomains(row.source_event_type, row.payload)) entry.domains.add(d);
+    byBot.set(tool, entry);
   }
 
   const out: AgentActivity[] = [];
   for (const [bot, v] of byBot) {
     const days = Math.max(0, Math.floor((Date.now() - new Date(v.last).getTime()) / 86_400_000));
-    out.push({ bot, last_seen_days: days, recent_count: v.count });
+    out.push({ bot, last_seen_days: days, recent_count: v.count, domains: [...v.domains] });
   }
   return out;
+}
+
+// Map a KB-driver / source literal to the six-domain key, so peer-bot findings
+// can be reconciled against the REGENT agenda by domain.
+const DRIVER_DOMAIN: Record<string, string> = {
+  centralr2: 'platform_core',
+  r2chart: 'platform_core',
+  continuity_nexus: 'platform_core',
+  ip_pulse_point: 'ip_patent',
+  operator_workbench: 'autonomous_ops',
+  r2_works: 'autonomous_ops',
+  rays_retreat: 'retreat_commerce',
+  portfolio: 'platform_core',
+};
+
+/** Extract the domain keys a peer bot's signal touches, from its known payload shapes. */
+function extractPeerDomains(eventType: string, payload: Record<string, unknown> | null): string[] {
+  if (!payload) return [];
+  const out = new Set<string>();
+  const add = (driver: unknown) => {
+    if (typeof driver === 'string' && DRIVER_DOMAIN[driver]) out.add(DRIVER_DOMAIN[driver]);
+  };
+  // information-audit: { findings: [{ target_kb_driver }] }
+  if (Array.isArray(payload.findings)) {
+    for (const f of payload.findings as Array<Record<string, unknown>>) add(f?.target_kb_driver);
+  }
+  // steward brief: { domains: [driver] }
+  if (Array.isArray(payload.domains)) for (const d of payload.domains) add(d);
+  // revolutionary mesh: { patterns: [{ domains: [driver] }] }
+  if (Array.isArray(payload.patterns)) {
+    for (const p of payload.patterns as Array<Record<string, unknown>>) {
+      if (Array.isArray(p?.domains)) for (const d of p.domains) add(d);
+    }
+  }
+  // upgrade scout: { target_kb_driver }
+  add(payload.target_kb_driver);
+  return [...out];
 }
 
 // --------------------------------------------------------------------------- //

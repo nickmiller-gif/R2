@@ -934,10 +934,47 @@ export function diffAgendas(
   return delta;
 }
 
+export interface FleetReconciliation {
+  /** Peer-bot findings whose domain is already on the REGENT agenda. */
+  covered: Array<{ bot: string; domain: string }>;
+  /** Peer-bot findings on domains NOT in the agenda — route to the right desk. */
+  net_new: Array<{ bot: string; domain: string }>;
+  /** Bots that have gone quiet beyond the threshold. */
+  silent: string[];
+}
+
+/**
+ * Chief of Staff orchestration: reconcile the rest of the autonomous-bot fleet
+ * against this week's agenda. A peer finding on a domain the agenda already
+ * covers is folded in (no duplicate decision); a peer finding on an
+ * uncovered domain is net-new and gets routed. Quiet bots are surfaced.
+ * Deterministic: maps each bot's touched domains against the agenda's domains.
+ */
+export function reconcileFleet(
+  agenda: RegentDecision[],
+  fleet: AgentActivity[],
+  silentAfterDays = 10,
+): FleetReconciliation {
+  const agendaDomains = new Set(agenda.map((d) => d.domain_key).filter((k): k is string => !!k));
+  const covered: Array<{ bot: string; domain: string }> = [];
+  const net_new: Array<{ bot: string; domain: string }> = [];
+  const seen = new Set<string>();
+  for (const a of fleet) {
+    for (const domain of a.domains ?? []) {
+      const key = `${a.bot}:${domain}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      (agendaDomains.has(domain) ? covered : net_new).push({ bot: a.bot, domain });
+    }
+  }
+  const silent = fleet.filter((a) => a.last_seen_days > silentAfterDays).map((a) => a.bot);
+  return { covered, net_new, silent };
+}
+
 export interface ExecutiveTeamReview extends RegentReview {
   roles: ExecutiveMemo[];
   tensions: Tension[];
-  chief_of_staff: { synthesis: string; sequencing: string[] };
+  chief_of_staff: { synthesis: string; sequencing: string[]; fleet?: FleetReconciliation };
   delta?: AgendaDelta | null;
 }
 
@@ -1056,6 +1093,22 @@ export function buildExecutiveTeam(
   const corr = agenda.filter((d) => d.corroborated).length;
   const actingRoles = roles.filter((r) => r.posture === 'act').map((r) => r.role);
   const lead = agenda[0];
+  const fleet = reconcileFleet(
+    agenda,
+    state.agent_activity ?? [],
+    state.agent_silent_after_days ?? 10,
+  );
+  const fleetLine =
+    (state.agent_activity ?? []).length && (fleet.covered.length || fleet.net_new.length)
+      ? ` Fleet reconciliation: ${fleet.covered.length} peer finding(s) already covered by this agenda, ` +
+        `${fleet.net_new.length} net-new` +
+        (fleet.net_new.length
+          ? ` (route: ${fleet.net_new
+              .slice(0, 3)
+              .map((n) => `${n.bot}→${n.domain}`)
+              .join('; ')}${fleet.net_new.length > 3 ? ' …' : ''}).`
+          : '.')
+      : '';
   const delta = diffAgendas(agenda, previousAgenda);
   const deltaLine = delta
     ? ` Since last week: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
@@ -1073,6 +1126,7 @@ export function buildExecutiveTeam(
         `. ${actingRoles.length ? `${actingRoles.join(', ')} ${actingRoles.length === 1 ? 'is' : 'are'} acting; ` : ''}` +
         (lead ? `the board's first call is "${lead.title}" (${lead.faculty}).` : '')) +
     deltaLine +
+    fleetLine +
     ' REGENT advises; the principal decides; counsel confirms legal and tax moves.';
   const sequencing = agenda.map((d) => `${d.faculty}: ${d.title}`);
 
@@ -1084,7 +1138,7 @@ export function buildExecutiveTeam(
     staleDomains: scored.filter((d) => d.stale).map((d) => d.name),
     roles,
     tensions,
-    chief_of_staff: { synthesis, sequencing },
+    chief_of_staff: { synthesis, sequencing, fleet },
     delta,
   };
 }

@@ -61,12 +61,22 @@ export interface RerankConfig {
   blend_weight: number;
   /** Total budget for the reranker call. On timeout we fail open. */
   timeout_ms: number;
+  /**
+   * Hard cap on per-document content sent to the reranker. Voyage `rerank-2`
+   * rejects documents over ~4000 tokens (~16k chars) with a 400; Cohere's
+   * default per-doc budget is smaller. Document-level knowledge chunks can
+   * exceed both limits, so we truncate before sending. The default leaves
+   * comfortable headroom under both providers without losing the head of
+   * the document, which is the most relevant section for ranking.
+   */
+  max_document_chars: number;
 }
 
 export const DEFAULT_RERANK_CONFIG: RerankConfig = {
   top_k: 40,
   blend_weight: 0.7,
   timeout_ms: 400,
+  max_document_chars: 12_000,
 };
 
 const TOP_K_MIN = 1;
@@ -75,6 +85,8 @@ const BLEND_MIN = 0;
 const BLEND_MAX = 1;
 const TIMEOUT_MIN_MS = 50;
 const TIMEOUT_MAX_MS = 5_000;
+const MAX_DOC_CHARS_MIN = 256;
+const MAX_DOC_CHARS_MAX = 100_000;
 
 /**
  * Parses request-level reranking config, layering caller overrides over the
@@ -98,7 +110,44 @@ export function resolveRerankConfig(
     TIMEOUT_MIN_MS,
     TIMEOUT_MAX_MS,
   );
-  return { top_k: topK, blend_weight: blendWeight, timeout_ms: timeoutMs };
+  const maxDocumentChars = clampInt(
+    overrides?.max_document_chars,
+    defaults.max_document_chars,
+    MAX_DOC_CHARS_MIN,
+    MAX_DOC_CHARS_MAX,
+  );
+  return {
+    top_k: topK,
+    blend_weight: blendWeight,
+    timeout_ms: timeoutMs,
+    max_document_chars: maxDocumentChars,
+  };
+}
+
+/**
+ * Truncates each document's content to `maxChars`. Returns the new document
+ * list plus how many were actually shortened — callers surface that count in
+ * audit logs so over-cap chunks are visible without scraping provider errors.
+ *
+ * Truncation keeps the head of the document. Cross-encoder rankers gain most
+ * of their signal from the leading sentences (title / topic / first claims);
+ * tail truncation preserves that signal while avoiding provider per-doc token
+ * limits that would otherwise reject the whole batch.
+ */
+export function clampRerankDocumentContent(
+  documents: RerankInputDocument[],
+  maxChars: number,
+): { documents: RerankInputDocument[]; truncated_count: number } {
+  if (!Number.isFinite(maxChars) || maxChars <= 0) {
+    return { documents, truncated_count: 0 };
+  }
+  let truncated = 0;
+  const out = documents.map((doc) => {
+    if (typeof doc.content !== 'string' || doc.content.length <= maxChars) return doc;
+    truncated += 1;
+    return { ...doc, content: doc.content.slice(0, maxChars) };
+  });
+  return { documents: out, truncated_count: truncated };
 }
 
 export interface RerankableCandidate {

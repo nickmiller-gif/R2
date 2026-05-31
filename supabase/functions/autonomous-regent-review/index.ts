@@ -15,6 +15,7 @@ import {
   fetchAgentActivity,
   fetchPreviousRegentReview,
   loadRegentFinancials,
+  type PriorReviewSnapshot,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
 import { enrichCitationsWithCorpus } from '../_shared/regent-corpus-search.ts';
@@ -133,10 +134,7 @@ Deno.serve(
     }
 
     // Institutional memory: diff + outcome ages against last week's review.
-    let prev: {
-      agenda: import('../_shared/autonomous-regent-review.ts').PriorAgendaItem[];
-      ages: Record<string, number>;
-    } | null = null;
+    let prev: PriorReviewSnapshot | null = null;
     try {
       prev = await fetchPreviousRegentReview(getServiceClient());
     } catch {
@@ -145,7 +143,7 @@ Deno.serve(
 
     let review;
     try {
-      review = buildExecutiveTeam(state, 5, prev?.agenda ?? null, prev?.ages ?? null);
+      review = buildExecutiveTeam(state, 5, prev);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Review failed';
       log.error('regent_review_failed', { message });
@@ -155,7 +153,20 @@ Deno.serve(
     // Upgrade citations from filename-level to passage-level via the OpenAI MBA
     // corpus vector store (no-op when unconfigured — deterministic citations stand).
     try {
-      await enrichCitationsWithCorpus(review.agenda);
+      await enrichCitationsWithCorpus(review.agenda, 3);
+      const agendaTitles = new Set(review.agenda.map((d) => d.title.trim().toLowerCase()));
+      const facultyLeads: typeof review.agenda = [];
+      for (const role of review.roles) {
+        const lead = [...role.decisions].sort((a, b) => b.severity - a.severity)[0];
+        if (!lead) continue;
+        const key = lead.title.trim().toLowerCase();
+        if (agendaTitles.has(key)) continue;
+        agendaTitles.add(key);
+        facultyLeads.push(lead);
+      }
+      if (facultyLeads.length) {
+        await enrichCitationsWithCorpus(facultyLeads, facultyLeads.length);
+      }
     } catch (err) {
       log.error('regent_corpus_enrich_failed', {
         message: err instanceof Error ? err.message : String(err),

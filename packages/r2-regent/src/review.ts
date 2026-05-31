@@ -905,6 +905,14 @@ export interface PriorAgendaItem {
   severity: number;
 }
 
+/** Institutional memory from the prior REGENT review signal. */
+export interface PriorReviewSnapshot {
+  agenda: PriorAgendaItem[];
+  ages?: Record<string, number> | null;
+  stale_domains?: string[];
+  deferred?: string[];
+}
+
 export interface AgendaDelta {
   new: string[];
   resolved: string[];
@@ -954,32 +962,86 @@ export function computeAges(
 }
 
 export interface OutcomeScore {
-  /** Of the items open last week, the fraction that resolved this week (null on first run). */
+  /** Of the items open last week, the fraction that truly resolved (null on first run). */
   resolution_rate: number | null;
   resolved_count: number;
   open_count: number;
-  /** Titles carried >= 3 weeks — chronically stuck, escalated. */
+  /** Titles carried >= 3 reviews — chronically stuck, escalated. */
   stuck: string[];
+  /** Titles where the generating condition cleared (e.g. stale domains refreshed). */
+  resolved_evidence: string[];
+  /** Titles that dropped from the top agenda but remain deferred or in the candidate set. */
+  deprioritized: string[];
 }
 
-/** Score outcomes from the week-over-week delta + accumulated ages. */
+export interface OutcomeResolutionContext {
+  previousStaleDomains?: string[];
+  currentStaleDomains?: string[];
+  currentDeferredTitles?: string[];
+  currentCandidateTitles?: string[];
+}
+
+const STALE_REPORTING_TITLE = 'Restore reporting on unmeasured domains';
+
+function isStaleReportingDecision(title: string): boolean {
+  return (
+    title === STALE_REPORTING_TITLE ||
+    /restore reporting|unmeasured domains|stale feed/i.test(title)
+  );
+}
+
+/** Score outcomes from the week-over-week delta + accumulated ages + world state. */
 export function scoreOutcomes(
   delta: AgendaDelta | null,
   ages: Record<string, number>,
   openCount: number,
+  context?: OutcomeResolutionContext,
 ): OutcomeScore {
   const stuck = Object.entries(ages)
     .filter(([, age]) => age >= 3)
     .map(([title]) => title);
-  if (!delta) return { resolution_rate: null, resolved_count: 0, open_count: openCount, stuck };
-  const lastWeekOpen = delta.resolved.length + delta.carried.length + delta.moved.length;
-  return {
-    resolution_rate: lastWeekOpen
-      ? Number((delta.resolved.length / lastWeekOpen).toFixed(2))
-      : null,
-    resolved_count: delta.resolved.length,
+
+  const base: OutcomeScore = {
+    resolution_rate: null,
+    resolved_count: 0,
     open_count: openCount,
     stuck,
+    resolved_evidence: [],
+    deprioritized: [],
+  };
+
+  if (!delta) return base;
+
+  const prevStale = new Set(context?.previousStaleDomains ?? []);
+  const curStale = new Set(context?.currentStaleDomains ?? []);
+  const deferred = new Set(context?.currentDeferredTitles ?? []);
+  const candidates = new Set(context?.currentCandidateTitles ?? []);
+  const staleCleared = prevStale.size > 0 && [...prevStale].every((d) => !curStale.has(d));
+
+  const resolved_evidence: string[] = [];
+  const deprioritized: string[] = [];
+  const trulyResolved: string[] = [];
+
+  for (const title of delta.resolved) {
+    if (isStaleReportingDecision(title) && staleCleared) {
+      resolved_evidence.push(title);
+    } else if (deferred.has(title) || candidates.has(title)) {
+      deprioritized.push(title);
+    } else {
+      trulyResolved.push(title);
+    }
+  }
+
+  const lastWeekOpen = delta.resolved.length + delta.carried.length + delta.moved.length;
+  const resolved_count = trulyResolved.length + resolved_evidence.length;
+
+  return {
+    resolution_rate: lastWeekOpen ? Number((resolved_count / lastWeekOpen).toFixed(2)) : null,
+    resolved_count,
+    open_count: openCount,
+    stuck,
+    resolved_evidence,
+    deprioritized,
   };
 }
 
@@ -1148,9 +1210,21 @@ function detectTensions(cands: RegentDecision[], state: WorldState): Tension[] {
 export function buildExecutiveTeam(
   state: WorldState,
   topN = 5,
-  previousAgenda?: PriorAgendaItem[] | null,
+  previous?: PriorAgendaItem[] | PriorReviewSnapshot | null,
   previousAges?: Record<string, number> | null,
 ): ExecutiveTeamReview {
+  let priorAgenda: PriorAgendaItem[] | null = null;
+  let priorAges: Record<string, number> | null = previousAges ?? null;
+  let priorStaleDomains: string[] | undefined;
+
+  if (Array.isArray(previous)) {
+    priorAgenda = previous;
+  } else if (previous && typeof previous === 'object' && Array.isArray(previous.agenda)) {
+    priorAgenda = previous.agenda;
+    priorAges = previous.ages ?? priorAges;
+    priorStaleDomains = previous.stale_domains;
+  }
+
   const hurdle = state.cost_of_capital_pct;
   const staleAfter = state.stale_after_days ?? 14;
   const scored = state.domains.map((d) => scoreDomain(d, hurdle, staleAfter));
@@ -1167,7 +1241,7 @@ export function buildExecutiveTeam(
   // learns that ignored recommendations should rise, not fade).
   const ages = computeAges(
     merged.map((d) => d.title),
-    previousAges,
+    priorAges,
   );
   for (const d of merged) {
     const age = ages[d.title] ?? 1;
@@ -1204,17 +1278,29 @@ export function buildExecutiveTeam(
               .join('; ')}${fleet.net_new.length > 3 ? ' …' : ''}).`
           : '.')
       : '';
-  const delta = diffAgendas(agenda, previousAgenda);
+  const delta = diffAgendas(agenda, priorAgenda);
   const agendaAges = computeAges(
     agenda.map((d) => d.title),
-    previousAges,
+    priorAges,
   );
-  const outcomes = scoreOutcomes(delta, agendaAges, agenda.length);
+  const outcomes = scoreOutcomes(delta, agendaAges, agenda.length, {
+    previousStaleDomains: priorStaleDomains,
+    currentStaleDomains: scored.filter((d) => d.stale).map((d) => d.name),
+    currentDeferredTitles: deferred.map((d) => d.title),
+    currentCandidateTitles: merged.map((d) => d.title),
+  });
   const deltaLine = delta
-    ? ` Since the last review: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
+    ? ` Since the last review: ${delta.new.length} new, ${delta.resolved.length} off the agenda, ` +
       `${delta.moved.length} moved, ${delta.carried.length} carried` +
       (outcomes.resolution_rate !== null
-        ? ` (resolution rate ${Math.round(outcomes.resolution_rate * 100)}%)`
+        ? ` (true resolution rate ${Math.round(outcomes.resolution_rate * 100)}%` +
+          (outcomes.deprioritized.length
+            ? `; ${outcomes.deprioritized.length} deprioritized`
+            : '') +
+          (outcomes.resolved_evidence.length
+            ? `; ${outcomes.resolved_evidence.length} cleared by condition`
+            : '') +
+          ')'
         : '') +
       (outcomes.stuck.length
         ? `; ${outcomes.stuck.length} stuck >=3 reviews, escalated: ${outcomes.stuck.slice(0, 3).join('; ')}${outcomes.stuck.length > 3 ? ' …' : ''}.`

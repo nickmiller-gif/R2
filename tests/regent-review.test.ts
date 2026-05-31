@@ -545,6 +545,38 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(stuckItem!.stuck_weeks).toBeGreaterThanOrEqual(3);
   });
 
+  it('outcome scoring: distinguishes condition-cleared vs deprioritized', () => {
+    const staleTitle = 'Restore reporting on unmeasured domains';
+    const depriorTitle = 'Fix unit economics on FormaHealth membership (Health & Wellness)';
+    const delta = {
+      new: [],
+      resolved: [staleTitle, depriorTitle, 'Gone for good'],
+      moved: [],
+      carried: [],
+    };
+
+    const cleared = scoreOutcomes(delta, {}, 2, {
+      previousStaleDomains: ['Platform Core', 'Health & Wellness'],
+      currentStaleDomains: [],
+      currentDeferredTitles: [depriorTitle],
+      currentCandidateTitles: [depriorTitle, 'Some other candidate'],
+    });
+    expect(cleared.resolved_evidence).toEqual([staleTitle]);
+    expect(cleared.deprioritized).toEqual([depriorTitle]);
+    expect(cleared.resolved_count).toBe(2); // stale cleared + truly gone
+    expect(cleared.resolution_rate).toBeCloseTo(2 / 3, 2);
+
+    const stillStale = scoreOutcomes(delta, {}, 2, {
+      previousStaleDomains: ['Platform Core'],
+      currentStaleDomains: ['Platform Core'],
+      currentDeferredTitles: [],
+      currentCandidateTitles: [],
+    });
+    expect(stillStale.resolved_evidence).toEqual([]);
+    expect(stillStale.deprioritized).toEqual([]);
+    expect(stillStale.resolved_count).toBe(3);
+  });
+
   it('fleet health: classifies bots, flags missing/silent + failures', () => {
     const report = assessFleetHealth({
       bots: [

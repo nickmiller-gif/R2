@@ -116,14 +116,25 @@ export async function searchRegentCorpus(
 }
 
 /**
- * Enrich the top decisions' citations with retrieved passages. Mutates in place:
+ * Enrich decisions' citations with retrieved passages. Mutates in place:
  * prepends passage-level citations ahead of the deterministic ones (kept as
- * fallback). Bounded to the first `topN` decisions; searches run in parallel to
- * cap added latency.
+ * fallback). Dedupes by decision title; bounded to the first `topN` unique
+ * decisions; searches run in parallel to cap added latency.
  */
-export async function enrichCitationsWithCorpus(agenda: RegentDecision[], topN = 3): Promise<void> {
+export async function enrichCitationsWithCorpus(
+  decisions: RegentDecision[],
+  topN = 3,
+): Promise<void> {
   if (!Deno.env.get('REGENT_CORPUS_VECTOR_STORE_ID')?.trim()) return; // not configured — keep deterministic
-  const targets = agenda.slice(0, topN);
+  const seenTitles = new Set<string>();
+  const targets: RegentDecision[] = [];
+  for (const d of decisions) {
+    const key = d.title.trim().toLowerCase();
+    if (!key || seenTitles.has(key)) continue;
+    seenTitles.add(key);
+    targets.push(d);
+    if (targets.length >= topN) break;
+  }
   await Promise.all(
     targets.map(async (d) => {
       const course = d.citations?.find((c) => c.course)?.course ?? null;

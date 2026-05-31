@@ -42,4 +42,6 @@ export interface MemoryEntryFilter {
   ownerId?: string;
   key?: string;
   retentionClass?: RetentionClass;
+  limit?: number;
+  offset?: number;
 }

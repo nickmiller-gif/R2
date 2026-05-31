@@ -58,4 +58,6 @@ export interface AutonomousCaptureFilter {
   ownerId?: string;
   ingestStatus?: CaptureIngestStatus;
   sessionLabel?: string;
+  limit?: number;
+  offset?: number;
 }

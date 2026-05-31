@@ -1,11 +1,7 @@
 /**
  * Oracle Source Pack — curated source bundles for analyzer profiles.
  */
-import type {
-  OracleGovernanceMetadata,
-  OracleSourceLane,
-  OracleSourceClass,
-} from './shared.ts';
+import type { OracleGovernanceMetadata, OracleSourceLane, OracleSourceClass } from './shared.ts';
 
 export interface OracleSourcePack {
   id: string;
@@ -36,4 +32,6 @@ export interface OracleSourcePackFilter {
   profileId?: string;
   sourceLane?: OracleSourceLane;
   sourceClass?: OracleSourceClass;
+  limit?: number;
+  offset?: number;
 }

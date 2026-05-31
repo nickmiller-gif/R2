@@ -10,18 +10,22 @@ import type {
   RetrievalRunFilter,
 } from '../../types/eigen/retrieval-run.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import { parseJsonbField, parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface RetrievalRunService {
   create(input: CreateRetrievalRunInput): Promise<RetrievalRun>;
   getById(id: string): Promise<RetrievalRun | null>;
   list(filter?: RetrievalRunFilter): Promise<RetrievalRun[]>;
-  complete(id: string, results: {
-    candidateCount: number;
-    filteredCount: number;
-    finalCount: number;
-    latencyMs: number;
-  }): Promise<RetrievalRun>;
+  complete(
+    id: string,
+    results: {
+      candidateCount: number;
+      filteredCount: number;
+      finalCount: number;
+      latencyMs: number;
+    },
+  ): Promise<RetrievalRun>;
   fail(id: string, reason: string): Promise<RetrievalRun>;
 }
 
@@ -91,7 +95,7 @@ export function createRetrievalRunService(db: RetrievalRunDb): RetrievalRunServi
     },
 
     async list(filter) {
-      const rows = await db.queryRuns(filter);
+      const rows = await db.queryRuns(withPagination(filter));
       return rows.map(rowToRun);
     },
 

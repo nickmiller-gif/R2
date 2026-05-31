@@ -37,4 +37,6 @@ export interface ToolCapabilityFilter {
   toolId?: string;
   mode?: ToolMode;
   approvalPolicy?: ApprovalPolicy;
+  limit?: number;
+  offset?: number;
 }

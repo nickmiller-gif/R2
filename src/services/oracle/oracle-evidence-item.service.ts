@@ -14,6 +14,7 @@ import type {
   OracleEvidenceItemFilter,
 } from '../../types/oracle/evidence-item.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import { parseJsonbField } from './oracle-db-utils.ts';
 
 export interface OracleEvidenceItemService {
@@ -46,7 +47,7 @@ export interface OracleEvidenceItemDb {
   queryEvidenceItems(filter?: OracleEvidenceItemFilter): Promise<DbOracleEvidenceItemRow[]>;
   updateEvidenceItem(
     id: string,
-    patch: Partial<DbOracleEvidenceItemRow>
+    patch: Partial<DbOracleEvidenceItemRow>,
   ): Promise<DbOracleEvidenceItemRow>;
 }
 
@@ -70,7 +71,7 @@ function rowToEvidenceItem(row: DbOracleEvidenceItemRow): OracleEvidenceItem {
 }
 
 export function createOracleEvidenceItemService(
-  db: OracleEvidenceItemDb
+  db: OracleEvidenceItemDb,
 ): OracleEvidenceItemService {
   return {
     async create(input) {
@@ -100,7 +101,7 @@ export function createOracleEvidenceItemService(
     },
 
     async list(filter) {
-      const rows = await db.queryEvidenceItems(filter);
+      const rows = await db.queryEvidenceItems(withPagination(filter));
       return rows.map(rowToEvidenceItem);
     },
 
@@ -111,7 +112,8 @@ export function createOracleEvidenceItemService(
       };
       if (input.confidence !== undefined) patch.confidence = input.confidence;
       if (input.evidenceStrength !== undefined) patch.evidence_strength = input.evidenceStrength;
-      if (input.uncertaintySummary !== undefined) patch.uncertainty_summary = input.uncertaintySummary;
+      if (input.uncertaintySummary !== undefined)
+        patch.uncertainty_summary = input.uncertaintySummary;
       if (input.metadata !== undefined) patch.metadata = JSON.stringify(input.metadata);
 
       const row = await db.updateEvidenceItem(id, patch);

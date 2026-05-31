@@ -8,6 +8,7 @@
  */
 
 import { nowUtc } from '../../lib/provenance/clock.ts';
+import { withPagination } from '../../lib/service-utils/pagination.ts';
 import type {
   OracleServiceLayerRunOutcome,
   CreateOracleServiceLayerRunOutcomeInput,
@@ -20,9 +21,7 @@ export interface OracleServiceLayerRunOutcomeService {
   upsertOutcome(
     input: CreateOracleServiceLayerRunOutcomeInput,
   ): Promise<OracleServiceLayerRunOutcome>;
-  getOutcomeByRunId(
-    oracleServiceLayerRunId: string,
-  ): Promise<OracleServiceLayerRunOutcome | null>;
+  getOutcomeByRunId(oracleServiceLayerRunId: string): Promise<OracleServiceLayerRunOutcome | null>;
   getOutcomesByRunIds(runIds: string[]): Promise<Map<string, OracleServiceLayerRunOutcome>>;
   updateOutcome(
     id: string,
@@ -46,9 +45,7 @@ export interface DbOracleServiceLayerRunOutcomeRow {
 }
 
 export interface OracleServiceLayerRunOutcomeDb {
-  upsertOutcome(
-    row: DbOracleServiceLayerRunOutcomeRow,
-  ): Promise<DbOracleServiceLayerRunOutcomeRow>;
+  upsertOutcome(row: DbOracleServiceLayerRunOutcomeRow): Promise<DbOracleServiceLayerRunOutcomeRow>;
   findOutcomeByRunId(
     oracleServiceLayerRunId: string,
   ): Promise<DbOracleServiceLayerRunOutcomeRow | null>;
@@ -145,7 +142,7 @@ export function createOracleServiceLayerRunOutcomeService(
     },
 
     async listOutcomes(filter) {
-      const rows = await db.queryOutcomes(filter);
+      const rows = await db.queryOutcomes(withPagination(filter));
       return rows.map(rowToEntity);
     },
   };

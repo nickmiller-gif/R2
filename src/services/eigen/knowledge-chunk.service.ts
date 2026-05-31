@@ -11,6 +11,7 @@ import type {
   KnowledgeChunkFilter,
 } from '../../types/eigen/knowledge-chunk.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import { parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface KnowledgeChunkService {
@@ -108,7 +109,7 @@ export function createKnowledgeChunkService(db: KnowledgeChunkDb): KnowledgeChun
     },
 
     async list(filter) {
-      const rows = await db.queryChunks(filter);
+      const rows = await db.queryChunks(withPagination(filter));
       return rows.map(rowToChunk);
     },
 

@@ -8,6 +8,7 @@ import type {
   UpsertMemoryEpisodeInput,
 } from '../../types/eigen/memory-episode.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 
 export interface DbMemoryEpisodeRow {
   id: string;
@@ -95,7 +96,7 @@ export function createMemoryEpisodeService(db: MemoryEpisodeDb): MemoryEpisodeSe
     },
 
     async list(filter) {
-      const rows = await db.queryEpisodes(filter);
+      const rows = await db.queryEpisodes(withPagination(filter));
       return rows.map(rowToEpisode);
     },
   };

@@ -1,11 +1,7 @@
 /**
  * Oracle Evidence Item — supporting or contradicting evidence for theses.
  */
-import type {
-  OracleGovernanceMetadata,
-  OracleSourceLane,
-  OracleSourceClass,
-} from './shared.ts';
+import type { OracleGovernanceMetadata, OracleSourceLane, OracleSourceClass } from './shared.ts';
 
 export interface OracleEvidenceItem {
   id: string;
@@ -49,4 +45,6 @@ export interface OracleEvidenceItemFilter {
   sourceLane?: OracleSourceLane;
   sourceClass?: OracleSourceClass;
   minStrength?: number;
+  limit?: number;
+  offset?: number;
 }

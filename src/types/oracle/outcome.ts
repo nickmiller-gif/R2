@@ -7,7 +7,12 @@
  * confidence in thesis authors, evidence sources, and signal types.
  */
 
-export type OutcomeVerdict = 'confirmed' | 'partially_confirmed' | 'refuted' | 'inconclusive' | 'pending';
+export type OutcomeVerdict =
+  | 'confirmed'
+  | 'partially_confirmed'
+  | 'refuted'
+  | 'inconclusive'
+  | 'pending';
 
 export type OutcomeSource = 'manual' | 'automated' | 'external_feed' | 'domain_event';
 
@@ -54,4 +59,6 @@ export interface OracleOutcomeFilter {
   profileId?: string;
   verdict?: OutcomeVerdict;
   outcomeSource?: OutcomeSource;
+  limit?: number;
+  offset?: number;
 }

@@ -40,4 +40,6 @@ export interface OracleServiceLayerRunOutcomeFilter {
   oracleServiceLayerRunId?: string;
   outcomeStatus?: OracleRunOutcomeStatus;
   recordedBy?: string;
+  limit?: number;
+  offset?: number;
 }

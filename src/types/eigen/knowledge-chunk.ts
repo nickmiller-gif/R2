@@ -62,4 +62,6 @@ export interface KnowledgeChunkFilter {
   entityId?: string;
   /** Filter by the primary MEG entity FK. */
   megEntityId?: string;
+  limit?: number;
+  offset?: number;
 }

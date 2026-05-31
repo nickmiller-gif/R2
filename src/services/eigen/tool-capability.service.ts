@@ -10,6 +10,7 @@ import type {
   ToolCapabilityFilter,
 } from '../../types/eigen/tool-capability.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import { parseJsonbArray } from '../oracle/oracle-db-utils.js';
 
 export interface ToolCapabilityService {
@@ -88,7 +89,7 @@ export function createToolCapabilityService(db: ToolCapabilityDb): ToolCapabilit
     },
 
     async list(filter) {
-      const rows = await db.queryCapabilities(filter);
+      const rows = await db.queryCapabilities(withPagination(filter));
       return rows.map(rowToCapability);
     },
 
@@ -98,11 +99,13 @@ export function createToolCapabilityService(db: ToolCapabilityDb): ToolCapabilit
         updated_at: now,
       };
       if (input.name !== undefined) patch.name = input.name;
-      if (input.capabilityTags !== undefined) patch.capability_tags = JSON.stringify(input.capabilityTags);
+      if (input.capabilityTags !== undefined)
+        patch.capability_tags = JSON.stringify(input.capabilityTags);
       if (input.ioSchemaRef !== undefined) patch.io_schema_ref = input.ioSchemaRef;
       if (input.mode !== undefined) patch.mode = input.mode;
       if (input.approvalPolicy !== undefined) patch.approval_policy = input.approvalPolicy;
-      if (input.roleRequirements !== undefined) patch.role_requirements = JSON.stringify(input.roleRequirements);
+      if (input.roleRequirements !== undefined)
+        patch.role_requirements = JSON.stringify(input.roleRequirements);
       if (input.connectorDependencies !== undefined)
         patch.connector_dependencies = JSON.stringify(input.connectorDependencies);
       if (input.blastRadius !== undefined) patch.blast_radius = input.blastRadius;

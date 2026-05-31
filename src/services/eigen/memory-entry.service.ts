@@ -12,6 +12,7 @@ import type {
   MemoryEntryFilter,
 } from '../../types/eigen/memory-entry.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import { parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface MemoryEntryService {
@@ -89,7 +90,7 @@ export function createMemoryEntryService(db: MemoryEntryDb): MemoryEntryService 
     },
 
     async list(filter) {
-      const rows = await db.queryEntries(filter);
+      const rows = await db.queryEntries(withPagination(filter));
       return rows.map(rowToEntry);
     },
 

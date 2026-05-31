@@ -6,6 +6,7 @@
  */
 
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import type {
   AutonomousCapture,
   AutonomousCaptureFilter,
@@ -162,7 +163,7 @@ export function createAutonomousCaptureService(db: AutonomousCaptureDb): Autonom
     },
 
     async list(filter) {
-      const rows = await db.queryCaptures(filter);
+      const rows = await db.queryCaptures(withPagination(filter));
       return rows.map(rowToCapture);
     },
 

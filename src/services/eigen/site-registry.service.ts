@@ -10,6 +10,7 @@ import type {
   UpdateEigenSiteRegistryPolicyMetaInput,
 } from '../../types/eigen/site-registry.js';
 import { nowUtc } from '../../lib/provenance/clock.js';
+import { withPagination } from '../../lib/service-utils/pagination.js';
 import { parseJsonbArray, parseJsonbField } from '../oracle/oracle-db-utils.js';
 
 export interface DbEigenSiteRegistryRow {
@@ -30,13 +31,19 @@ export interface DbEigenSiteRegistryRow {
 export interface EigenSiteRegistryDb {
   findSiteById(siteId: string): Promise<DbEigenSiteRegistryRow | null>;
   querySites(filter?: EigenSiteRegistryFilter): Promise<DbEigenSiteRegistryRow[]>;
-  updateSite(siteId: string, patch: Partial<DbEigenSiteRegistryRow>): Promise<DbEigenSiteRegistryRow>;
+  updateSite(
+    siteId: string,
+    patch: Partial<DbEigenSiteRegistryRow>,
+  ): Promise<DbEigenSiteRegistryRow>;
 }
 
 export interface EigenSiteRegistryService {
   getBySiteId(siteId: string): Promise<EigenSiteRegistry | null>;
   list(filter?: EigenSiteRegistryFilter): Promise<EigenSiteRegistry[]>;
-  updatePolicyMeta(siteId: string, input: UpdateEigenSiteRegistryPolicyMetaInput): Promise<EigenSiteRegistry>;
+  updatePolicyMeta(
+    siteId: string,
+    input: UpdateEigenSiteRegistryPolicyMetaInput,
+  ): Promise<EigenSiteRegistry>;
 }
 
 function rowToEntity(row: DbEigenSiteRegistryRow): EigenSiteRegistry {
@@ -64,7 +71,7 @@ export function createEigenSiteRegistryService(db: EigenSiteRegistryDb): EigenSi
     },
 
     async list(filter) {
-      const rows = await db.querySites(filter);
+      const rows = await db.querySites(withPagination(filter));
       return rows.map(rowToEntity);
     },
 

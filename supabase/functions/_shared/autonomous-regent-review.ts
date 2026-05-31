@@ -123,7 +123,12 @@ export async function loadRegentFinancials(
  */
 export async function fetchAgentActivity(
   client: ReturnType<typeof getServiceClient>,
+  opts: { excludeBot?: string | null } = {},
 ): Promise<AgentActivity[]> {
+  // The Chief of Staff must not reconcile REGENT against itself, so the default
+  // excludes it. The fleet-health watchdog passes excludeBot: null to include
+  // REGENT (it needs to confirm REGENT is itself running).
+  const excludeBot = opts.excludeBot === undefined ? 'autonomous-regent-review' : opts.excludeBot;
   const c = client as import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient<any>;
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await c
@@ -143,7 +148,7 @@ export async function fetchAgentActivity(
     ingested_at: string;
   }>) {
     const tool = row.provenance?.tool ?? row.source_event_type ?? 'unknown';
-    if (tool === 'autonomous-regent-review') continue; // do not reconcile self
+    if (excludeBot && tool === excludeBot) continue;
     const cur = byBot.get(tool);
     const entry = cur ?? { last: row.ingested_at, count: 0, domains: new Set<string>() };
     entry.count += 1;

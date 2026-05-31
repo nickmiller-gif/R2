@@ -8,7 +8,10 @@ import {
   type DbOracleSignalRow,
 } from '../../src/services/oracle/oracle-signal.service.js';
 import type { OracleSignalFilter } from '../../src/types/oracle/signal.js';
-import { makeCreateOracleSignalInput, resetFixtureCounter } from '../foundation/fixtures/foundation-fixtures.js';
+import {
+  makeCreateOracleSignalInput,
+  resetFixtureCounter,
+} from '../foundation/fixtures/foundation-fixtures.js';
 
 function makeMockDb(): OracleSignalDb & { rows: DbOracleSignalRow[] } {
   const rows: DbOracleSignalRow[] = [];
@@ -22,8 +25,9 @@ function makeMockDb(): OracleSignalDb & { rows: DbOracleSignalRow[] } {
       return rows.find((r) => r.id === id) ?? null;
     },
     async findLatestForEntity(entityAssetId) {
-      const matching = rows
-        .filter((r) => r.entity_asset_id === entityAssetId && r.status === 'scored');
+      const matching = rows.filter(
+        (r) => r.entity_asset_id === entityAssetId && r.status === 'scored',
+      );
       // Return last inserted (simulates ORDER BY scored_at DESC, created_at DESC)
       return matching[matching.length - 1] ?? null;
     },
@@ -114,9 +118,24 @@ describe('OracleSignalService', () => {
     const db = makeMockDb();
     const service = createOracleSignalService(db);
 
+    await expect(service.rescore('nonexistent', makeCreateOracleSignalInput())).rejects.toThrow(
+      'Oracle signal not found: nonexistent',
+    );
+  });
+
+  it('rejects an out-of-range score on rescore (same guard as create)', async () => {
+    const db = makeMockDb();
+    const service = createOracleSignalService(db);
+
+    const first = await service.create(makeCreateOracleSignalInput({ score: 60 }));
+
     await expect(
-      service.rescore('nonexistent', makeCreateOracleSignalInput()),
-    ).rejects.toThrow('Oracle signal not found: nonexistent');
+      service.rescore(first.id, makeCreateOracleSignalInput({ score: 150 })),
+    ).rejects.toThrow('score must be between 0 and 100');
+
+    // The invalid rescore must not supersede the previous signal.
+    const previous = await service.getById(first.id);
+    expect(previous!.status).toBe('scored');
   });
 
   it('filters signals by score range', async () => {

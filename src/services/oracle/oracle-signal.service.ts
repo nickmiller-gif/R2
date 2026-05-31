@@ -140,6 +140,7 @@ export function createOracleSignalService(db: OracleSignalDb): OracleSignalServi
     },
 
     async rescore(previousId, input) {
+      assertScore(input.score);
       const now = nowUtc().toISOString();
 
       // Supersede the previous signal

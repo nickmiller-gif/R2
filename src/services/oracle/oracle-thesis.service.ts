@@ -15,7 +15,7 @@ import type {
 } from '../../types/oracle/thesis.ts';
 import type { OracleGovernanceMetadata } from '../../types/oracle/shared.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
-import { parseJsonbField } from './oracle-db-utils.ts';
+import { parseJsonbField, parseJsonbStringArray } from './oracle-db-utils.ts';
 import { assertConfidence } from '../../lib/charter/validate.ts';
 import { withPagination } from '../../lib/service-utils/pagination.ts';
 
@@ -84,10 +84,10 @@ function rowToThesis(row: DbOracleThesisRow): OracleThesis {
     noveltyStatus: row.novelty_status as OracleThesis['noveltyStatus'],
     duplicateOfThesisId: row.duplicate_of_thesis_id,
     supersededByThesisId: row.superseded_by_thesis_id,
-    inspirationSignalIds: parseJsonbField(row.inspiration_signal_ids) as unknown as string[],
-    inspirationEvidenceItemIds: parseJsonbField(row.inspiration_evidence_item_ids) as unknown as string[],
-    validationEvidenceItemIds: parseJsonbField(row.validation_evidence_item_ids) as unknown as string[],
-    contradictionEvidenceItemIds: parseJsonbField(row.contradiction_evidence_item_ids) as unknown as string[],
+    inspirationSignalIds: parseJsonbStringArray(row.inspiration_signal_ids),
+    inspirationEvidenceItemIds: parseJsonbStringArray(row.inspiration_evidence_item_ids),
+    validationEvidenceItemIds: parseJsonbStringArray(row.validation_evidence_item_ids),
+    contradictionEvidenceItemIds: parseJsonbStringArray(row.contradiction_evidence_item_ids),
     confidence: row.confidence,
     evidenceStrength: row.evidence_strength,
     uncertaintySummary: row.uncertainty_summary,
@@ -157,9 +157,7 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
         if (!current) throw new Error(`OracleThesis not found: ${id}`);
         const allowed = THESIS_STATUS_TRANSITIONS[current.status] ?? [];
         if (!allowed.includes(input.status)) {
-          throw new Error(
-            `Invalid status transition: '${current.status}' → '${input.status}'`,
-          );
+          throw new Error(`Invalid status transition: '${current.status}' → '${input.status}'`);
         }
       }
       const now = nowUtc().toISOString();
@@ -173,7 +171,8 @@ export function createOracleThesisService(db: OracleThesisDb): OracleThesisServi
       if (input.noveltyStatus !== undefined) patch.novelty_status = input.noveltyStatus;
       if (input.confidence !== undefined) patch.confidence = input.confidence;
       if (input.evidenceStrength !== undefined) patch.evidence_strength = input.evidenceStrength;
-      if (input.uncertaintySummary !== undefined) patch.uncertainty_summary = input.uncertaintySummary;
+      if (input.uncertaintySummary !== undefined)
+        patch.uncertainty_summary = input.uncertaintySummary;
       if (input.publicationState !== undefined) patch.publication_state = input.publicationState;
       if (input.metadata !== undefined) patch.metadata = JSON.stringify(input.metadata);
 

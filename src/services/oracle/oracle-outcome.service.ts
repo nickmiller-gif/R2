@@ -15,7 +15,7 @@ import type {
   OracleOutcomeFilter,
 } from '../../types/oracle/outcome.ts';
 import { nowUtc } from '../../lib/provenance/clock.ts';
-import { parseJsonbField, parseJsonbArray } from './oracle-db-utils.ts';
+import { parseJsonbField, parseJsonbStringArray } from './oracle-db-utils.ts';
 
 export interface OracleOutcomeService {
   create(input: CreateOracleOutcomeInput): Promise<OracleOutcome>;
@@ -57,7 +57,7 @@ function rowToOutcome(row: DbOracleOutcomeRow): OracleOutcome {
     outcomeSource: row.outcome_source as OracleOutcome['outcomeSource'],
     observedAt: new Date(row.observed_at),
     summary: row.summary,
-    evidenceRefs: parseJsonbArray(row.evidence_refs) as string[],
+    evidenceRefs: parseJsonbStringArray(row.evidence_refs),
     accuracyScore: row.accuracy_score,
     confidenceDelta: row.confidence_delta,
     metadata: parseJsonbField(row.metadata),
@@ -105,7 +105,8 @@ export function createOracleOutcomeService(db: OracleOutcomeDb): OracleOutcomeSe
       if (input.summary !== undefined) patch.summary = input.summary;
       if (input.accuracyScore !== undefined) patch.accuracy_score = input.accuracyScore;
       if (input.confidenceDelta !== undefined) patch.confidence_delta = input.confidenceDelta;
-      if (input.evidenceRefs !== undefined) patch.evidence_refs = JSON.stringify(input.evidenceRefs);
+      if (input.evidenceRefs !== undefined)
+        patch.evidence_refs = JSON.stringify(input.evidenceRefs);
       if (input.metadata !== undefined) patch.metadata = JSON.stringify(input.metadata);
 
       const row = await db.updateOutcome(id, patch);

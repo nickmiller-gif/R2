@@ -136,6 +136,14 @@ function resolvePolicy(
   return policies.get(actionClass) ?? DEFAULT_SIGNAL_CONFIDENCE_POLICIES[actionClass];
 }
 
+// Advisory bot reviews are recommendations for the operator/principal — they
+// must never auto-publish or hard-block on confidence; they always route to the
+// Review lane for triage and Accept/Reject. (REGENT is advisory-only.)
+const ADVISORY_REVIEW_EVENT_TYPES = new Set([
+  'regent_executive_review',
+  'paralegal_schedule_published',
+]);
+
 function evaluateAutonomy(
   row: FeedRow,
   policies: Map<AutonomyActionClass, SignalConfidencePolicy>,
@@ -143,6 +151,15 @@ function evaluateAutonomy(
   const actionClass = inferAutonomyActionClass(row);
   const policy = resolvePolicy(actionClass, policies);
   const confidence = normalizeConfidence(row.confidence);
+  if (ADVISORY_REVIEW_EVENT_TYPES.has(row.source_event_type)) {
+    return {
+      actionClass,
+      decision: 'needs_review',
+      threshold: policy.minConfidence,
+      confidence,
+      reason: 'advisory executive review — operator triage required (REGENT never auto-acts)',
+    };
+  }
   if (confidence < policy.minConfidence) {
     return {
       actionClass,

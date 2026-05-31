@@ -1,6 +1,39 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { executeEigenRetrieve, type EigenRetrieveChunk } from './eigen-retrieve-core.ts';
 import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from './eigen-policy.ts';
+import { searchEigenCorpusMulti } from './eigen-corpus-search.ts';
+import { eigenVoiceStoreIds } from './eigen-corpus-stores.ts';
+
+/**
+ * Opt-in: when `EIGEN_VECTOR_STORE_RETRIEVAL=true`, also draw Ray-voice style
+ * exemplars from the OpenAI `ray_voice` Vector Store (in addition to the
+ * pgvector ray_voice / ray_correspondence corpus). Graceful — a missing
+ * OPENAI_API_KEY or store yields no lines.
+ */
+function openAiVectorRetrievalEnabled(): boolean {
+  return Deno.env.get('EIGEN_VECTOR_STORE_RETRIEVAL')?.trim() === 'true';
+}
+
+async function fetchOpenAiVoiceLines(message: string, maxLines: number): Promise<string[]> {
+  if (!openAiVectorRetrievalEnabled()) return [];
+  const storeIds = eigenVoiceStoreIds();
+  if (storeIds.length === 0) return [];
+  const hits = await searchEigenCorpusMulti(message, {
+    storeIds,
+    maxResults: maxLines,
+    timeoutMs: 6000,
+  });
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const hit of hits) {
+    const text = truncateSentence(hit.snippet ?? '');
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    lines.push(text);
+    if (lines.length >= maxLines) break;
+  }
+  return lines;
+}
 
 const PUBLIC_VOICE_SOURCE_SYSTEMS = ['ray_voice_public', 'ray_podcast_public'];
 const PRIVATE_VOICE_SOURCE_SYSTEMS = ['ray_voice_private', 'ray_podcast_private'];
@@ -75,7 +108,7 @@ export async function fetchRayVoiceStyleAddendum(
     ? [...PUBLIC_VOICE_SOURCE_SYSTEMS, ...PRIVATE_VOICE_SOURCE_SYSTEMS]
     : [...PUBLIC_VOICE_SOURCE_SYSTEMS];
 
-  const [correspondenceChunks, voiceChunks] = await Promise.all([
+  const [correspondenceChunks, voiceChunks, openAiVoiceLines] = await Promise.all([
     retrieveStyleChunks(client, {
       message: options.message,
       sourceSystems: correspondenceSystems,
@@ -90,17 +123,18 @@ export async function fetchRayVoiceStyleAddendum(
       maxChunks: 2,
       siteBoost: 0.75,
     }),
+    fetchOpenAiVoiceLines(options.message, 2),
   ]);
 
   const correspondenceLines = extractVoiceLines(correspondenceChunks, 3);
   const voiceLines = extractVoiceLines(voiceChunks, 2);
   const seen = new Set<string>();
   const lines: string[] = [];
-  for (const line of [...correspondenceLines, ...voiceLines]) {
+  for (const line of [...correspondenceLines, ...voiceLines, ...openAiVoiceLines]) {
     if (seen.has(line)) continue;
     seen.add(line);
     lines.push(line);
-    if (lines.length >= 4) break;
+    if (lines.length >= 5) break;
   }
 
   if (lines.length === 0) return '';

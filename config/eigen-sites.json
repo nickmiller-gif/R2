@@ -29,8 +29,8 @@
       "sitemaps": [],
       "rss_feeds": [],
       "files_dir": "knowledge/centralr2-core",
-      "fetch_allowlist": ["centralr2-core.lovable.app"],
-      "notes": "Add sitemap/RSS URLs once the app has public-facing content pages."
+      "fetch_allowlist": ["centralr2-core.lovable.app", "centralr2.com"],
+      "notes": "Owned CentralR2 public content can ingest through R2 Eigen public flows once sitemap/RSS URLs or file drops are configured."
     },
     "health-supplement-tr": {
       "display_name": "Health Supplement TR",

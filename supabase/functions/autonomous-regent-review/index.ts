@@ -13,6 +13,7 @@ import {
   buildLiveWorldStateFromDb,
   emitRegentReviewSignal,
   fetchAgentActivity,
+  fetchPreviousRegentAgenda,
   loadRegentFinancials,
   type WorldState,
 } from '../_shared/autonomous-regent-review.ts';
@@ -130,9 +131,17 @@ Deno.serve(
       });
     }
 
+    // Institutional memory: diff against last week's agenda.
+    let previousAgenda = null;
+    try {
+      previousAgenda = await fetchPreviousRegentAgenda(getServiceClient());
+    } catch {
+      // Non-fatal: first run has no prior agenda.
+    }
+
     let review;
     try {
-      review = buildExecutiveTeam(state, 5);
+      review = buildExecutiveTeam(state, 5, previousAgenda);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Review failed';
       log.error('regent_review_failed', { message });
@@ -158,6 +167,7 @@ Deno.serve(
           executive_team: review.roles,
           tensions: review.tensions,
           chief_of_staff: review.chief_of_staff,
+          delta: review.delta,
           signal_id: emitted.signal_id,
           emitted_status: emitted.status,
         },

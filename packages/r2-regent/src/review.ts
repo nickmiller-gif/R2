@@ -895,10 +895,50 @@ export interface Tension {
   resolution: string;
 }
 
+/** A prior agenda item, as recorded in the last decision-log entry. */
+export interface PriorAgendaItem {
+  title: string;
+  severity: number;
+}
+
+export interface AgendaDelta {
+  new: string[];
+  resolved: string[];
+  moved: Array<{ title: string; from: number; to: number }>;
+  carried: string[];
+}
+
+/**
+ * Week-over-week diff: compare this week's agenda to the previous logged one.
+ * NEW = not present last week; RESOLVED = was present, now gone; MOVED = same
+ * title, changed severity; CARRIED = present both weeks, unchanged severity.
+ * This is REGENT's institutional memory — a decision that keeps carrying is a
+ * stuck decision and deserves escalation.
+ */
+export function diffAgendas(
+  current: RegentDecision[],
+  previous: PriorAgendaItem[] | null | undefined,
+): AgendaDelta | null {
+  if (!previous) return null;
+  const prev = new Map(previous.map((p) => [p.title, p.severity]));
+  const cur = new Map(current.map((c) => [c.title, c.severity]));
+  const delta: AgendaDelta = { new: [], resolved: [], moved: [], carried: [] };
+  for (const [title, sev] of cur) {
+    if (!prev.has(title)) delta.new.push(title);
+    else if (prev.get(title) !== sev) delta.moved.push({ title, from: prev.get(title)!, to: sev });
+    else delta.carried.push(title);
+  }
+  for (const title of prev.keys()) {
+    if (!cur.has(title)) delta.resolved.push(title);
+  }
+  return delta;
+}
+
 export interface ExecutiveTeamReview extends RegentReview {
   roles: ExecutiveMemo[];
   tensions: Tension[];
   chief_of_staff: { synthesis: string; sequencing: string[] };
+  delta?: AgendaDelta | null;
 }
 
 function postureFor(maxSeverity: number): Posture {
@@ -993,7 +1033,11 @@ function detectTensions(cands: RegentDecision[], state: WorldState): Tension[] {
   return tensions;
 }
 
-export function buildExecutiveTeam(state: WorldState, topN = 5): ExecutiveTeamReview {
+export function buildExecutiveTeam(
+  state: WorldState,
+  topN = 5,
+  previousAgenda?: PriorAgendaItem[] | null,
+): ExecutiveTeamReview {
   const hurdle = state.cost_of_capital_pct;
   const staleAfter = state.stale_after_days ?? 14;
   const scored = state.domains.map((d) => scoreDomain(d, hurdle, staleAfter));
@@ -1012,6 +1056,14 @@ export function buildExecutiveTeam(state: WorldState, topN = 5): ExecutiveTeamRe
   const corr = agenda.filter((d) => d.corroborated).length;
   const actingRoles = roles.filter((r) => r.posture === 'act').map((r) => r.role);
   const lead = agenda[0];
+  const delta = diffAgendas(agenda, previousAgenda);
+  const deltaLine = delta
+    ? ` Since last week: ${delta.new.length} new, ${delta.resolved.length} resolved, ` +
+      `${delta.moved.length} moved, ${delta.carried.length} carried` +
+      (delta.carried.length
+        ? ` (carrying: ${delta.carried.slice(0, 3).join('; ')}${delta.carried.length > 3 ? ' …' : ''} — stuck items deserve escalation).`
+        : '.')
+    : '';
   const synthesis =
     (agenda.length === 0
       ? 'The executive team reviewed the estate and brings no decision over the action threshold this week — hold course.'
@@ -1020,6 +1072,7 @@ export function buildExecutiveTeam(state: WorldState, topN = 5): ExecutiveTeamRe
         (tensions.length ? `, with ${tensions.length} cross-desk tension(s) to resolve` : '') +
         `. ${actingRoles.length ? `${actingRoles.join(', ')} ${actingRoles.length === 1 ? 'is' : 'are'} acting; ` : ''}` +
         (lead ? `the board's first call is "${lead.title}" (${lead.faculty}).` : '')) +
+    deltaLine +
     ' REGENT advises; the principal decides; counsel confirms legal and tax moves.';
   const sequencing = agenda.map((d) => `${d.faculty}: ${d.title}`);
 
@@ -1032,5 +1085,6 @@ export function buildExecutiveTeam(state: WorldState, topN = 5): ExecutiveTeamRe
     roles,
     tensions,
     chief_of_staff: { synthesis, sequencing },
+    delta,
   };
 }

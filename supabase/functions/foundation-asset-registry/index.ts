@@ -31,6 +31,38 @@ const EVIDENCE_LINK_INSERT_FIELDS = [
   'metadata',
 ] as const;
 
+// Client-settable columns on asset_registry insert. Generous allowlist (all
+// insertable columns) minus the db/server-managed `id`/`created_at`/
+// `updated_at`. Write path uses the service-role client (RLS bypass), so an
+// explicit allowlist prevents mass-assignment of those immutable columns.
+const ASSET_REGISTRY_INSERT_FIELDS = [
+  'asset_kind',
+  'asset_subtype',
+  'canonical_ecosystem_id',
+  'charter_entity_id',
+  'domain',
+  'governance_status',
+  'kind',
+  'label',
+  'lifecycle_status',
+  'local_record_id',
+  'local_table',
+  'manager_entity_id',
+  'metadata',
+  'owner_entity_id',
+  'provenance_captured_at',
+  'provenance_source_system',
+  'provenance_source_type',
+  'provenance_source_url',
+  'r2chart_governed_asset_id',
+  'ref_id',
+  'review_notes',
+  'review_status',
+  'reviewed_at',
+  'reviewed_by',
+  'user_id',
+] as const;
+
 Deno.serve(
   withRequestMeta(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -146,10 +178,11 @@ Deno.serve(
           const idemError = requireIdempotencyKey(req);
           if (idemError) return idemError;
           const body = await req.json();
+          const insertRow = pickFields(body, ASSET_REGISTRY_INSERT_FIELDS);
 
           const { data, error } = await client
             .from('asset_registry')
-            .insert([body])
+            .insert([insertRow])
             .select()
             .single();
 

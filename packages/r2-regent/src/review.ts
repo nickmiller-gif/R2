@@ -448,6 +448,60 @@ export function decisionChurn(state: WorldState, domains: Domain[]): RegentDecis
   };
 }
 
+export function decisionFunnel(_state: WorldState, domains: Domain[]): RegentDecision | null {
+  let worst: { d: Domain; leak: [string, string, number] } | null = null;
+  for (const d of domains) {
+    const f = d.funnel;
+    if (!f || f.length < 2) continue;
+    const leak = funnelLeak(f);
+    if (leak && (worst === null || leak[2] < worst.leak[2])) worst = { d, leak };
+  }
+  if (!worst || worst.leak[2] >= 0.35) return null;
+  const { d } = worst;
+  const [a, b, rate] = worst.leak;
+  return {
+    severity: 55,
+    domain_key: d.key,
+    faculty: 'Commercial',
+    title: `Attack the ${a}→${b} conversion leak (${d.name})`,
+    framework: 'Funnel conversion analysis (Analytical Marketing)',
+    observation: `${d.name} converts ${a}→${b} at only ${Math.round(rate * 100)}% -- the weakest step in the funnel.`,
+    assumptions: ['Funnel counts are same-cohort and correctly attributed.'],
+    recommendation: `Run one focused A/B test on the ${a}→${b} step; a few points here compound through every downstream stage.`,
+    tradeoff: 'Test cycles cost time; over-optimizing one step can mask a weaker offer.',
+    counter_case: `A low ${a}→${b} rate may be healthy qualification, not a leak -- check downstream value of the survivors first.`,
+    confidence: 'medium',
+  };
+}
+
+export function decisionPricingPower(state: WorldState, domains: Domain[]): RegentDecision | null {
+  let best: { d: Domain; m: OfferMetric } | null = null;
+  for (const d of domains) {
+    for (const off of d.offers ?? []) {
+      const m = computeOffer(off);
+      const healthy = (m.margin ?? 0) >= 0.55 && m.ltv_cac >= 4 && m.unit_contribution > 0;
+      if (healthy && (best === null || (m.margin ?? 0) > (best.m.margin ?? 0))) best = { d, m };
+    }
+  }
+  if (!best) return null;
+  const { d, m } = best;
+  return {
+    severity: 45,
+    domain_key: d.key,
+    faculty: 'Commercial',
+    title: `Test a price increase on ${m.name} (${d.name})`,
+    framework: 'Value-based pricing (Pricing Strategy)',
+    observation: `${m.name} runs ${Math.round((m.margin ?? 0) * 100)}% margin at LTV:CAC ${m.ltv_cac.toFixed(1)} -- strong demand signal and pricing headroom.`,
+    assumptions: ['Demand is not at a known price ceiling.', 'No contractual price locks.'],
+    recommendation:
+      'Test a 10-15% increase on new customers; measure conversion and churn before a full rollout.',
+    tradeoff: 'A price test risks conversion on the segment tested.',
+    counter_case:
+      'If the offer is a strategic loss-leader or community good, holding price may be intentional -- confirm the role.',
+    confidence: 'medium',
+  };
+}
+
 // --------------------------------------------------------------------------- //
 // Asset Review — the executive team reviewing the repo constellation           //
 // --------------------------------------------------------------------------- //
@@ -676,6 +730,10 @@ export interface DomainFinancials {
   invested_capital?: number;
   monthly_burn?: number;
   data_freshness_days?: number;
+  /** Commercial inputs — light up the CCO (unit economics, churn, pricing). */
+  offers?: Offer[];
+  /** Acquisition funnel — light up the funnel-leak read. */
+  funnel?: FunnelStage[];
 }
 
 export interface RegentFinancials {
@@ -723,6 +781,8 @@ export function applyFinancials(
       invested_capital: num(f.invested_capital) ?? d.invested_capital,
       monthly_burn: num(f.monthly_burn) ?? d.monthly_burn,
       data_freshness_days: num(f.data_freshness_days) ?? (supplied ? 0 : d.data_freshness_days),
+      offers: Array.isArray(f.offers) ? f.offers : d.offers,
+      funnel: Array.isArray(f.funnel) ? f.funnel : d.funnel,
     };
   });
 
@@ -756,6 +816,8 @@ export function collectCandidates(state: WorldState, scored: ScoredDomain[]): Re
     decisionGate(state),
     decisionUnitEconomics(state, state.domains),
     decisionChurn(state, state.domains),
+    decisionFunnel(state, state.domains),
+    decisionPricingPower(state, state.domains),
     reviewSecretExposure(state),
     reviewRepoDrift(state),
     reviewProcessCapability(state),

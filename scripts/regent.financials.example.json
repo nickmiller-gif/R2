@@ -13,7 +13,22 @@
       "ttm_direct_cost": 0,
       "invested_capital": 0,
       "monthly_burn": 0,
-      "data_freshness_days": 0
+      "data_freshness_days": 0,
+      "offers": [
+        {
+          "name": "Membership",
+          "model": "subscription",
+          "price_monthly": 0,
+          "variable_cost_monthly": 0,
+          "monthly_churn_pct": 0,
+          "cac": 0
+        }
+      ],
+      "funnel": [
+        { "stage": "visitors", "count": 0 },
+        { "stage": "signup", "count": 0 },
+        { "stage": "paid", "count": 0 }
+      ]
     }
   ],
   "funding": null

@@ -420,6 +420,48 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(applyFinancials(unsourced, null)).toBe(unsourced);
   });
 
+  it('overlaying offers lights up the CCO (unit economics)', () => {
+    const base: WorldState = {
+      cost_of_capital_pct: 18,
+      treasury: { cash_on_hand: 0 },
+      domains: [
+        {
+          key: 'ip_patent',
+          name: 'IP & Patent Intelligence',
+          series: 'C',
+          stage: 'revenue',
+          strategic_role: 'bet',
+          monthly_burn: 0,
+          invested_capital: 0,
+          data_freshness_days: 9999,
+        },
+      ],
+    };
+    const merged = applyFinancials(base, {
+      domains: [
+        {
+          key: 'ip_patent',
+          offers: [
+            {
+              name: 'IP insights report',
+              model: 'transaction',
+              price: 300,
+              variable_cost: 360,
+              repeat_factor: 1.2,
+              cac: 140,
+            },
+          ],
+        },
+      ],
+      source: 'principal',
+    });
+    expect(merged.domains[0]!.offers?.length).toBe(1);
+    const team = buildExecutiveTeam(merged, 5);
+    const cco = team.roles.find((r) => r.role === 'Chief Commercial Officer')!;
+    expect(cco.posture).not.toBe('hold'); // CCO now has a unit-economics decision
+    expect(cco.decisions.some((d) => d.title.includes('unit economics'))).toBe(true);
+  });
+
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {
     const forbidden = [
       'stripe',

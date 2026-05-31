@@ -68,6 +68,21 @@ describe('OracleThesisService', () => {
     expect(result).toBeNull();
   });
 
+  it('rejects creation with an empty title or thesisStatement', async () => {
+    const db = makeMockDb();
+    const service = createOracleThesisService(db);
+
+    await expect(service.create({ title: '  ', thesisStatement: 'Statement' })).rejects.toThrow(
+      'title must not be empty',
+    );
+
+    await expect(service.create({ title: 'Title', thesisStatement: '' })).rejects.toThrow(
+      'thesisStatement must not be empty',
+    );
+
+    expect(db.rows).toHaveLength(0);
+  });
+
   it('maps id-array columns safely (corrupt/non-array jsonb → [] and non-strings filtered)', async () => {
     const db = makeMockDb();
     const service = createOracleThesisService(db);

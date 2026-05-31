@@ -58,6 +58,21 @@ describe('OracleEvidenceItemService', () => {
     expect(item.excerpt).toBeNull();
   });
 
+  it('rejects creation with an out-of-range confidence', async () => {
+    const db = makeMockDb();
+    const service = createOracleEvidenceItemService(db);
+
+    await expect(
+      service.create({
+        sourceLane: 'internal_canonical',
+        sourceClass: 'internal_canonical',
+        confidence: 150,
+      }),
+    ).rejects.toThrow('confidence must be between 0 and 100');
+
+    expect(db.rows).toHaveLength(0);
+  });
+
   it('list() forwards withPagination defaults (limit 50, offset 0) to the DB port', async () => {
     let receivedFilter: OracleEvidenceItemFilter | undefined;
     const db = makeMockDb();

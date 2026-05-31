@@ -4,7 +4,7 @@ import { withLogger } from '../_shared/log.ts';
 import { timingSafeEqual } from '../_shared/signal-utils.ts';
 
 /**
- * Weekly trigger for the REGENT executive review. Calls
+ * Daily trigger for the REGENT executive review. Calls
  * autonomous-regent-review with no body, so it reviews the live Eigen-derived
  * world-state. The richer cross-repo asset review is driven separately by the
  * local `regent-publish-world-state` bridge, which supplies a full world-state.
@@ -43,12 +43,10 @@ Deno.serve(
       return errorResponse('SUPABASE_URL and a REGENT service token must be configured', 500);
     }
 
-    // Weekly cadence: bucket by ISO week so a re-trigger inside the same week
-    // is idempotent at the feed layer.
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const week = Math.ceil(((now.getTime() - Date.UTC(year, 0, 1)) / 86_400_000 + 1) / 7);
-    const idempotencyKey = `regent-review-cron:${year}-W${week}`;
+    // Daily cadence: bucket by UTC date so a re-trigger inside the same day is
+    // idempotent at the feed layer, but each new day emits a fresh review.
+    const dayBucket = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const idempotencyKey = `regent-review-cron:${dayBucket}`;
 
     const response = await fetch(`${supabaseUrl}/functions/v1/autonomous-regent-review`, {
       method: 'POST',
@@ -69,6 +67,6 @@ Deno.serve(
       );
     }
 
-    return jsonResponse({ ok: true, week_bucket: idempotencyKey, review: body }, 202);
+    return jsonResponse({ ok: true, day_bucket: idempotencyKey, review: body }, 202);
   }),
 );

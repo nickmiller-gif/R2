@@ -37,11 +37,20 @@ const KNOWLEDGE_CHUNK_INSERT_FIELDS = [
 const KNOWLEDGE_CHUNK_UPDATE_FIELDS = KNOWLEDGE_CHUNK_INSERT_FIELDS;
 
 // Explicit `knowledge_chunks` projection so schema additions don't leak through
-// `select('*')`. `embedding` is kept to preserve current response shape even
-// though it balloons payloads — trimming it would be a separate API-level
-// change (see operator read-model follow-ups).
+// `select('*')`. The single-chunk GET (by id) returns the full shape including
+// the `embedding` vector for callers that genuinely need it.
 const KNOWLEDGE_CHUNKS_SELECT_COLUMNS =
   'authority_score,chunk_level,content,content_hash,created_at,document_id,embedding,embedding_version,entity_ids,freshness_score,fts,heading_path,id,ingestion_run_id,meg_entity_id,oracle_relevance_score,oracle_signal_id,parent_chunk_id,policy_tags,provenance_completeness,updated_at,valid_from,valid_to';
+
+// List (multi-row) projection deliberately omits the heavy server-side-only
+// columns `embedding` (1536-dim vector, ~tens of KB serialized per row) and
+// `fts` (tsvector). Listing chunks for a document can return hundreds of rows,
+// so including the embedding ballooned responses into megabytes. Similarity
+// search runs server-side via the `match_knowledge_chunks` RPC, not by reading
+// embeddings off this list endpoint; callers that need a specific chunk's
+// embedding can fetch it via `?id=`.
+const KNOWLEDGE_CHUNKS_LIST_COLUMNS =
+  'authority_score,chunk_level,content,content_hash,created_at,document_id,embedding_version,entity_ids,freshness_score,heading_path,id,ingestion_run_id,meg_entity_id,oracle_relevance_score,oracle_signal_id,parent_chunk_id,policy_tags,provenance_completeness,updated_at,valid_from,valid_to';
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -76,7 +85,7 @@ Deno.serve(
           const chunkLevel = url.searchParams.get('chunk_level');
           const parentChunkId = url.searchParams.get('parent_chunk_id');
 
-          let query = client.from('knowledge_chunks').select(KNOWLEDGE_CHUNKS_SELECT_COLUMNS);
+          let query = client.from('knowledge_chunks').select(KNOWLEDGE_CHUNKS_LIST_COLUMNS);
 
           if (documentId) query = query.eq('document_id', documentId);
           if (chunkLevel) query = query.eq('chunk_level', chunkLevel);

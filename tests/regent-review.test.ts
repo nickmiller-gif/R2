@@ -321,6 +321,12 @@ describe('REGENT — agenda, merge, asset review', () => {
     );
     expect(cite.length).toBeGreaterThanOrEqual(1);
     expect(cite[0]!.course).toContain('Strategy');
+    // Observation context sharpens reading selection (reading-level retrieval).
+    const withCtx = citeFramework(
+      'Value-based pricing (Pricing Strategy)',
+      'pricing headroom / EVC',
+    );
+    expect(withCtx[0]!.course).toContain('Pricing');
     const team = buildExecutiveTeam(fixture(), 5);
     // Every agenda item carries citations; the acting exec has a corpus basis.
     for (const item of team.agenda) {

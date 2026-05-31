@@ -28,7 +28,7 @@ Deno.serve(
         const { data, error } = await client
           .from('charter_audit_log')
           .select(
-            'actor_id,actor_kind,chain_hash,entity_id,entity_kind,entity_status,entity_title,entity_version,event_id,event_type,metadata,payload_hash,recorded_at,ref_code,Relationships',
+            'actor_id,actor_kind,chain_hash,entity_id,entity_kind,entity_status,entity_title,entity_version,event_id,event_type,metadata,payload_hash,recorded_at,ref_code',
           )
           .eq('event_id', eventId)
           .single();

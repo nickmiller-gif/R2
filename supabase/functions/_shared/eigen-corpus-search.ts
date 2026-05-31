@@ -82,6 +82,39 @@ interface RawSearchResult {
   content?: Array<{ type?: string; text?: string }>;
 }
 
+/** Search a single vector store. Returns [] on timeout / error (advisory). */
+async function searchVectorStore(
+  storeId: string,
+  apiKey: string,
+  query: string,
+  opts: SearchEigenCorpusOptions,
+): Promise<EigenCorpusResult[]> {
+  const body: Record<string, unknown> = {
+    query: query.slice(0, 2000),
+    max_num_results: Math.max(1, Math.min(opts.maxResults ?? 8, MAX_RESULTS_CEILING)),
+    rewrite_query: opts.rewriteQuery ?? true,
+  };
+  if (opts.filters) body.filters = opts.filters;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${OPENAI_VECTOR_STORES}/${storeId}/search`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const payload = (await res.json()) as { data?: RawSearchResult[] };
+    return (payload.data ?? []).map(toResult);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function toResult(r: RawSearchResult): EigenCorpusResult {
   const snippet = (r.content ?? [])
     .filter((c) => c.type === 'text' && typeof c.text === 'string' && c.text.length > 0)
@@ -113,29 +146,44 @@ export async function searchEigenCorpus(
   const apiKey = Deno.env.get('OPENAI_API_KEY')?.trim();
   const storeId = Deno.env.get('EIGEN_CORPUS_VECTOR_STORE_ID')?.trim();
   if (!apiKey || !storeId || !query.trim()) return [];
+  return searchVectorStore(storeId, apiKey, query, opts);
+}
 
-  const body: Record<string, unknown> = {
-    query: query.slice(0, 2000),
-    max_num_results: Math.max(1, Math.min(opts.maxResults ?? 8, MAX_RESULTS_CEILING)),
-    rewrite_query: opts.rewriteQuery ?? true,
-  };
-  if (opts.filters) body.filters = opts.filters;
+export interface SearchEigenCorpusMultiOptions extends SearchEigenCorpusOptions {
+  /** Vector store ids to fan out across (e.g. `eigenCorpusStoreIds()`). */
+  storeIds: string[];
+}
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${OPENAI_VECTOR_STORES}/${storeId}/search`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) return [];
-    const payload = (await res.json()) as { data?: RawSearchResult[] };
-    return (payload.data ?? []).map(toResult);
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timer);
+/**
+ * Fan a query out across multiple vector stores in parallel and merge the
+ * results by descending score (deduped by file id). Returns [] when
+ * unconfigured. All stores are searched with the same options/filter — callers
+ * that need per-store access scoping should pass only the allowed store ids.
+ */
+export async function searchEigenCorpusMulti(
+  query: string,
+  opts: SearchEigenCorpusMultiOptions,
+): Promise<EigenCorpusResult[]> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')?.trim();
+  const ids = Array.from(new Set(opts.storeIds.filter((id) => id.trim().length > 0)));
+  if (!apiKey || !query.trim() || ids.length === 0) return [];
+
+  const maxResults = Math.max(1, Math.min(opts.maxResults ?? 8, MAX_RESULTS_CEILING));
+  const settled = await Promise.allSettled(
+    ids.map((id) => searchVectorStore(id, apiKey, query, { ...opts, maxResults })),
+  );
+
+  const merged: EigenCorpusResult[] = [];
+  const seen = new Set<string>();
+  for (const r of settled) {
+    if (r.status !== 'fulfilled') continue;
+    for (const hit of r.value) {
+      const key = hit.fileId ?? `${hit.filename ?? ''}:${hit.snippet ?? ''}`;
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      merged.push(hit);
+    }
   }
+  merged.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  return merged.slice(0, maxResults);
 }

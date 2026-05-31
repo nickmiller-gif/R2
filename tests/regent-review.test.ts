@@ -22,6 +22,7 @@ import {
   type WorldState,
 } from '../packages/r2-regent/src/review.ts';
 import { buildParalegalSchedule } from '../packages/r2-regent/src/paralegal.ts';
+import { assessFleetHealth } from '../packages/r2-regent/src/fleet.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -537,6 +538,38 @@ describe('REGENT — agenda, merge, asset review', () => {
     expect(stuckItem!.stuck_weeks).toBeGreaterThanOrEqual(3);
   });
 
+  it('fleet health: classifies bots, flags missing/silent + failures', () => {
+    const report = assessFleetHealth({
+      bots: [
+        { bot: 'autonomous-upgrade-scout', last_seen_days: 1, recent_count: 3, domains: [] },
+        { bot: 'autonomous-information-audit', last_seen_days: 14, recent_count: 1, domains: [] },
+      ],
+      failedSignals: 2,
+      deadletterBacklog: 0,
+    });
+    expect(report.bots.find((b) => b.bot === 'autonomous-upgrade-scout')!.status).toBe('active');
+    expect(report.bots.find((b) => b.bot === 'autonomous-information-audit')!.status).toBe(
+      'silent',
+    );
+    // expected bots not present at all are reported missing
+    expect(report.missing).toContain('autonomous-regent-review');
+    expect(report.healthy).toBe(false);
+    expect(report.alerts.some((a) => a.includes('failed processing'))).toBe(true);
+    // all-healthy case
+    const ok = assessFleetHealth({
+      bots: [
+        { bot: 'autonomous-upgrade-scout', last_seen_days: 0, recent_count: 1, domains: [] },
+        { bot: 'autonomous-information-audit', last_seen_days: 0, recent_count: 1, domains: [] },
+        { bot: 'autonomous-revolutionary-mesh', last_seen_days: 0, recent_count: 1, domains: [] },
+        { bot: 'autonomous-steward-cycle', last_seen_days: 0, recent_count: 1, domains: [] },
+        { bot: 'autonomous-regent-review', last_seen_days: 0, recent_count: 1, domains: [] },
+        { bot: 'autonomous-paralegal-schedule', last_seen_days: 0, recent_count: 1, domains: [] },
+      ],
+    });
+    expect(ok.healthy).toBe(true);
+    expect(ok.alerts).toEqual([]);
+  });
+
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {
     const forbidden = [
       'stripe',
@@ -549,7 +582,7 @@ describe('REGENT — agenda, merge, asset review', () => {
       'send_payment',
       'wire_transfer',
     ];
-    for (const file of ['review.ts', 'corpus.ts', 'paralegal.ts']) {
+    for (const file of ['review.ts', 'corpus.ts', 'paralegal.ts', 'fleet.ts']) {
       const src = readFileSync(join(HERE, `../packages/r2-regent/src/${file}`), 'utf8');
       const importLines = src.split('\n').filter((l) => /^\s*import\s/.test(l));
       for (const line of importLines) {

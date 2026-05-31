@@ -4,6 +4,12 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
+
+// Client-settable columns on insert. Excludes server/db-managed `id`,
+// `created_at`, `updated_at`; the handler writes with the service-role client
+// (RLS bypass), so an explicit allowlist prevents mass-assignment.
+const SOURCE_PACK_INSERT_FIELDS = ['profile_id', 'source_ids', 'source_lane', 'metadata'] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -62,9 +68,10 @@ Deno.serve(
         if (idemError) return idemError;
 
         const body = await req.json();
+        const insertRow = pickFields(body, SOURCE_PACK_INSERT_FIELDS);
         const { data, error } = await client
           .from('oracle_source_packs')
-          .insert([body])
+          .insert([insertRow])
           .select()
           .single();
 

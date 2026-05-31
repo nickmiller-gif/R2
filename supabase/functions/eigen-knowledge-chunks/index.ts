@@ -4,8 +4,37 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { pickFields } from '../_shared/sanitize.ts';
 
 const supabaseClients = createSupabaseClientFactory();
+
+// Client-settable columns for writes. Excludes server/db-managed columns
+// (`id`, `created_at`, `updated_at`) and the generated `fts` tsvector column.
+// Writing those via raw `req.json()` is a mass-assignment vector because the
+// edge function uses the service-role client (RLS bypass).
+const KNOWLEDGE_CHUNK_INSERT_FIELDS = [
+  'document_id',
+  'parent_chunk_id',
+  'chunk_level',
+  'heading_path',
+  'entity_ids',
+  'policy_tags',
+  'valid_from',
+  'valid_to',
+  'authority_score',
+  'freshness_score',
+  'provenance_completeness',
+  'content',
+  'content_hash',
+  'embedding',
+  'embedding_version',
+  'ingestion_run_id',
+  'meg_entity_id',
+  'oracle_relevance_score',
+  'oracle_signal_id',
+] as const;
+
+const KNOWLEDGE_CHUNK_UPDATE_FIELDS = KNOWLEDGE_CHUNK_INSERT_FIELDS;
 
 // Explicit `knowledge_chunks` projection so schema additions don't leak through
 // `select('*')`. `embedding` is kept to preserve current response shape even
@@ -67,10 +96,11 @@ Deno.serve(
         const idemError = requireIdempotencyKey(req);
         if (idemError) return idemError;
         const body = await req.json();
+        const insertRow = pickFields(body, KNOWLEDGE_CHUNK_INSERT_FIELDS);
 
         const { data, error } = await client
           .from('knowledge_chunks')
-          .insert([body])
+          .insert([insertRow])
           .select()
           .single();
 
@@ -91,9 +121,14 @@ Deno.serve(
           return errorResponse('id required in body', 400);
         }
 
+        const updateRow = {
+          ...pickFields(body, KNOWLEDGE_CHUNK_UPDATE_FIELDS),
+          updated_at: new Date().toISOString(),
+        };
+
         const { data, error } = await client
           .from('knowledge_chunks')
-          .update(body)
+          .update(updateRow)
           .eq('id', id)
           .select()
           .single();

@@ -56,5 +56,6 @@ page-learn-ingest
 r2-signal-ingest
 r2-signal-process
 r2-signal-process-deadletter
+regent-set-financials
 r2community-access-request
 truth-market-promote

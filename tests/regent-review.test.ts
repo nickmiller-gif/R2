@@ -615,8 +615,19 @@ describe('REGENT — agenda, merge, asset review', () => {
       'send_payment',
       'wire_transfer',
     ];
-    for (const file of ['review.ts', 'corpus.ts', 'paralegal.ts', 'fleet.ts']) {
-      const src = readFileSync(join(HERE, `../packages/r2-regent/src/${file}`), 'utf8');
+    const pkg = ['review.ts', 'corpus.ts', 'paralegal.ts', 'fleet.ts'].map((f) =>
+      join(HERE, `../packages/r2-regent/src/${f}`),
+    );
+    // Also scan the production edge glue — the bots' only side effect must stay
+    // a feed insert; no payment/transfer/signature/trade client may appear.
+    const shared = [
+      'autonomous-regent-review.ts',
+      'autonomous-paralegal-schedule.ts',
+      'autonomous-fleet-health.ts',
+      'regent-corpus-search.ts',
+    ].map((f) => join(HERE, `../supabase/functions/_shared/${f}`));
+    for (const path of [...pkg, ...shared]) {
+      const src = readFileSync(path, 'utf8');
       const importLines = src.split('\n').filter((l) => /^\s*import\s/.test(l));
       for (const line of importLines) {
         for (const bad of forbidden) expect(line.toLowerCase()).not.toContain(bad);

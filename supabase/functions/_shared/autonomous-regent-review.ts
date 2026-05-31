@@ -357,6 +357,7 @@ export async function emitRegentReviewSignal(input: {
       delta: review.delta ?? null,
       outcomes: review.outcomes ?? null,
       agenda_ages: review.agenda_ages ?? {},
+      counsel_queue: review.counsel_queue ?? [],
       acting_roles: actingRoles,
       treasury: {
         cash_on_hand: review.treasury.cash,

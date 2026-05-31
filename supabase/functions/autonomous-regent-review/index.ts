@@ -172,6 +172,7 @@ Deno.serve(
           chief_of_staff: review.chief_of_staff,
           delta: review.delta,
           outcomes: review.outcomes,
+          counsel_queue: review.counsel_queue,
           signal_id: emitted.signal_id,
           emitted_status: emitted.status,
         },

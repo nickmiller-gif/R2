@@ -36,6 +36,8 @@ export interface RegentDecision {
   citations?: Citation[];
   /** Weeks this decision has been carried on the agenda (outcome scoring). */
   stuck_weeks?: number;
+  /** General Counsel first-pass: this item should reach counsel before action. */
+  needs_counsel?: boolean;
   corroborated?: boolean;
   corroboration?: Array<{
     faculty: string;
@@ -1025,6 +1027,30 @@ export interface ExecutiveTeamReview extends RegentReview {
   delta?: AgendaDelta | null;
   outcomes?: OutcomeScore;
   agenda_ages?: Record<string, number>;
+  /** General Counsel review queue — titles flagged to reach counsel before action. */
+  counsel_queue?: string[];
+}
+
+/**
+ * General Counsel first-pass: flag which decisions should reach counsel before
+ * any action. A Risk-faculty item that is urgent, or touches secrets / a
+ * regulated boundary, is queued. Mutates the decisions in place (sets
+ * needs_counsel) and returns the flagged titles.
+ */
+export function flagCounselReview(decisions: RegentDecision[]): string[] {
+  const queue: string[] = [];
+  for (const d of decisions) {
+    if (d.faculty !== 'Risk') continue;
+    const t = d.title.toLowerCase();
+    const regulated = /secret|regulat|fda|ftc|fha|upl|501|claim|counsel/.test(
+      t + ' ' + d.framework.toLowerCase(),
+    );
+    if (d.severity >= 70 || regulated) {
+      d.needs_counsel = true;
+      queue.push(d.title);
+    }
+  }
+  return queue;
 }
 
 function postureFor(maxSeverity: number): Posture {
@@ -1133,6 +1159,9 @@ export function buildExecutiveTeam(
   const cands = collectCandidates(state, scored);
   const merged = mergeByDomain(cands);
 
+  // General Counsel first-pass: queue risk items that must reach counsel.
+  const counsel_queue = flagCounselReview(merged);
+
   // Outcome-aware escalation: a decision carried >= 3 weeks is chronically stuck;
   // bump its severity so REGENT flags it louder until it resolves (the bot learns
   // that ignored recommendations should rise, not fade).
@@ -1201,6 +1230,9 @@ export function buildExecutiveTeam(
         (lead ? `the board's first call is "${lead.title}" (${lead.faculty}).` : '')) +
     deltaLine +
     fleetLine +
+    (counsel_queue.length
+      ? ` General Counsel flags ${counsel_queue.length} item(s) for counsel review before action: ${counsel_queue.slice(0, 2).join('; ')}${counsel_queue.length > 2 ? ' …' : ''}.`
+      : '') +
     ' REGENT advises; the principal decides; counsel confirms legal and tax moves.';
   const sequencing = agenda.map((d) => `${d.faculty}: ${d.title}`);
 
@@ -1216,5 +1248,6 @@ export function buildExecutiveTeam(
     delta,
     outcomes,
     agenda_ages: agendaAges,
+    counsel_queue,
   };
 }

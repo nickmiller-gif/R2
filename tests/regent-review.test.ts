@@ -9,6 +9,7 @@ import {
   citeFramework,
   computeAges,
   diffAgendas,
+  flagCounselReview,
   reconcileFleet,
   scoreOutcomes,
   computeOffer,
@@ -568,6 +569,32 @@ describe('REGENT — agenda, merge, asset review', () => {
     });
     expect(ok.healthy).toBe(true);
     expect(ok.alerts).toEqual([]);
+  });
+
+  it('General Counsel flags risk items for the counsel-review queue', () => {
+    const decisions = [
+      {
+        faculty: 'Risk',
+        severity: 88,
+        title: 'Verify no live secrets are committed in formahealth',
+        framework: 'Operational risk control',
+      },
+      {
+        faculty: 'Risk',
+        severity: 42,
+        title: 'Keep the health-adjacent regulatory register current',
+        framework: 'Standing regulatory register (Ethics)',
+      },
+      { faculty: 'Capital', severity: 90, title: 'Fix or sunset IP', framework: 'EVA' },
+    ] as RegentDecision[];
+    const queue = flagCounselReview(decisions);
+    expect(queue).toContain('Verify no live secrets are committed in formahealth'); // severity>=70
+    expect(queue).toContain('Keep the health-adjacent regulatory register current'); // regulated keyword
+    expect(decisions[0]!.needs_counsel).toBe(true);
+    expect(decisions[2]!.needs_counsel).toBeUndefined(); // Capital, not Risk
+    // Surfaced by buildExecutiveTeam.
+    const team = buildExecutiveTeam(fixture(), 5);
+    expect(Array.isArray(team.counsel_queue)).toBe(true);
   });
 
   it('INVARIANT: advisory-only — no transactional client imported in the engine', () => {

@@ -2,13 +2,14 @@
 /**
  * Backfill Eigen MEG + works.entities for existing CentralR2 Tower rows.
  *
- * Requires Tower edges `entity-eigen-sync` / `people-eigen-sync` deployed and secrets:
+ * Requires Tower edges `entity-eigen-sync` / `people-eigen-sync` / `property-eigen-sync` deployed and secrets:
  *   MEG_RESOLVE_BRIDGE_*, EIGEN_SUPABASE_SERVICE_ROLE_KEY
  *
  * Usage:
  *   TOWER_SUPABASE_URL=... TOWER_SERVICE_ROLE_KEY=... \
  *   node scripts/centralr2-entity-meg-backfill.mjs --table=entities --limit=50
  *   node scripts/centralr2-entity-meg-backfill.mjs --table=people --limit=50
+ *   node scripts/centralr2-entity-meg-backfill.mjs --table=properties --limit=50
  *   node scripts/centralr2-entity-meg-backfill.mjs --table=all --limit=100
  */
 import { createClient } from '@supabase/supabase-js';
@@ -90,9 +91,40 @@ async function backfillPeople() {
   console.log(`people: ${ok} synced, ${fail} failed, ${(rows ?? []).length} scanned.`);
 }
 
+async function backfillProperties() {
+  const { data: rows, error } = await tower
+    .from('properties')
+    .select('id, name, address, city, state')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  let ok = 0;
+  let fail = 0;
+  for (const row of rows ?? []) {
+    const { data, error: fnErr } = await tower.functions.invoke('property-eigen-sync', {
+      body: {
+        property_id: row.id,
+        name: row.name,
+        address: row.address,
+        city: row.city,
+        state: row.state,
+      },
+    });
+    if (fnErr || !data?.ok) {
+      fail += 1;
+      console.warn('FAIL property', row.id, row.name, fnErr?.message ?? data?.error ?? data?.hint);
+    } else {
+      ok += 1;
+      console.log('OK property', row.id, row.name, '→', data.meg_entity_id);
+    }
+  }
+  console.log(`properties: ${ok} synced, ${fail} failed, ${(rows ?? []).length} scanned.`);
+}
+
 try {
   if (tableArg === 'entities' || tableArg === 'all') await backfillEntities();
   if (tableArg === 'people' || tableArg === 'all') await backfillPeople();
+  if (tableArg === 'properties' || tableArg === 'all') await backfillProperties();
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);
   process.exit(1);

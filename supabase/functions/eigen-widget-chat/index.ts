@@ -28,6 +28,10 @@ import {
 import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import {
+  fetchOpenAiCorpusChunksForChat,
+  resolveChatRetrievalForEigenChat,
+} from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import {
   buildEigenKosCapabilityDenialBody,
@@ -390,45 +394,64 @@ Deno.serve(
 
       const turnStartedAt = Date.now();
 
-      const retrieveResult = await executeEigenRetrieve(client, {
-        query: body.message,
-        entity_scope: effectiveEntityScope,
-        entity_scope_mode: claims.mode === 'eigenx' ? entityScopeMode : undefined,
-        policy_scope: effectivePolicyScope,
-        site_id: claims.site_id,
-        site_source_systems: claims.site_source_systems,
-        site_boost: retreatScopedPublic ? 0.7 : r2AppScopedPublic ? 0.6 : undefined,
-        global_penalty: retreatScopedPublic ? -0.4 : r2AppScopedPublic ? -0.35 : undefined,
-        site_relevance_min: retreatScopedPublic ? 0.36 : r2AppScopedPublic ? 0.3 : undefined,
-        cross_source_max_ratio: retreatScopedPublic ? 0.2 : r2AppScopedPublic ? 0.15 : undefined,
-        allow_cross_source_when_low_confidence: retreatScopedPublic,
-        outside_domain_intent: outsideDomainIntent,
-        disallowed_source_systems:
-          (retreatScopedPublic &&
-            body.conversation_intent === 'retreat_content' &&
-            !outsideDomainIntent) ||
-          (r2AppScopedPublic && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
-            ? ['health-supplement-tr', 'smartplrx']
-            : [],
-        budget_profile: body.budget_profile
-          ? {
-              ...body.budget_profile,
-              strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
-            }
-          : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
-        rerank: true,
-        enable_reranking: widgetRetrievalFlags.rerank,
-        enable_multi_query: widgetRetrievalFlags.multiQuery,
-        include_provenance: true,
-      });
-      if (!retrieveResult.ok)
+      const [retrieveResult, openAiCorpusChunks] = await Promise.all([
+        executeEigenRetrieve(client, {
+          query: body.message,
+          entity_scope: effectiveEntityScope,
+          entity_scope_mode: claims.mode === 'eigenx' ? entityScopeMode : undefined,
+          policy_scope: effectivePolicyScope,
+          site_id: claims.site_id,
+          site_source_systems: claims.site_source_systems,
+          site_boost: retreatScopedPublic ? 0.7 : r2AppScopedPublic ? 0.6 : undefined,
+          global_penalty: retreatScopedPublic ? -0.4 : r2AppScopedPublic ? -0.35 : undefined,
+          site_relevance_min: retreatScopedPublic ? 0.36 : r2AppScopedPublic ? 0.3 : undefined,
+          cross_source_max_ratio: retreatScopedPublic ? 0.2 : r2AppScopedPublic ? 0.15 : undefined,
+          allow_cross_source_when_low_confidence: retreatScopedPublic,
+          outside_domain_intent: outsideDomainIntent,
+          disallowed_source_systems:
+            (retreatScopedPublic &&
+              body.conversation_intent === 'retreat_content' &&
+              !outsideDomainIntent) ||
+            (r2AppScopedPublic && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
+              ? ['health-supplement-tr', 'smartplrx']
+              : [],
+          budget_profile: body.budget_profile
+            ? {
+                ...body.budget_profile,
+                strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+              }
+            : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
+          rerank: true,
+          enable_reranking: widgetRetrievalFlags.rerank,
+          enable_multi_query: widgetRetrievalFlags.multiQuery,
+          include_provenance: true,
+        }),
+        fetchOpenAiCorpusChunksForChat(body.message, 6),
+      ]);
+
+      const resolvedRetrieval = resolveChatRetrievalForEigenChat(
+        retrieveResult,
+        openAiCorpusChunks,
+      );
+      if (!resolvedRetrieval.ok) {
         return reflectedErrorResponse(
           rawOrigin,
-          `Retrieve failed: ${retrieveResult.message}`,
-          retrieveResult.status,
+          `Retrieve failed: ${resolvedRetrieval.message ?? 'unknown'}`,
+          resolvedRetrieval.status,
         );
+      }
+      if (resolvedRetrieval.pgvectorDegraded) {
+        logInfo('pgvector retrieve failed; OpenAI corpus fallback in use', {
+          functionName: 'eigen-widget-chat',
+          correlationId: meta.correlationId,
+          openai_chunk_count: openAiCorpusChunks.length,
+        });
+      }
 
-      const citations = buildCitations(retrieveResult.body.chunks);
+      const mergedChunks = resolvedRetrieval.chunks;
+      const retrievalRunId = retrieveResult.ok ? (retrieveResult.body.retrieval_run_id ?? '') : '';
+
+      const citations = buildCitations(mergedChunks);
       const confidence = buildCompositeConfidence(citations);
       let entityContext: ChatEntityForPrompt[] = [];
       let oracleSignalsBlock = '';
@@ -457,7 +480,7 @@ Deno.serve(
         claims.mode,
         effectivePolicyScope,
         body.message,
-        retrieveResult.body.chunks,
+        mergedChunks,
         entityContext,
         oracleSignalsBlock,
         body.response_format ?? 'structured',
@@ -466,18 +489,14 @@ Deno.serve(
         confidence.overall,
       );
       const latencyMs = Math.max(0, Date.now() - turnStartedAt);
-      const retrievalPlan = buildRetrievalPlan(
-        effectivePolicyScope,
-        retrieveResult.body.chunks,
-        retrieveResult.body.retrieval_run_id,
-      );
+      const retrievalPlan = buildRetrievalPlan(effectivePolicyScope, mergedChunks, retrievalRunId);
       const conversationTurnId = await insertConversationTurn(client, {
         siteId: claims.site_id,
         mode: claims.mode,
         userId: claims.mode === 'eigenx' ? (claims.user_id ?? null) : null,
         question: body.message,
         answer: synthesis.text,
-        retrievalRunId: retrieveResult.body.retrieval_run_id,
+        retrievalRunId,
         effectivePolicyScope,
         citations,
         confidence,
@@ -499,7 +518,7 @@ Deno.serve(
         llm_critic_used: synthesis.critic_used,
         llm_critic_provider: synthesis.critic_provider ?? null,
         llm_critic_model: synthesis.critic_model ?? null,
-        retrieval_run_id: retrieveResult.body.retrieval_run_id,
+        retrieval_run_id: retrievalRunId || null,
         site_id: claims.site_id,
         mode: claims.mode,
         effective_policy_scope: effectivePolicyScope,

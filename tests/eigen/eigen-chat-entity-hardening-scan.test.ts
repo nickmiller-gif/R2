@@ -36,6 +36,9 @@ describe('eigen chat entity scope hardening (static audit)', () => {
     expect(src).toMatch(/claims\.mode === 'eigenx'/);
     expect(src).toMatch(/resolveChatEntityScope/);
     expect(src).toMatch(/readWidgetMaxMessageChars/);
+    expect(src).toMatch(/fetchOpenAiCorpusChunksForChat/);
+    expect(src).toMatch(/resolveChatRetrievalForEigenChat/);
+    expect(src).toMatch(/pgvector retrieve failed; OpenAI corpus fallback in use/);
   });
 
   it('shared resolver escapes ilike and validates meg entity ids on lookup', () => {

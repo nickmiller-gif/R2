@@ -4,11 +4,20 @@ import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey, validateBody, type FieldSpec } from '../_shared/validate.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
+import { ROLE_HIERARCHY, type CharterRole } from '../_shared/roles.ts';
 
 const CREATE_FIELDS: FieldSpec[] = [
   { name: 'user_id', type: 'string' },
   { name: 'role', type: 'string' },
 ];
+
+const ROLE_INSERT_FIELDS = ['user_id', 'role'] as const;
+const ROLE_UPDATE_FIELDS = ['role'] as const;
+
+function isCharterRole(value: string): value is CharterRole {
+  return (ROLE_HIERARCHY as readonly string[]).includes(value);
+}
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -87,9 +96,17 @@ Deno.serve(
         }>(req, CREATE_FIELDS);
         if (!body.ok) return body.response;
 
+        if (!isCharterRole(body.data.role)) {
+          return errorResponse(`role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
+        }
+
+        const row = sanitizeInsert(body.data, ROLE_INSERT_FIELDS, {
+          assigned_by: auth.claims.userId,
+        });
+
         const { data, error } = await client
           .from('charter_user_roles')
-          .insert([{ ...body.data, assigned_by: auth.claims.userId }])
+          .insert([row])
           .select()
           .single();
 
@@ -105,12 +122,17 @@ Deno.serve(
         ]);
         if (!body.ok) return body.response;
 
-        const { id, ...updates } = body.data;
+        if (!isCharterRole(body.data.role)) {
+          return errorResponse(`role must be one of: ${ROLE_HIERARCHY.join(', ')}`, 400);
+        }
+
+        const patch = sanitizeUpdate(body.data, ROLE_UPDATE_FIELDS);
+        const { id: roleAssignmentId } = body.data;
 
         const { data, error } = await client
           .from('charter_user_roles')
-          .update(updates)
-          .eq('id', id)
+          .update(patch)
+          .eq('id', roleAssignmentId)
           .select()
           .single();
 

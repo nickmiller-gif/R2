@@ -52,6 +52,18 @@ Body (JSON object):
 
 `resolution` is always **`tower`** when Eigen returns a row (authoritative registry). Callers that previously used a local slug fallback when HTTP was unset can treat any `200` as authoritative.
 
+## Cross-source dedup (normalized identity)
+
+`meg_resolve_or_create` (migration `20260602120000_meg_resolve_normalized_dedup`) stores a stable **`meg_dedup_key`** on `meg_entities.external_ids` and reuses an existing active row when the key matches (same **entity family**: property / person / org):
+
+| Family       | Key inputs (normalized)                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Property** | `address` + `city` + `state` (St→Street, lowercased, punctuation stripped); falls back to name + city + state, then name alone |
+| **Person**   | email if present, else normalized full name                                                                                    |
+| **Org**      | normalized name with LLC/Inc/Corp suffixes stripped                                                                            |
+
+Bridge callers should pass **`hints.address`**, **`hints.city`**, **`hints.state`** for CentralR2 properties (see `property-eigen-sync`). `ensure_source_entity_meg_linkage` accepts **`p_hints`** with the same shape and merges **`works.entities`** rows that share the dedup key or case-insensitive label.
+
 ## Gateway config
 
 In `supabase/config.toml` for this repo, add a block so the gateway does not require a Supabase user JWT (callers use the bridge token only), mirroring `r2-signal-ingest`:

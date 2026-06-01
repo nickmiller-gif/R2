@@ -27,6 +27,7 @@
     "test:edge-authz-contract": "node scripts/edge-authz-contract-test.mjs",
     "verify:kb-four": "node scripts/kb-four-bridge-verify.mjs",
     "verify:meg-dedup": "node scripts/verify-meg-dedup-rpc.mjs",
+    "verify:meg-bridge-gateway": "node scripts/verify-meg-bridge-eigen-gateway.mjs",
     "check": "npm run typecheck && npm run test && npm run lint && npm run lint:imports && npm run lint:migrations && npm run lint:supabase:drift && npm run lint:supabase:types && npm run lint:correlation && npm run lint:eigen-sites && npm run security:scan"
   },
   "lint-staged": {

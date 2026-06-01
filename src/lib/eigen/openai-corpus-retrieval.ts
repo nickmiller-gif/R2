@@ -72,3 +72,50 @@ export function mergePromptRetrievalChunks<T extends ChatRetrievalChunkForPrompt
   if (openAi.length === 0) return primary;
   return [...primary, ...(openAi as T[])];
 }
+
+export interface ChatRetrievalMergeInput {
+  retrieveOk: boolean;
+  retrieveMessage?: string;
+  primaryChunks: ChatRetrievalChunkForPrompt[];
+  openAiChunks: ChatRetrievalChunkForPrompt[];
+}
+
+export interface ChatRetrievalMergeResult {
+  ok: boolean;
+  chunks: ChatRetrievalChunkForPrompt[];
+  status: number;
+  message?: string;
+  /** pgvector retrieve failed but OpenAI corpus supplied usable context. */
+  pgvectorDegraded?: boolean;
+}
+
+/**
+ * Merge pgvector + OpenAI corpus for chat. When pgvector fails but OpenAI
+ * corpus hits exist (vector-store retrieval enabled), degrade gracefully instead
+ * of failing the whole chat turn.
+ */
+export function resolveChatRetrievalMerge(
+  input: ChatRetrievalMergeInput,
+): ChatRetrievalMergeResult {
+  if (input.retrieveOk) {
+    return {
+      ok: true,
+      status: 200,
+      chunks: mergePromptRetrievalChunks(input.primaryChunks, input.openAiChunks),
+    };
+  }
+  if (input.openAiChunks.length > 0) {
+    return {
+      ok: true,
+      status: 200,
+      chunks: input.openAiChunks,
+      pgvectorDegraded: true,
+    };
+  }
+  return {
+    ok: false,
+    status: 400,
+    message: input.retrieveMessage ?? 'Retrieve failed',
+    chunks: [],
+  };
+}

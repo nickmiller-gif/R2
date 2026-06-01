@@ -23,7 +23,7 @@ import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts'
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import {
   fetchOpenAiCorpusChunksForChat,
-  mergeRetrievalChunksForChat,
+  resolveChatRetrievalForEigenChat,
 } from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
@@ -280,14 +280,21 @@ Deno.serve(
         fetchOpenAiCorpusChunksForChat(body.message, 6),
       ]);
 
-      if (!retrieveResult.ok) {
-        return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
-      }
-
-      const mergedChunks = mergeRetrievalChunksForChat(
-        retrieveResult.body.chunks,
+      const resolvedRetrieval = resolveChatRetrievalForEigenChat(
+        retrieveResult,
         openAiCorpusChunks,
       );
+      if (!resolvedRetrieval.ok) {
+        return errorResponse(
+          `Retrieve failed: ${resolvedRetrieval.message ?? 'unknown'}`,
+          resolvedRetrieval.status,
+        );
+      }
+
+      const mergedChunks = resolvedRetrieval.chunks;
+      const retrievalRunId = retrieveResult.ok
+        ? (retrieveResult.body.retrieval_run_id ?? null)
+        : null;
       const citations = buildCitations(mergedChunks);
       const confidence = buildCompositeConfidence(citations);
       const synthesis = await synthesizePublicResponse(
@@ -309,7 +316,7 @@ Deno.serve(
         llm_critic_used: synthesis.critic_used,
         llm_critic_provider: synthesis.critic_provider ?? null,
         llm_critic_model: synthesis.critic_model ?? null,
-        retrieval_run_id: retrieveResult.body.retrieval_run_id,
+        retrieval_run_id: retrievalRunId,
         policy_scope_enforced: [POLICY_TAG_EIGEN_PUBLIC],
         rate_limit: {
           limit_per_minute: rate.limit,

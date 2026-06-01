@@ -3,6 +3,7 @@ import {
   isOpenAiVectorRetrievalEnabled,
   mergePromptRetrievalChunks,
   openAiCorpusHitsToPromptChunks,
+  resolveChatRetrievalMerge,
 } from '../../src/lib/eigen/openai-corpus-retrieval.ts';
 
 describe('isOpenAiVectorRetrievalEnabled', () => {
@@ -66,5 +67,41 @@ describe('mergePromptRetrievalChunks', () => {
     expect(merged).toHaveLength(2);
     expect(merged[0].content).toBe('primary');
     expect(merged[1].content).toBe('openai');
+  });
+});
+
+describe('resolveChatRetrievalMerge', () => {
+  it('merges when pgvector succeeds', () => {
+    const out = resolveChatRetrievalMerge({
+      retrieveOk: true,
+      primaryChunks: [{ content: 'pg', composite_score: 0.8 }],
+      openAiChunks: [{ content: 'oai', composite_score: 0.7 }],
+    });
+    expect(out.ok).toBe(true);
+    expect(out.pgvectorDegraded).toBeUndefined();
+    expect(out.chunks.map((c) => c.content)).toEqual(['pg', 'oai']);
+  });
+
+  it('falls back to OpenAI corpus when pgvector fails', () => {
+    const out = resolveChatRetrievalMerge({
+      retrieveOk: false,
+      retrieveMessage: 'statement timeout',
+      primaryChunks: [],
+      openAiChunks: [{ content: 'oai only', composite_score: 0.6 }],
+    });
+    expect(out.ok).toBe(true);
+    expect(out.pgvectorDegraded).toBe(true);
+    expect(out.chunks).toHaveLength(1);
+  });
+
+  it('fails when both sources are empty', () => {
+    const out = resolveChatRetrievalMerge({
+      retrieveOk: false,
+      retrieveMessage: 'statement timeout',
+      primaryChunks: [],
+      openAiChunks: [],
+    });
+    expect(out.ok).toBe(false);
+    expect(out.message).toContain('timeout');
   });
 });

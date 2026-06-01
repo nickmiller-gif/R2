@@ -30,7 +30,7 @@ import {
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
 import {
   fetchOpenAiCorpusChunksForChat,
-  mergeRetrievalChunksForChat,
+  resolveChatRetrievalForEigenChat,
 } from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { logError, logInfo } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
@@ -465,14 +465,28 @@ Deno.serve(
         fetchOpenAiCorpusChunksForChat(body.message, 6),
       ]);
 
-      if (!retrieveResult.ok) {
-        return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
-      }
-
-      const retrievedChunks = mergeRetrievalChunksForChat(
-        retrieveResult.body.chunks,
+      const resolvedRetrieval = resolveChatRetrievalForEigenChat(
+        retrieveResult,
         openAiCorpusChunks,
       );
+      if (!resolvedRetrieval.ok) {
+        return errorResponse(
+          `Retrieve failed: ${resolvedRetrieval.message ?? 'unknown'}`,
+          resolvedRetrieval.status,
+        );
+      }
+      if (resolvedRetrieval.pgvectorDegraded) {
+        logInfo('pgvector retrieve failed; OpenAI corpus fallback in use', {
+          functionName: 'eigen-chat',
+          correlationId: meta.correlationId,
+          openai_chunk_count: openAiCorpusChunks.length,
+        });
+      }
+
+      const retrievedChunks = resolvedRetrieval.chunks;
+      const retrievalRunId = retrieveResult.ok
+        ? (retrieveResult.body.retrieval_run_id ?? null)
+        : null;
       const citations = buildCitations(retrievedChunks);
       const confidence = buildCompositeConfidence(citations);
       const [voiceStyleAddendum, entityContext, memoryRecall, governance, oracleSignals] =
@@ -645,7 +659,7 @@ Deno.serve(
                 client
                   .from('eigen_chat_sessions')
                   .update({
-                    last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+                    last_retrieval_run_id: retrievalRunId,
                     updated_at: new Date().toISOString(),
                   })
                   .eq('id', sessionId)
@@ -676,7 +690,7 @@ Deno.serve(
                 ownerId: auth.claims.userId,
                 userMessage: body.message,
                 assistantMessage: fullText,
-                retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+                retrievalRunId: retrievalRunId,
                 citations,
                 confidence,
                 llmProvider: resolvedLlmProvider,
@@ -699,7 +713,7 @@ Deno.serve(
                 const citationPersist = await persistChatCitationsForTurn(client, {
                   assistantTurnId: persistResult.assistantTurnId,
                   ownerId: auth.claims.userId,
-                  retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+                  retrievalRunId: retrievalRunId,
                   policyDecisionId: kos.policyDecisionId ?? null,
                   citations,
                 });
@@ -712,7 +726,7 @@ Deno.serve(
                 response: fullText,
                 citations: responseCitations,
                 confidence,
-                retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+                retrieval_run_id: retrievalRunId,
                 memory_updated: true,
                 session_id: sessionId,
                 turn_persisted: persistResult.ok,
@@ -811,7 +825,7 @@ Deno.serve(
         client
           .from('eigen_chat_sessions')
           .update({
-            last_retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+            last_retrieval_run_id: retrievalRunId,
             updated_at: new Date().toISOString(),
           })
           .eq('id', sessionId)
@@ -826,7 +840,7 @@ Deno.serve(
         ownerId: auth.claims.userId,
         userMessage: body.message,
         assistantMessage: responseText,
-        retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+        retrievalRunId: retrievalRunId,
         citations,
         confidence,
         llmProvider: !hasAnswerContext ? null : llmProvider,
@@ -849,7 +863,7 @@ Deno.serve(
         const citationPersist = await persistChatCitationsForTurn(client, {
           assistantTurnId: persistNonStream.assistantTurnId,
           ownerId: auth.claims.userId,
-          retrievalRunId: retrieveResult.body.retrieval_run_id ?? null,
+          retrievalRunId: retrievalRunId,
           policyDecisionId: kos.policyDecisionId ?? null,
           citations,
         });
@@ -861,7 +875,7 @@ Deno.serve(
         response: responseText,
         citations: responseCitations,
         confidence,
-        retrieval_run_id: retrieveResult.body.retrieval_run_id ?? null,
+        retrieval_run_id: retrievalRunId,
         memory_updated: true,
         session_id: sessionId,
         turn_persisted: persistNonStream.ok,

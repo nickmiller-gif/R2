@@ -60,6 +60,15 @@ if [ -n "$DESTRUCTIVE_HITS" ]; then
   done
 fi
 
+# 4b. knowledge_chunks ANN index must use cosine ops (match_knowledge_chunks uses <=>)
+IP_OPS_INDEX=$(grep -n "knowledge_chunks.*vector_ip_ops\|vector_ip_ops.*knowledge_chunks" "$MIGRATION_DIR"/*.sql 2>/dev/null | grep -i "CREATE INDEX" || true)
+if [ -n "$IP_OPS_INDEX" ]; then
+  echo ""
+  echo "FAIL: knowledge_chunks HNSW index must use vector_cosine_ops (<=>) not vector_ip_ops:"
+  echo "$IP_OPS_INDEX"
+  EXIT=1
+fi
+
 # 5. Count summary
 TOTAL=$(ls "$MIGRATION_DIR"/*.sql 2>/dev/null | wc -l | tr -d ' ')
 echo ""

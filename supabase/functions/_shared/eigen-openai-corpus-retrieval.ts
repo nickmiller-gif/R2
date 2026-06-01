@@ -9,8 +9,10 @@ import {
   isOpenAiVectorRetrievalEnabled,
   mergePromptRetrievalChunks,
   openAiCorpusHitsToPromptChunks,
+  resolveChatRetrievalMerge,
   type OpenAiCorpusHitForConversion,
 } from '../../../src/lib/eigen/openai-corpus-retrieval.ts';
+import type { EigenRetrieveExecutionResult } from './eigen-retrieve-core.ts';
 
 export function openAiVectorRetrievalEnabled(): boolean {
   return isOpenAiVectorRetrievalEnabled(Deno.env.get('EIGEN_VECTOR_STORE_RETRIEVAL'));
@@ -61,4 +63,31 @@ export function mergeRetrievalChunksForChat(
   openAi: EigenRetrieveChunk[],
 ): EigenRetrieveChunk[] {
   return mergePromptRetrievalChunks(primary, openAi);
+}
+
+export interface ResolvedChatRetrieval {
+  ok: boolean;
+  chunks: EigenRetrieveChunk[];
+  status: number;
+  message?: string;
+  pgvectorDegraded?: boolean;
+}
+
+export function resolveChatRetrievalForEigenChat(
+  retrieveResult: EigenRetrieveExecutionResult,
+  openAiChunks: EigenRetrieveChunk[],
+): ResolvedChatRetrieval {
+  const merged = resolveChatRetrievalMerge({
+    retrieveOk: retrieveResult.ok,
+    retrieveMessage: retrieveResult.ok ? undefined : retrieveResult.message,
+    primaryChunks: retrieveResult.ok ? retrieveResult.body.chunks : [],
+    openAiChunks,
+  });
+  return {
+    ok: merged.ok,
+    chunks: merged.chunks as EigenRetrieveChunk[],
+    status: merged.status,
+    message: merged.message,
+    pgvectorDegraded: merged.pgvectorDegraded,
+  };
 }

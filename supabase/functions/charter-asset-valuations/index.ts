@@ -3,10 +3,10 @@ import { getSupabaseClient, getServiceClient } from '../_shared/supabase.ts';
 import { guardAuth } from '../_shared/auth.ts';
 import { requireRole } from '../_shared/rbac.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
+import { sanitizeInsert, sanitizeUpdate } from '../_shared/sanitize.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 
-const INSERT_KEYS = new Set([
-  'id',
+const INSERT_FIELDS = [
   'meg_entity_id',
   'charter_entity_id',
   'valuation_kind',
@@ -19,11 +19,9 @@ const INSERT_KEYS = new Set([
   'metadata',
   'status',
   'supersedes_id',
-  'created_by',
-  'reviewed_by',
-]);
+] as const;
 
-const PATCH_KEYS = new Set([
+const UPDATE_FIELDS = [
   'meg_entity_id',
   'charter_entity_id',
   'valuation_kind',
@@ -37,23 +35,7 @@ const PATCH_KEYS = new Set([
   'status',
   'supersedes_id',
   'reviewed_by',
-]);
-
-function pickInsertRow(body: Record<string, unknown>): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
-  for (const key of INSERT_KEYS) {
-    if (key in body) row[key] = body[key];
-  }
-  return row;
-}
-
-function pickPatchRow(body: Record<string, unknown>): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
-  for (const key of PATCH_KEYS) {
-    if (key in body) row[key] = body[key];
-  }
-  return row;
-}
+] as const;
 
 Deno.serve(
   withRequestMeta(async (req) => {
@@ -132,8 +114,10 @@ Deno.serve(
         const idemError = requireIdempotencyKey(req);
         if (idemError) return idemError;
 
-        const body = (await req.json()) as Record<string, unknown>;
-        const row = pickInsertRow(body);
+        const body = await req.json();
+        const row = sanitizeInsert(body, INSERT_FIELDS, {
+          created_by: auth.claims.userId,
+        });
         if (
           row.meg_entity_id == null ||
           typeof row.meg_entity_id !== 'string' ||
@@ -141,15 +125,14 @@ Deno.serve(
           typeof row.valuation_kind !== 'string' ||
           row.amount_numeric == null ||
           row.as_of == null ||
-          typeof row.as_of !== 'string' ||
-          row.created_by == null ||
-          typeof row.created_by !== 'string'
+          typeof row.as_of !== 'string'
         ) {
           return errorResponse(
-            'meg_entity_id, valuation_kind, amount_numeric, as_of, created_by are required',
+            'meg_entity_id, valuation_kind, amount_numeric, as_of are required',
             400,
           );
         }
+
         const { data, error } = await client
           .from('charter_asset_valuations')
           .insert([row])
@@ -170,14 +153,20 @@ Deno.serve(
         const idemError = requireIdempotencyKey(req);
         if (idemError) return idemError;
 
-        const body = (await req.json()) as Record<string, unknown>;
-        const valuationId = body.id;
+        const body = await req.json();
+        const valuationId =
+          id ??
+          (typeof body === 'object' &&
+          body !== null &&
+          typeof (body as { id?: unknown }).id === 'string'
+            ? (body as { id: string }).id
+            : null);
 
         if (!valuationId || typeof valuationId !== 'string') {
-          return errorResponse('id required in body', 400);
+          return errorResponse('id required in path or body', 400);
         }
 
-        const patch = pickPatchRow(body);
+        const patch = sanitizeUpdate(body, UPDATE_FIELDS);
         if (Object.keys(patch).length === 0) {
           return errorResponse('No updatable fields in body', 400);
         }

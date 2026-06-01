@@ -92,10 +92,10 @@ begin
   v := regexp_replace(v, '\msouth\M', 'south', 'gi');
   v := regexp_replace(v, '\meast\M', 'east', 'gi');
   v := regexp_replace(v, '\mwest\M', 'west', 'gi');
-  v := regexp_replace(v, '\bn\M', 'north', 'gi');
-  v := regexp_replace(v, '\bs\M', 'south', 'gi');
-  v := regexp_replace(v, '\be\M', 'east', 'gi');
-  v := regexp_replace(v, '\bw\M', 'west', 'gi');
+  v := regexp_replace(v, '\mn\M', 'north', 'gi');
+  v := regexp_replace(v, '\ms\M', 'south', 'gi');
+  v := regexp_replace(v, '\me\M', 'east', 'gi');
+  v := regexp_replace(v, '\mw\M', 'west', 'gi');
   v := regexp_replace(v, '\mst\M', 'street', 'gi');
   v := regexp_replace(v, '\mstr\M', 'street', 'gi');
   v := regexp_replace(v, '\mave\M', 'avenue', 'gi');

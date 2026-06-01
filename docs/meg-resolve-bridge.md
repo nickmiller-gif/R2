@@ -64,6 +64,8 @@ Body (JSON object):
 
 Bridge callers should pass **`hints.address`**, **`hints.city`**, **`hints.state`** for CentralR2 properties (see `property-eigen-sync`). `ensure_source_entity_meg_linkage` accepts **`p_hints`** with the same shape and merges **`works.entities`** rows that share the dedup key or case-insensitive label.
 
+**Operator verify (Eigen):** `op run --env-file=op.env -- npm run verify:meg-dedup` in `R2/`. Stamp missing keys on existing rows: `node scripts/meg-dedup-stamp-existing.mjs` (optional `--dry-run`). Tower **`/account/ai-health`** reports `dedup_rpc_probe_ok` and `dedup_normalization_match` after `ai-health-check` deploy.
+
 ## Gateway config
 
 In `supabase/config.toml` for this repo, add a block so the gateway does not require a Supabase user JWT (callers use the bridge token only), mirroring `r2-signal-ingest`:

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_RERANK_CONFIG,
+  clampRerankDocumentContent,
   fuseRerankScores,
   resolveRerankConfig,
   runRerankerWithTimeout,
@@ -43,11 +44,53 @@ describe('resolveRerankConfig', () => {
     expect(resolveRerankConfig({ timeout_ms: 250 }).timeout_ms).toBe(250);
   });
 
+  it('clamps max_document_chars to [256, 100000]', () => {
+    expect(resolveRerankConfig({ max_document_chars: 10 }).max_document_chars).toBe(256);
+    expect(resolveRerankConfig({ max_document_chars: 1_000_000 }).max_document_chars).toBe(100_000);
+    expect(resolveRerankConfig({ max_document_chars: 8_000 }).max_document_chars).toBe(8_000);
+  });
+
   it('falls back when value is not finite', () => {
     expect(resolveRerankConfig({ top_k: Number.NaN }).top_k).toBe(DEFAULT_RERANK_CONFIG.top_k);
     expect(resolveRerankConfig({ blend_weight: Number.POSITIVE_INFINITY }).blend_weight).toBe(
       DEFAULT_RERANK_CONFIG.blend_weight,
     );
+    expect(resolveRerankConfig({ max_document_chars: Number.NaN }).max_document_chars).toBe(
+      DEFAULT_RERANK_CONFIG.max_document_chars,
+    );
+  });
+});
+
+describe('clampRerankDocumentContent', () => {
+  it('truncates over-cap documents to the head and reports the count', () => {
+    const documents = [
+      { chunk_id: 'short', content: 'abc' },
+      { chunk_id: 'long', content: 'x'.repeat(500) },
+    ];
+    const result = clampRerankDocumentContent(documents, 100);
+    expect(result.truncated_count).toBe(1);
+    expect(result.documents[0]).toEqual({ chunk_id: 'short', content: 'abc' });
+    expect(result.documents[1]?.content).toHaveLength(100);
+    expect(result.documents[1]?.content.startsWith('x')).toBe(true);
+  });
+
+  it('leaves at-boundary content unchanged', () => {
+    const documents = [{ chunk_id: 'exact', content: 'y'.repeat(100) }];
+    const result = clampRerankDocumentContent(documents, 100);
+    expect(result.truncated_count).toBe(0);
+    expect(result.documents[0]?.content).toHaveLength(100);
+  });
+
+  it('is a no-op when maxChars is non-positive or non-finite', () => {
+    const documents = [{ chunk_id: 'a', content: 'hello' }];
+    expect(clampRerankDocumentContent(documents, 0).truncated_count).toBe(0);
+    expect(clampRerankDocumentContent(documents, -10).truncated_count).toBe(0);
+    expect(clampRerankDocumentContent(documents, Number.NaN).truncated_count).toBe(0);
+    expect(clampRerankDocumentContent(documents, 0).documents).toEqual(documents);
+  });
+
+  it('handles an empty document list', () => {
+    expect(clampRerankDocumentContent([], 100)).toEqual({ documents: [], truncated_count: 0 });
   });
 });
 

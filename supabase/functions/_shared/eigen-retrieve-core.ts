@@ -11,6 +11,7 @@ import {
 } from '../../../src/lib/eigen/oracle-retrieval-boost.ts';
 import { applySiteRelevanceGate, limitCrossSourceRatio } from './source-relevance-gating.ts';
 import {
+  clampRerankDocumentContent,
   fuseRerankScores,
   resolveRerankConfig,
   runRerankerWithTimeout,
@@ -426,6 +427,9 @@ function parseRerankerOverrides(value: unknown): Partial<RerankConfig> | undefin
   }
   if (typeof raw.timeout_ms === 'number' && Number.isFinite(raw.timeout_ms)) {
     out.timeout_ms = raw.timeout_ms;
+  }
+  if (typeof raw.max_document_chars === 'number' && Number.isFinite(raw.max_document_chars)) {
+    out.max_document_chars = raw.max_document_chars;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -938,20 +942,27 @@ async function applyRerankStage<
   const batch = selectRerankBatch(candidates, config.top_k);
   if (batch.length === 0) return { candidates, dropped_reason: null };
 
+  const { documents: cappedDocuments, truncated_count: truncatedCount } =
+    clampRerankDocumentContent(
+      batch.map((c) => ({ chunk_id: c.chunk_id, content: c.content })),
+      config.max_document_chars,
+    );
+
   const output = await runRerankerWithTimeout(
     port,
     {
       query: payload.query,
-      documents: batch.map((c) => ({ chunk_id: c.chunk_id, content: c.content })),
+      documents: cappedDocuments,
       top_k: batch.length,
     },
     config.timeout_ms,
   );
 
   if (!output) {
+    const truncatedSuffix = truncatedCount > 0 ? ` truncated_docs=${truncatedCount}` : '';
     return {
       candidates,
-      dropped_reason: 'reranker_failed: timeout or empty response, retained embedding order',
+      dropped_reason: `reranker_failed: timeout or empty response, retained embedding order${truncatedSuffix}`,
     };
   }
 
@@ -964,8 +975,9 @@ async function applyRerankStage<
     }),
   );
 
+  const truncatedSuffix = truncatedCount > 0 ? ` truncated_docs=${truncatedCount}` : '';
   return {
     candidates: reorderedCandidates,
-    dropped_reason: `reranker_applied: model=${output.model} reranked=${fused.reranked_count} reorder_distance=${fused.reorder_distance} latency_ms=${output.latency_ms}`,
+    dropped_reason: `reranker_applied: model=${output.model} reranked=${fused.reranked_count} reorder_distance=${fused.reorder_distance} latency_ms=${output.latency_ms}${truncatedSuffix}`,
   };
 }

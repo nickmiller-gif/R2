@@ -28,6 +28,10 @@ import {
   type ConversationTurn,
 } from '../../../src/lib/eigen/chat-history-utils.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import {
+  fetchOpenAiCorpusChunksForChat,
+  mergeRetrievalChunksForChat,
+} from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { logError, logInfo } from '../_shared/log.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { requireIdempotencyKey } from '../_shared/validate.ts';
@@ -437,32 +441,38 @@ Deno.serve(
       }
 
       const retrievalFlags = readRetrievalQualityFlags();
-      const retrieveResult = await executeEigenRetrieve(client, {
-        query: body.message,
-        entity_scope: body.entity_scope,
-        entity_scope_mode: resolvedEntityScope.scopeMode,
-        policy_scope: body.policy_scope ?? [],
-        site_id: body.site_id,
-        site_source_systems: body.site_source_systems ?? [],
-        site_boost: body.site_boost,
-        global_penalty: body.global_penalty,
-        budget_profile: body.budget_profile
-          ? {
-              ...body.budget_profile,
-              strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
-            }
-          : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
-        rerank: true,
-        enable_reranking: retrievalFlags.rerank,
-        enable_multi_query: retrievalFlags.multiQuery,
-        include_provenance: true,
-      });
+      const [retrieveResult, openAiCorpusChunks] = await Promise.all([
+        executeEigenRetrieve(client, {
+          query: body.message,
+          entity_scope: body.entity_scope,
+          entity_scope_mode: resolvedEntityScope.scopeMode,
+          policy_scope: body.policy_scope ?? [],
+          site_id: body.site_id,
+          site_source_systems: body.site_source_systems ?? [],
+          site_boost: body.site_boost,
+          global_penalty: body.global_penalty,
+          budget_profile: body.budget_profile
+            ? {
+                ...body.budget_profile,
+                strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+              }
+            : { max_chunks: 12, max_tokens: 4000, strata_weights: buildUploadFirstStrataWeights() },
+          rerank: true,
+          enable_reranking: retrievalFlags.rerank,
+          enable_multi_query: retrievalFlags.multiQuery,
+          include_provenance: true,
+        }),
+        fetchOpenAiCorpusChunksForChat(body.message, 6),
+      ]);
 
       if (!retrieveResult.ok) {
         return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
       }
 
-      const retrievedChunks = retrieveResult.body.chunks;
+      const retrievedChunks = mergeRetrievalChunksForChat(
+        retrieveResult.body.chunks,
+        openAiCorpusChunks,
+      );
       const citations = buildCitations(retrievedChunks);
       const confidence = buildCompositeConfidence(citations);
       const [voiceStyleAddendum, entityContext, memoryRecall, governance, oracleSignals] =

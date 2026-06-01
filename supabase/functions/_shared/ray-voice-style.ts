@@ -3,16 +3,7 @@ import { executeEigenRetrieve, type EigenRetrieveChunk } from './eigen-retrieve-
 import { POLICY_TAG_EIGEN_PUBLIC, POLICY_TAG_EIGENX } from './eigen-policy.ts';
 import { searchEigenCorpusMulti } from './eigen-corpus-search.ts';
 import { eigenVoiceStoreIds } from './eigen-corpus-stores.ts';
-
-/**
- * Opt-in: when `EIGEN_VECTOR_STORE_RETRIEVAL=true`, also draw Ray-voice style
- * exemplars from the OpenAI `ray_voice` Vector Store (in addition to the
- * pgvector ray_voice / ray_correspondence corpus). Graceful — a missing
- * OPENAI_API_KEY or store yields no lines.
- */
-function openAiVectorRetrievalEnabled(): boolean {
-  return Deno.env.get('EIGEN_VECTOR_STORE_RETRIEVAL')?.trim() === 'true';
-}
+import { openAiVectorRetrievalEnabled } from './eigen-openai-corpus-retrieval.ts';
 
 async function fetchOpenAiVoiceLines(message: string, maxLines: number): Promise<string[]> {
   if (!openAiVectorRetrievalEnabled()) return [];

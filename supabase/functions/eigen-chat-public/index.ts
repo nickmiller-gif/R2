@@ -21,6 +21,10 @@ import {
 import { completeLlmChat } from '../_shared/llm-chat.ts';
 import { inferOutsideDomainIntent } from '../_shared/source-relevance-gating.ts';
 import { fetchRayVoiceStyleAddendum } from '../_shared/ray-voice-style.ts';
+import {
+  fetchOpenAiCorpusChunksForChat,
+  mergeRetrievalChunksForChat,
+} from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
@@ -243,46 +247,53 @@ Deno.serve(
       const retreatScoped = body.site_id === 'raysretreat';
       const r2AppScoped = body.site_id === 'r2app';
       const outsideDomainIntent = inferOutsideDomainIntent(body.message);
-      const retrieveResult = await executeEigenRetrieve(client, {
-        query: body.message,
-        entity_scope: [],
-        policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
-        site_id: body.site_id,
-        site_source_systems: body.site_source_systems ?? [],
-        site_boost: body.site_boost ?? (retreatScoped ? 0.7 : r2AppScoped ? 0.6 : undefined),
-        global_penalty:
-          body.global_penalty ?? (retreatScoped ? -0.4 : r2AppScoped ? -0.35 : undefined),
-        site_relevance_min: retreatScoped ? 0.36 : r2AppScoped ? 0.3 : undefined,
-        cross_source_max_ratio: retreatScoped ? 0.2 : r2AppScoped ? 0.15 : undefined,
-        allow_cross_source_when_low_confidence: retreatScoped,
-        outside_domain_intent: outsideDomainIntent,
-        disallowed_source_systems:
-          (retreatScoped &&
-            body.conversation_intent === 'retreat_content' &&
-            !outsideDomainIntent) ||
-          (r2AppScoped && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
-            ? ['health-supplement-tr', 'smartplrx']
-            : [],
-        budget_profile: body.budget_profile
-          ? {
-              ...body.budget_profile,
-              strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
-            }
-          : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
-        rerank: true,
-        include_provenance: true,
-      });
+      const [retrieveResult, openAiCorpusChunks] = await Promise.all([
+        executeEigenRetrieve(client, {
+          query: body.message,
+          entity_scope: [],
+          policy_scope: [POLICY_TAG_EIGEN_PUBLIC],
+          site_id: body.site_id,
+          site_source_systems: body.site_source_systems ?? [],
+          site_boost: body.site_boost ?? (retreatScoped ? 0.7 : r2AppScoped ? 0.6 : undefined),
+          global_penalty:
+            body.global_penalty ?? (retreatScoped ? -0.4 : r2AppScoped ? -0.35 : undefined),
+          site_relevance_min: retreatScoped ? 0.36 : r2AppScoped ? 0.3 : undefined,
+          cross_source_max_ratio: retreatScoped ? 0.2 : r2AppScoped ? 0.15 : undefined,
+          allow_cross_source_when_low_confidence: retreatScoped,
+          outside_domain_intent: outsideDomainIntent,
+          disallowed_source_systems:
+            (retreatScoped &&
+              body.conversation_intent === 'retreat_content' &&
+              !outsideDomainIntent) ||
+            (r2AppScoped && body.conversation_intent === 'event_ops' && !outsideDomainIntent)
+              ? ['health-supplement-tr', 'smartplrx']
+              : [],
+          budget_profile: body.budget_profile
+            ? {
+                ...body.budget_profile,
+                strata_weights: buildUploadFirstStrataWeights(body.budget_profile.strata_weights),
+              }
+            : { max_chunks: 10, max_tokens: 3000, strata_weights: buildUploadFirstStrataWeights() },
+          rerank: true,
+          include_provenance: true,
+        }),
+        fetchOpenAiCorpusChunksForChat(body.message, 6),
+      ]);
 
       if (!retrieveResult.ok) {
         return errorResponse(`Retrieve failed: ${retrieveResult.message}`, retrieveResult.status);
       }
 
-      const citations = buildCitations(retrieveResult.body.chunks);
+      const mergedChunks = mergeRetrievalChunksForChat(
+        retrieveResult.body.chunks,
+        openAiCorpusChunks,
+      );
+      const citations = buildCitations(mergedChunks);
       const confidence = buildCompositeConfidence(citations);
       const synthesis = await synthesizePublicResponse(
         client,
         body.message,
-        retrieveResult.body.chunks,
+        mergedChunks,
         body.response_format ?? 'structured',
         body.llm_provider,
         body.llm_model,

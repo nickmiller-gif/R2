@@ -28,6 +28,22 @@ describe('meg property dedup keys', () => {
     expect(a).toBe(b);
   });
 
+  it('matches Texas vs TX and directional street variants', () => {
+    const tower = propertyDedupKey({
+      name: 'Tower Home',
+      address: '123 N Main St',
+      city: 'Austin',
+      state: 'TX',
+    });
+    const works = propertyDedupKey({
+      name: 'Works Home',
+      address: '123 North Main Street',
+      city: 'austin',
+      state: 'Texas',
+    });
+    expect(tower).toBe(works);
+  });
+
   it('differs when city or state changes', () => {
     const denver = propertyDedupKey({
       name: '1657 Methyl St',

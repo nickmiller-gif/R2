@@ -72,6 +72,25 @@ describe('validateBody', () => {
     ]);
     expect(result.ok).toBe(true);
   });
+
+  it('returns only validated fields and strips unknown keys', async () => {
+    const req = jsonRequest({
+      user_id: 'abc',
+      role: 'operator',
+      assigned_by: 'attacker',
+      is_admin: true,
+    });
+    const result = await validateBody<{ user_id: string; role: string }>(req, [
+      { name: 'user_id', type: 'string' },
+      { name: 'role', type: 'string' },
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual({ user_id: 'abc', role: 'operator' });
+      expect(result.data).not.toHaveProperty('assigned_by');
+      expect(result.data).not.toHaveProperty('is_admin');
+    }
+  });
 });
 
 describe('requireIdempotencyKey', () => {

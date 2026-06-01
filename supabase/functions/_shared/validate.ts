@@ -82,6 +82,7 @@ export async function validateBody<T>(
 
   const obj = parsed as Record<string, unknown>;
   const errors: string[] = [];
+  const data: Record<string, unknown> = {};
 
   for (const field of fields) {
     const value = obj[field.name];
@@ -105,14 +106,17 @@ export async function validateBody<T>(
     // invariants (e.g. spreading keys, assuming property access semantics).
     if (field.type === 'object' && Array.isArray(value)) {
       errors.push(`Field '${field.name}' must be a JSON object, not an array`);
+      continue;
     }
+
+    data[field.name] = value;
   }
 
   if (errors.length > 0) {
     return { ok: false, response: validationError(errors.join('; ')) };
   }
 
-  return { ok: true, data: obj as T };
+  return { ok: true, data: data as T };
 }
 
 // ---------------------------------------------------------------------------

@@ -42,4 +42,4 @@
 - Eigen access model: public chat is hard-pinned to `eigen_public`; EigenX scopes retrieval via `policy_tags` + `eigen_policy_access_grants`.
 - OpenAI vector stores registered for Eigen are public-readable; `ray_voice` feeds persona addendum only.
 - `knowledge_chunks` pgvector HNSW index must use `vector_cosine_ops` to match cosine distance in `match_knowledge_chunks`; repo migration guard blocks `vector_ip_ops`.
-- If pgvector retrieve fails but OpenAI corpus hits exist, `eigen-chat` / `eigen-chat-public` degrade gracefully to OpenAI context instead of returning 400.
+- If pgvector retrieve fails but OpenAI corpus hits exist, Eigen chat surfaces (`eigen-chat`, `eigen-chat-public`, `eigen-widget-chat`) degrade gracefully to OpenAI context instead of returning 400.

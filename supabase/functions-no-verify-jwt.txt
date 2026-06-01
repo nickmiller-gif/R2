@@ -44,6 +44,7 @@ meg-entities
 meg-entity-aliases
 meg-entity-edges
 meg-kb-four-backfill-links
+meg-resolve-bridge
 oracle-evidence-items
 oracle-graph-extraction-stub
 oracle-graph-extraction-worker

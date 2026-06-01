@@ -26,6 +26,7 @@ import {
   resolveChatRetrievalForEigenChat,
 } from '../_shared/eigen-openai-corpus-retrieval.ts';
 import { withRequestMeta } from '../_shared/correlation.ts';
+import { logInfo } from '../_shared/log.ts';
 import { assertNoClientPolicyScopeOverride } from '../_shared/policy-scope-guard.ts';
 
 interface PublicChatRequest {
@@ -219,7 +220,7 @@ async function synthesizePublicResponse(
 }
 
 Deno.serve(
-  withRequestMeta(async (req) => {
+  withRequestMeta(async (req, meta) => {
     if (req.method === 'OPTIONS') return corsResponse();
     if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
@@ -289,6 +290,13 @@ Deno.serve(
           `Retrieve failed: ${resolvedRetrieval.message ?? 'unknown'}`,
           resolvedRetrieval.status,
         );
+      }
+      if (resolvedRetrieval.pgvectorDegraded) {
+        logInfo('pgvector retrieve failed; OpenAI corpus fallback in use', {
+          functionName: 'eigen-chat-public',
+          correlationId: meta.correlationId,
+          openai_chunk_count: openAiCorpusChunks.length,
+        });
       }
 
       const mergedChunks = resolvedRetrieval.chunks;
